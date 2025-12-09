@@ -1,1 +1,23 @@
+# macOS
 .DS_Store
+
+# C/C++ build artifacts
+*.o
+*.so
+*.dylib
+*.a
+a.out
+
+# editor / backup
+*~
+*.swp
+
+# build directories
+build/
+cmake-build-*/
+
+# ROOT outputs
+*.root
+*.ps
+*.pdf
+*.png
