@@ -30,10 +30,18 @@ inline constexpr MichelParams kMichelSM{
     0.75  // delta
 };
 
-// ---- 既定値：質量（“PDG値相当”。更新したい場合はここを変更） ----
+// ---- 既定値：質量（“PDG値相当”） ----
 inline constexpr ParticleMasses kMassesPDG{
     105.658, // m_mu [MeV]
     0.511    // m_e  [MeV]
 };
+
+// 円周率
+inline constexpr double pi =
+    3.141592653589793238462643383279502884;
+
+// 微細構造定数
+inline constexpr double alpha =
+    1.0 / 137.035999084;
 
 #endif // P2MEG_CONSTANTS_H
