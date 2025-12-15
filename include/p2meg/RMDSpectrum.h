@@ -1,54 +1,46 @@
+// include/p2meg/RMDSpectrum.h
 #ifndef P2MEG_RMD_SPECTRUM_H
 #define P2MEG_RMD_SPECTRUM_H
 
-//============================================================
-// RMDSpectrum.h
+// ============================================================
+// Radiative Muon Decay (RMD) : μ+ → e+ ν ν̄ γ
 //
-// 停止ミューオン静止系での Radiative Muon Decay (RMD)
-//   mu+ -> e+ nu_e nu_mu_bar gamma
-// の「三重微分分岐比（shape の核）」を返す関数群。
-//
-// ここでいう shape の核とは
-//   d^3B / (dx dy dcosθ_{eγ})
-// をそのまま返す（解析ウィンドウでの正規化はしない）ものです。
-//
-// 【重要：このコードがやっていないこと】
-//  - 偏極項（G, H）は入れていません（F 項のみ）。
-//    (x, y, cosθ_{eγ}) に射影して形状だけを見る場合、受容が十分対称なら
-//    偏極項は平均で消え得ますが、受容・カットが非対称なら残り得ます。
-//    最終的には MC で P=-1 と P=0 を比較して shape への影響が無視できるか確認してください。
-//  - QED の高次補正は入れていません（ツリーレベル SM(V-A)）。
-//
-// 【使用時の注意】
-// 1) 赤外発散（soft photon）
-//    y -> 0（Eγ -> 0）で 1/y により発散します。
-//    必ず Eγ > Eγ_min のカット（解析ウィンドウ）を入れてください。
-//    規格化（ウィンドウ積分値）はこのカットに強く依存します。
-// 2) 共線領域（collinear）
-//    d = 1 - β cosθ_{eγ} -> 0 で 1/d, 1/d^2 が大きくなります。
-//    数値安定化のため d_min を設けています（デフォルト 1e-6）。
-//    ただし、これはあくまで計算のガードであり、物理カットではありません。
-// 3) 解析で PDF として使う場合
-//    この関数が返すのは「核」なので、解析ウィンドウ W 内で積分して
-//      R = (1/N_W) * (d^3B/dx dy dcos)
-//    のように正規化してから尤度の shape-PDF として使ってください。
-//============================================================
+// ここでは「停止ミューオン静止系」での tree-level SM(V-A) の式を使い、
+// 分岐比（branching ratio）に比例する微分分布（shape）を返す。
+// 単位系は x,y が無次元、Ee,Eg は MeV 入力。
+// ============================================================
 
-/// 三重微分分岐比（核）: d^3B / (dx dy dcosθ_{eγ})
-/// 入力:
-///   x = 2 Ee / m_mu
-///   y = 2 Eγ / m_mu
-///   cosTheta = cos(theta_{eγ})
-///   d_min: 数値安定化のための下限（d=1-βcosθ がこれ未満なら d=d_min に置き換え）
-/// 出力:
-///   d^3B/dx dy dcosθ（無次元）
-/// 注意:
-///   y->0 で発散するので、呼び出し側で必ず y>y_min（Eγ>閾値）を課してください。
-double RMD_d3B_dxdy_dcos(double x, double y, double cosTheta, double d_min = 1e-6);
+//------------------------------------------------------------
+// 「全体回転」を平均した後の三重微分（偏極を落とした形）
+//   d^3B/(dx dy dcosθ_eγ)
+//------------------------------------------------------------
+double RMD_d3B_dxdy_dcos(double x, double y, double cosThetaEG, double d_min = 1e-6);
 
-/// 便利関数: エネルギー変数での三重微分分岐比（核）
-///   d^3B / (dEe dEγ dcosθ_{eγ})
-/// 入力は MeV。
-double RMD_d3B_dEe_dEg_dcos(double Ee_MeV, double Eg_MeV, double cosTheta, double d_min = 1e-6);
+double RMD_d3B_dEe_dEg_dcos(double Ee_MeV, double Eg_MeV, double cosThetaEG, double d_min = 1e-6);
+
+//------------------------------------------------------------
+// 完全式（F,G,H を含む・偏極あり）
+//   d^6B/(dx dy dΩ_e dΩ_γ)
+//
+// 入力として
+//   cosThetaEG = p̂_e · p̂_γ
+//   cosThetaE  = P̂ · p̂_e
+//   cosThetaG  = P̂ · p̂_γ
+// を受け取り、Pmu は偏極度（スカラー；符号込み）として扱う。
+// （P ベクトルが必要なら、Pmu=|P| とし cosThetaE,G を P̂ との内積で与える）
+//------------------------------------------------------------
+double RMD_d6B_dxdy_dOmegae_dOmegag(double x, double y,
+                                   double cosThetaEG,
+                                   double cosThetaE,
+                                   double cosThetaG,
+                                   double Pmu,
+                                   double d_min = 1e-6);
+
+double RMD_d6B_dEe_dEg_dOmegae_dOmegag(double Ee_MeV, double Eg_MeV,
+                                      double cosThetaEG,
+                                      double cosThetaE,
+                                      double cosThetaG,
+                                      double Pmu,
+                                      double d_min = 1e-6);
 
 #endif // P2MEG_RMD_SPECTRUM_H
