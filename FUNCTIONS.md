@@ -224,3 +224,131 @@ int main() {
   return 0;
 }
 ```
+
+### MakeRMDGridPdf
+- Header: `include/p2meg/MakeRMDGridPdf.h`
+- 目的: RMD 理論式（`RMD_d3B_dEe_dEg_dcos`）と検出器分解能（独立ガウシアン）を用いて、畳み込み済みの 3D 格子 PDF（Ee, Eg, θ）を生成し、ROOT ファイルに保存する。
+
+- シグネチャ
+  - `int MakeRMDGridPdf(const char* out_filepath, const char* key);`
+
+- 入力:
+  - `out_filepath`: 出力先 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
+  - `key`: ROOT ファイル中に保存するオブジェクトのキー名（例：`"rmd_grid"`）。
+
+- 出力:
+  - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 3D 格子 PDF（`key`）とメタ情報（`<key>_meta`）などを保存する。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include <filesystem>
+#include "p2meg/MakeRMDGridPdf.h"
+
+int main() {
+  std::filesystem::create_directories("data/pdf_cache");
+  const char* out = "data/pdf_cache/rmd_grid.root";
+  const char* key = "rmd_grid";
+
+  const int rc = MakeRMDGridPdf(out, key);
+  std::cout << "MakeRMDGridPdf returned " << rc << std::endl;
+  return rc;
+}
+```
+
+### RMDGridPdf_Load
+- Header: `include/p2meg/RMDGridPdf.h`
+- 目的: オフラインで生成した RMD 3D 格子 PDF（Ee, Eg, θ）を ROOT ファイルから読み込み、`RMDGridPdf(...)` で評価できる状態に初期化する。
+
+- シグネチャ
+  - `bool RMDGridPdf_Load(const char* filepath, const char* key);`
+
+- 入力:
+  - `filepath`: 入力 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
+  - `key`: ROOT ファイル中の格子 PDF のキー名（例：`"rmd_grid"`）。
+
+- 出力:
+  - 戻り値: 読み込みと初期化に成功したら `true`、失敗したら `false` を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDGridPdf.h"
+
+int main() {
+  const char* in  = "data/pdf_cache/rmd_grid.root";
+  const char* key = "rmd_grid";
+
+  if (!RMDGridPdf_Load(in, key)) {
+    std::cerr << "RMDGridPdf_Load failed" << std::endl;
+    return 1;
+  }
+  std::cout << "loaded" << std::endl;
+  return 0;
+}
+```
+
+### RMDGridPdf_IsLoaded
+- Header: `include/p2meg/RMDGridPdf.h`
+- 目的: RMD 格子 PDF がロード済みかどうかを返す（解析コード側の安全チェック用）。
+
+- シグネチャ
+  - `bool RMDGridPdf_IsLoaded();`
+
+- 入力:
+  - （なし）
+
+- 出力:
+  - 戻り値: ロード済みなら `true`、未ロードなら `false` を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDGridPdf.h"
+
+int main() {
+  std::cout << "loaded? " << RMDGridPdf_IsLoaded() << std::endl;
+  return 0;
+}
+```
+
+### RMDGridPdf
+- Header: `include/p2meg/RMDGridPdf.h`
+- 目的: 観測値 (Ee, Eg, t, θ) に対して RMD の PDF 値を返す。3D 格子から p3(Ee,Eg,θ) を補間し、時間因子 p(t)（窓内正規化ガウシアン）を解析的に掛けて最終 PDF を評価する。
+
+- シグネチャ
+  - `double RMDGridPdf(double Ee, double Eg, double t, double theta);`
+
+- 入力:
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `t`: 到達時間差 Δt [ns]。
+  - `theta`: e と γ のなす角 θ [rad]（範囲は 0<θ<π を想定）。
+
+- 出力:
+  - 戻り値: 解析窓内なら PDF 値（密度）を返す。解析窓外、未ロード、数値的に不正な場合は 0 を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDGridPdf.h"
+
+int main() {
+  const char* in  = "data/pdf_cache/rmd_grid.root";
+  const char* key = "rmd_grid";
+
+  if (!RMDGridPdf_Load(in, key)) {
+    std::cerr << "RMDGridPdf_Load failed" << std::endl;
+    return 1;
+  }
+
+  const double Ee = 50.0;    // [MeV]
+  const double Eg = 48.0;    // [MeV]
+  const double t  = 0.1;     // [ns]
+  const double th = 3.05;    // [rad]（ほぼ反平行）
+
+  const double p = RMDGridPdf(Ee, Eg, t, th);
+  std::cout << "RMDGridPdf = " << p << std::endl;
+  return 0;
+}
+```
