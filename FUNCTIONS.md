@@ -75,87 +75,6 @@ int main() {
 
 # Function list
 
-### Michel_Emax
-- Header: `include/p2meg/MichelSpectrum.h`
-- 目的: 粒子質量からミシェル崩壊の端点エネルギー $ E_{\max} $ を返します（実装では $ E_{\max} = m_\mu/2 $）。
-
-- シグネチャ
-  - `double Michel_Emax(const ParticleMasses& ms);`
-
-- 入力:
-  - `ms`: 粒子質量（`ms.m_mu` と `ms.m_e` を持つ。単位は MeV）
-
-- 出力:
-  - 戻り値: 端点エネルギー（MeV）。実装では `ms.m_mu/2.0` を返します。
-
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/MichelSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const ParticleMasses ms = kMassesPDG;
-  const double Emax = Michel_Emax(ms);
-  std::cout << "Emax = " << Emax << " MeV\n";
-  return 0;
-}
-```
-
-### Michel_x
-- Header: `include/p2meg/MichelSpectrum.h`
-- 目的: 陽電子エネルギーから無次元変数 $ x = E_e/E_{\max} $ を計算します。
-
-- シグネチャ
-  - `double Michel_x(double Ee, const ParticleMasses& ms);`
-
-- 入力:
-  - `Ee`: 陽電子エネルギー（MeV）
-  - `ms`: 粒子質量（端点計算に `ms.m_mu` を使用。単位は MeV）
-
-- 出力:
-  - 戻り値: 無次元変数 `x`（`Ee / Michel_Emax(ms)`）。
-
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/MichelSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const ParticleMasses ms = kMassesPDG;
-  const double Emax = Michel_Emax(ms);
-  const double Ee = 0.7 * Emax;
-  std::cout << "x = " << Michel_x(Ee, ms) << "\n";
-  return 0;
-}
-```
-
-### Michel_x0
-- Header: `include/p2meg/MichelSpectrum.h`
-- 目的: ミシェル分布の $ \eta $ 項に現れる係数 $ x_0 = m_e/E_{\max} $ を計算します。
-
-- シグネチャ
-  - `double Michel_x0(const ParticleMasses& ms);`
-
-- 入力:
-  - `ms`: 粒子質量（`ms.m_e` と `ms.m_mu` を使用。単位は MeV）
-
-- 出力:
-  - 戻り値: 無次元係数 `x0`（`ms.m_e / Michel_Emax(ms)`）。
-
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/MichelSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const ParticleMasses ms = kMassesPDG;
-  std::cout << "x0 = " << Michel_x0(ms) << "\n";
-  return 0;
-}
-```
 
 ### Michel_d2Shape_dE_dCosTheta
 - Header: `include/p2meg/MichelSpectrum.h`
@@ -228,44 +147,6 @@ int main() {
 }
 ```
 
-### RMD_d3B_dxdy_dcos
-- Header: `include/p2meg/RMDSpectrum.h`
-- 目的: 停止ミューオン静止系における RMD（$\mu^+\to e^+\nu\bar{\nu}\gamma$）の三重微分分岐比（shape の核）$d^3B/(dx\,dy\,d\cos\theta_{e\gamma})$ を返す。
-
-- シグネチャ
-  - `double RMD_d3B_dxdy_dcos(double x, double y, double cosTheta, double d_min = 1e-6);`
-
-- 入力:
-  - `x`: $x=2E_e/m_\mu$（無次元）。
-  - `y`: $y=2E_\gamma/m_\mu$（無次元）。soft photon 発散があるため、呼び出し側で必ず $y>y_{\min}$（$E_\gamma>E_{\gamma,\min}$）のカットを入れる。
-  - `cosTheta`: $\cos\theta_{e\gamma}$（$e$ と $\gamma$ のなす角の余弦、範囲は $[-1,1]$）。
-  - `d_min`: 数値安定化のための下限。$d=1-\beta\cos\theta_{e\gamma}$ が `d_min` 未満なら `d_min` に置き換える（物理カットではない）。
-
-- 出力:
-  - 戻り値: 三重微分分岐比（核）$d^3B/(dx\,dy\,d\cos\theta_{e\gamma})$（無次元）。運動学的に許されない領域では 0 を返す。
-
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/RMDSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const double mmu = kMassesPDG.m_mu;
-
-  const double Ee = 50.0;   // [MeV]
-  const double Eg = 10.0;   // [MeV]（必ず下限を入れる）
-  const double c  = -0.8;   // cos(theta_eγ)
-
-  const double x = 2.0 * Ee / mmu;
-  const double y = 2.0 * Eg / mmu;
-
-  const double w = RMD_d3B_dxdy_dcos(x, y, c);
-  std::cout << "d3B/dx dy dcos = " << w << std::endl;
-  return 0;
-}
-```
-
 ### RMD_d3B_dEe_dEg_dcos
 - Header: `include/p2meg/RMDSpectrum.h`
 - 目的: 停止ミューオン静止系における RMD の三重微分分岐比（shape の核）$d^3B/(dE_e\,dE_\gamma\,d\cos\theta_{e\gamma})$ をエネルギー変数（MeV）で返す。
@@ -300,6 +181,174 @@ int main() {
   const double wE_bad = RMD_d3B_dEe_dEg_dcos(Ee, Eg, -0.5);
   std::cout << "bad point = " << wE_bad << " [MeV^-2]" << std::endl;
 
+  return 0;
+}
+```
+
+### RMD_d6B_dEe_dEg_dOmegae_dOmegag
+- Header: `include/p2meg/RMDSpectrum.h`
+- 目的: 停止ミューオン静止系における RMD の完全な微分分岐比（偏極込み）に対応する核 $d^6B/(dE_e\,dE_\gamma\,d\Omega_e\,d\Omega_\gamma)$ をエネルギー変数（MeV）で返す。
+
+- シグネチャ
+  - `double RMD_d6B_dEe_dEg_dOmegae_dOmegag(double Ee_MeV, double Eg_MeV, double cosThetaEG, double cosThetaE, double cosThetaG, double Pmu, double d_min = 1e-6);`
+
+- 入力:
+  - `Ee_MeV`: 陽電子エネルギー $E_e$ [MeV]。
+  - `Eg_MeV`: ガンマ線エネルギー $E_\gamma$ [MeV]。soft photon 発散があるため、呼び出し側で必ず $E_\gamma>E_{\gamma,\min}$ のカットを入れる。
+  - `cosThetaEG`: $\cos\theta_{e\gamma}=\hat{p}_e\cdot\hat{k}$（範囲は $[-1,1]$）。
+  - `cosThetaE`: $\cos\theta_e=\hat{P}\cdot\hat{p}_e$（範囲は $[-1,1]$）。
+  - `cosThetaG`: $\cos\theta_\gamma=\hat{P}\cdot\hat{k}$（範囲は $[-1,1]$）。
+  - `Pmu`: 偏極度（スカラー、符号込み）。
+  - `d_min`: 数値安定化のための下限（`RMD_d6B_dxdy_dOmegae_dOmegag` と同じ）。
+
+- 出力:
+  - 戻り値: 完全式（偏極込み）の核 $d^6B/(dE_e\,dE_\gamma\,d\Omega_e\,d\Omega_\gamma)$（単位は MeV$^{-2}$）。運動学的に許されない領域では 0 を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDSpectrum.h"
+#include "p2meg/Constants.h"
+
+int main() {
+  const double Ee = 50.0;   // [MeV]
+  const double Eg = 10.0;   // [MeV]
+
+  const double cosEG = -0.8; // p̂e · k̂
+  const double cosE  = -0.2; // P̂ · p̂e
+  const double cosG  =  0.6; // P̂ · k̂
+  const double Pmu   = -1.0; // 理想偏極（例）
+
+  const double wE = RMD_d6B_dEe_dEg_dOmegae_dOmegag(Ee, Eg, cosEG, cosE, cosG, Pmu);
+  std::cout << "d6B/dEe dEg dOmegae dOmegag = " << wE << " [MeV^-2]" << std::endl;
+  return 0;
+}
+```
+
+### MakeRMDGridPdf
+- Header: `include/p2meg/MakeRMDGridPdf.h`
+- 目的: RMD 理論式（`RMD_d3B_dEe_dEg_dcos`）と検出器分解能（独立ガウシアン）を用いて、畳み込み済みの 3D 格子 PDF（Ee, Eg, θ）を生成し、ROOT ファイルに保存する。
+
+- シグネチャ
+  - `int MakeRMDGridPdf(const char* out_filepath, const char* key);`
+
+- 入力:
+  - `out_filepath`: 出力先 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
+  - `key`: ROOT ファイル中に保存するオブジェクトのキー名（例：`"rmd_grid"`）。
+
+- 出力:
+  - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 3D 格子 PDF（`key`）とメタ情報（`<key>_meta`）などを保存する。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include <filesystem>
+#include "p2meg/MakeRMDGridPdf.h"
+
+int main() {
+  std::filesystem::create_directories("data/pdf_cache");
+  const char* out = "data/pdf_cache/rmd_grid.root";
+  const char* key = "rmd_grid";
+
+  const int rc = MakeRMDGridPdf(out, key);
+  std::cout << "MakeRMDGridPdf returned " << rc << std::endl;
+  return rc;
+}
+```
+
+### RMDGridPdf_Load
+- Header: `include/p2meg/RMDGridPdf.h`
+- 目的: オフラインで生成した RMD 3D 格子 PDF（Ee, Eg, θ）を ROOT ファイルから読み込み、`RMDGridPdf(...)` で評価できる状態に初期化する。
+
+- シグネチャ
+  - `bool RMDGridPdf_Load(const char* filepath, const char* key);`
+
+- 入力:
+  - `filepath`: 入力 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
+  - `key`: ROOT ファイル中の格子 PDF のキー名（例：`"rmd_grid"`）。
+
+- 出力:
+  - 戻り値: 読み込みと初期化に成功したら `true`、失敗したら `false` を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDGridPdf.h"
+
+int main() {
+  const char* in  = "data/pdf_cache/rmd_grid.root";
+  const char* key = "rmd_grid";
+
+  if (!RMDGridPdf_Load(in, key)) {
+    std::cerr << "RMDGridPdf_Load failed" << std::endl;
+    return 1;
+  }
+  std::cout << "loaded" << std::endl;
+  return 0;
+}
+```
+
+### RMDGridPdf_IsLoaded
+- Header: `include/p2meg/RMDGridPdf.h`
+- 目的: RMD 格子 PDF がロード済みかどうかを返す（解析コード側の安全チェック用）。
+
+- シグネチャ
+  - `bool RMDGridPdf_IsLoaded();`
+
+- 入力:
+  - （なし）
+
+- 出力:
+  - 戻り値: ロード済みなら `true`、未ロードなら `false` を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDGridPdf.h"
+
+int main() {
+  std::cout << "loaded? " << RMDGridPdf_IsLoaded() << std::endl;
+  return 0;
+}
+```
+
+### RMDGridPdf
+- Header: `include/p2meg/RMDGridPdf.h`
+- 目的: 観測値 (Ee, Eg, t, θ) に対して RMD の PDF 値を返す。3D 格子から p3(Ee,Eg,θ) を補間し、時間因子 p(t)（窓内正規化ガウシアン）を解析的に掛けて最終 PDF を評価する。
+
+- シグネチャ
+  - `double RMDGridPdf(double Ee, double Eg, double t, double theta);`
+
+- 入力:
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `t`: 到達時間差 Δt [ns]。
+  - `theta`: e と γ のなす角 θ [rad]（範囲は 0<θ<π を想定）。
+
+- 出力:
+  - 戻り値: 解析窓内なら PDF 値（密度）を返す。解析窓外、未ロード、数値的に不正な場合は 0 を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/RMDGridPdf.h"
+
+int main() {
+  const char* in  = "data/pdf_cache/rmd_grid.root";
+  const char* key = "rmd_grid";
+
+  if (!RMDGridPdf_Load(in, key)) {
+    std::cerr << "RMDGridPdf_Load failed" << std::endl;
+    return 1;
+  }
+
+  const double Ee = 50.0;    // [MeV]
+  const double Eg = 48.0;    // [MeV]
+  const double t  = 0.1;     // [ns]
+  const double th = 3.05;    // [rad]（ほぼ反平行）
+
+  const double p = RMDGridPdf(Ee, Eg, t, th);
+  std::cout << "RMDGridPdf = " << p << std::endl;
   return 0;
 }
 ```
