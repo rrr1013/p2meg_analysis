@@ -23,7 +23,7 @@ struct AnalysisWindow4D {
     double theta_max;  // [rad]
 };
 
-inline constexpr AnalysisWindow4D analysis_window_rmd{
+inline constexpr AnalysisWindow4D analysis_window{
     40.0, 55.0,    // Ee [MeV]
     40.0, 55.0,    // Eg [MeV]
     -2.0, 2.0,     // t  [ns]

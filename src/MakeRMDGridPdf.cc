@@ -55,9 +55,9 @@ static double Clamp(double x, double lo, double hi) {
 }
 
 static bool IsInsideWindow3D(double Ee, double Eg, double theta) {
-    if (Ee < analysis_window_rmd.Ee_min || Ee > analysis_window_rmd.Ee_max) return false;
-    if (Eg < analysis_window_rmd.Eg_min || Eg > analysis_window_rmd.Eg_max) return false;
-    if (theta < analysis_window_rmd.theta_min || theta > analysis_window_rmd.theta_max) return false;
+    if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return false;
+    if (Eg < analysis_window.Eg_min || Eg > analysis_window.Eg_max) return false;
+    if (theta < analysis_window.theta_min || theta > analysis_window.theta_max) return false;
     return true;
 }
 
@@ -191,16 +191,16 @@ static std::string BuildMetaString(long n_range_ok, long n_cos_ok, long n_filled
     oss << "cos_wpos_ok=" << n_cos_ok << "\n";
     oss << "filled_entries_3d=" << n_filled3 << "\n";
 
-    oss << "window: Ee=[" << analysis_window_rmd.Ee_min << "," << analysis_window_rmd.Ee_max << "] MeV\n";
-    oss << "window: Eg=[" << analysis_window_rmd.Eg_min << "," << analysis_window_rmd.Eg_max << "] MeV\n";
-    oss << "window: t=[" << analysis_window_rmd.t_min << "," << analysis_window_rmd.t_max << "] ns (applied at evaluation)\n";
-    oss << "window: theta=[" << analysis_window_rmd.theta_min << "," << analysis_window_rmd.theta_max << "] rad\n";
+    oss << "window: Ee=[" << analysis_window.Ee_min << "," << analysis_window.Ee_max << "] MeV\n";
+    oss << "window: Eg=[" << analysis_window.Eg_min << "," << analysis_window.Eg_max << "] MeV\n";
+    oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns (applied at evaluation)\n";
+    oss << "window: theta=[" << analysis_window.theta_min << "," << analysis_window.theta_max << "] rad\n";
 
-    oss << "res: sigma_Ee=" << detres_rmd.sigma_Ee << " MeV\n";
-    oss << "res: sigma_Eg=" << detres_rmd.sigma_Eg << " MeV\n";
-    oss << "res: sigma_t=" << detres_rmd.sigma_t << " ns (used analytically at evaluation)\n";
-    oss << "res: sigma_theta=" << detres_rmd.sigma_theta << " rad\n";
-    oss << "res: t_mean=" << detres_rmd.t_mean << " ns (used analytically at evaluation)\n";
+    oss << "res: sigma_Ee=" << detres.sigma_Ee << " MeV\n";
+    oss << "res: sigma_Eg=" << detres.sigma_Eg << " MeV\n";
+    oss << "res: sigma_t=" << detres.sigma_t << " ns (used analytically at evaluation)\n";
+    oss << "res: sigma_theta=" << detres.sigma_theta << " rad\n";
+    oss << "res: t_mean=" << detres.t_mean << " ns (used analytically at evaluation)\n";
 
     return oss.str();
 }
@@ -216,7 +216,7 @@ int MakeRMDGridPdf(const char* out_filepath, const char* key) {
     }
 
     // soft photon 発散対策：Eg > Eg_min
-    if (!(analysis_window_rmd.Eg_min > 0.0)) {
+    if (!(analysis_window.Eg_min > 0.0)) {
         std::cerr << "[MakeRMDGridPdf] Eg_min must be > 0 to avoid soft photon divergence.\n";
         return 2;
     }
@@ -225,14 +225,14 @@ int MakeRMDGridPdf(const char* out_filepath, const char* key) {
     const int ndim3 = 3;
     int nbins3[ndim3] = {kNBins_Ee, kNBins_Eg, kNBins_th};
     double xmin3[ndim3] = {
-        analysis_window_rmd.Ee_min,
-        analysis_window_rmd.Eg_min,
-        analysis_window_rmd.theta_min
+        analysis_window.Ee_min,
+        analysis_window.Eg_min,
+        analysis_window.theta_min
     };
     double xmax3[ndim3] = {
-        analysis_window_rmd.Ee_max,
-        analysis_window_rmd.Eg_max,
-        analysis_window_rmd.theta_max
+        analysis_window.Ee_max,
+        analysis_window.Eg_max,
+        analysis_window.theta_max
     };
 
     THnD h3("rmd_grid_tmp", "RMD smeared grid (3D);Ee;Eg;theta", ndim3, nbins3, xmin3, xmax3);
@@ -243,14 +243,14 @@ int MakeRMDGridPdf(const char* out_filepath, const char* key) {
 
     TRandom3 rng(kSeed);
 
-    const double Ee_min = analysis_window_rmd.Ee_min;
-    const double Ee_max = analysis_window_rmd.Ee_max;
-    const double Eg_min = analysis_window_rmd.Eg_min;
-    const double Eg_max = analysis_window_rmd.Eg_max;
+    const double Ee_min = analysis_window.Ee_min;
+    const double Ee_max = analysis_window.Ee_max;
+    const double Eg_min = analysis_window.Eg_min;
+    const double Eg_max = analysis_window.Eg_max;
 
-    const double sigma_Ee = detres_rmd.sigma_Ee;
-    const double sigma_Eg = detres_rmd.sigma_Eg;
-    const double sigma_th = detres_rmd.sigma_theta;
+    const double sigma_Ee = detres.sigma_Ee;
+    const double sigma_Eg = detres.sigma_Eg;
+    const double sigma_th = detres.sigma_theta;
 
     long n_range_ok = 0;   // (Ee,Eg) で cos 範囲が見つかった回数
     long n_cos_ok   = 0;   // その範囲で cos を投げて w>0 だった回数
