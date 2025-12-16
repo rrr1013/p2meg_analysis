@@ -22,10 +22,10 @@ static bool IsFinite(double x) {
 }
 
 static bool IsInsideWindow4D(double Ee, double Eg, double t, double theta) {
-    if (Ee < analysis_window_rmd.Ee_min || Ee > analysis_window_rmd.Ee_max) return false;
-    if (Eg < analysis_window_rmd.Eg_min || Eg > analysis_window_rmd.Eg_max) return false;
-    if (t  < analysis_window_rmd.t_min  || t  > analysis_window_rmd.t_max ) return false;
-    if (theta < analysis_window_rmd.theta_min || theta > analysis_window_rmd.theta_max) return false;
+    if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return false;
+    if (Eg < analysis_window.Eg_min || Eg > analysis_window.Eg_max) return false;
+    if (t  < analysis_window.t_min  || t  > analysis_window.t_max ) return false;
+    if (theta < analysis_window.theta_min || theta > analysis_window.theta_max) return false;
     return true;
 }
 
@@ -102,11 +102,11 @@ static double Interp3D_8(const THnD& h, double Ee, double Eg, double theta) {
 // 窓内で正規化された時間ガウシアン（密度）
 // pt(t) = N(t_mean, sigma_t) / A_t, ただし A_t = ∫_{tmin}^{tmax} N dt
 static double PtWindowNormalized(double t) {
-    const double sigma_t = detres_rmd.sigma_t;
-    const double t_mean  = detres_rmd.t_mean;
+    const double sigma_t = detres.sigma_t;
+    const double t_mean  = detres.t_mean;
 
-    const double tmin = analysis_window_rmd.t_min;
-    const double tmax = analysis_window_rmd.t_max;
+    const double tmin = analysis_window.t_min;
+    const double tmax = analysis_window.t_max;
 
     if (!(sigma_t > 0.0) || !IsFinite(sigma_t)) return 0.0;
 

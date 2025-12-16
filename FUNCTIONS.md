@@ -352,3 +352,45 @@ int main() {
   return 0;
 }
 ```
+
+### SignalPdf
+- Header: `include/p2meg/SignalPdf.h`
+- 目的: 停止ミューオンの信号（μ+→e+γ）に対する解析的な 4D PDF を返す。Ee, Eg, t は解析窓内で正規化したトランケート正規分布、角度は δ=π−θ（δ≥0）で折り返した half-normal を解析窓に対応する δ 範囲で正規化して用いる。
+
+- シグネチャ
+  - `double SignalPdf(double Ee, double Eg, double t, double theta, const AnalysisWindow4D& win, const DetectorResolutionConst& res, const ParticleMasses& ms = kMassesPDG);`
+
+- 入力:
+  - `Ee`: 陽電子エネルギー Ee [MeV]（解析窓 `win.Ee_min..win.Ee_max` を想定）
+  - `Eg`: ガンマ線エネルギー Eg [MeV]（解析窓 `win.Eg_min..win.Eg_max` を想定）
+  - `t`: 到達時間差 Δt [ns]（解析窓 `win.t_min..win.t_max` を想定）
+  - `theta`: e と γ のなす角 θ [rad]（0≤θ≤π を想定。角度PDFは δ=π−θ を half-normal にして用いる）
+  - `win`: 解析窓（Ee, Eg, t, theta の各範囲）
+  - `res`: 分解能パラメータ（`sigma_Ee`, `sigma_Eg`, `sigma_t`, `sigma_theta`, `t_mean`）
+  - `ms`: 粒子質量（`m_mu`, `m_e`）。省略時は `kMassesPDG`（信号真値 Ee0=Eg0=m_mu/2 に使用）
+
+- 出力:
+  - 戻り値: 解析窓内での PDF 密度 p(Ee,Eg,t,theta) を返す。解析窓外、theta が [0,π] 外、分解能が不正、正規化定数が不正などの場合は 0 を返す。
+
+- 使用例:
+```cpp
+#include <iostream>
+#include "p2meg/SignalPdf.h"
+#include "p2meg/AnalysisWindow.h"
+#include "p2meg/DetectorResolution.h"
+#include "p2meg/Constants.h"
+
+int main() {
+  const double Ee0 = 0.5 * kMassesPDG.m_mu;
+  const double Eg0 = 0.5 * kMassesPDG.m_mu;
+  const double t0  = detres.t_mean;
+  const double th0 = pi;
+
+  const double p0  = SignalPdf(Ee0, Eg0, t0, th0, analysis_window, detres);
+  const double pth = SignalPdf(Ee0, Eg0, t0, pi - detres.sigma_theta, analysis_window, detres);
+
+  std::cout << "SignalPdf(center) = " << p0 << "\n";
+  std::cout << "SignalPdf(theta-1sigma) = " << pth << "\n";
+  return 0;
+}
+```

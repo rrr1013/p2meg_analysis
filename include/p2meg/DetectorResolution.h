@@ -22,7 +22,7 @@ struct DetectorResolutionConst {
 
 // 既定値（要調整）
 // cf. 10°=0.1745 rad, 20°=0.3491 rad
-inline constexpr DetectorResolutionConst detres_rmd{
+inline constexpr DetectorResolutionConst detres{
     5.0,    // sigma_Ee [MeV]（仮）
     5.0,    // sigma_Eg [MeV]（仮）
     0.5,    // sigma_t  [ns]  （仮）
