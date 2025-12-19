@@ -24,7 +24,6 @@ cmake-build-*/
 *.dat
 data/pdf_cache/
 data/mockdata/
-*.datdata/pdf_cache/
 
 # ROOT ACLiC
 *_C.*
