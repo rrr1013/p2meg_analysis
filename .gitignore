@@ -21,7 +21,9 @@ cmake-build-*/
 *.ps
 *.pdf
 *.png
-*.datdata/pdf_cache/
+*.dat
+data/pdf_cache/
+data/mockdata/
 
 # ROOT ACLiC
 *_C.*
