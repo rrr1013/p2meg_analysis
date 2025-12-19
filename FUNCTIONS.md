@@ -39,7 +39,6 @@
 4. シグネチャ
 5. 入力（引数ごと：意味を1行ずつ）
 6. 出力（戻り値：意味を1〜2文）
-7. 使用例（簡単なC++例。10〜20行程度で、コピペで動く形）
 
 出力フォーマットは必ず次に従ってください：
 
@@ -56,20 +55,7 @@
 
 - 出力:
   - 戻り値: ...
-
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/<...>.h"
-
-int main() {
-  // ...
-  return 0;
-}
 ```
-
-
-
 
 
 
@@ -93,27 +79,6 @@ int main() {
 - 出力:
   - 戻り値: 非正規化の shape 値（任意単位）。定義域外（`costh` が [-1,1] 外、または `x` が (0,1) 外）では 0 を返します。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/MichelSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const double Emax = Michel_Emax(kMassesPDG);
-  const double Ee = 0.7 * Emax;
-  const double P_mu = 1.0;
-
-  const double w_p = Michel_d2Shape_dE_dCosTheta(Ee, +1.0, P_mu);
-  const double w_0 = Michel_d2Shape_dE_dCosTheta(Ee,  0.0, P_mu);
-  const double w_m = Michel_d2Shape_dE_dCosTheta(Ee, -1.0, P_mu);
-
-  std::cout << "w(+1) = " << w_p << "\n";
-  std::cout << "w( 0) = " << w_0 << "\n";
-  std::cout << "w(-1) = " << w_m << "\n";
-  return 0;
-}
-```
 
 ### Michel_dShape_dE
 - Header: `include/p2meg/MichelSpectrum.h`
@@ -130,22 +95,6 @@ int main() {
 - 出力:
   - 戻り値: 角度積分後の非正規化 shape 値（任意単位）。`x` が (0,1) 外では 0 を返します。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/MichelSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const double Emax = Michel_Emax(kMassesPDG);
-  const double Ee1 = 0.3 * Emax;
-  const double Ee2 = 0.7 * Emax;
-
-  std::cout << "dShape/dE(Ee1) = " << Michel_dShape_dE(Ee1) << "\n";
-  std::cout << "dShape/dE(Ee2) = " << Michel_dShape_dE(Ee2) << "\n";
-  return 0;
-}
-```
 
 ### RMD_d3B_dEe_dEg_dcos
 - Header: `include/p2meg/RMDSpectrum.h`
@@ -163,27 +112,6 @@ int main() {
 - 出力:
   - 戻り値: 三重微分分岐比（核）$d^3B/(dE_e\,dE_\gamma\,d\cos\theta_{e\gamma})$（単位は MeV$^{-2}$）。運動学的に許されない領域では 0 を返す。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/RMDSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const double Ee = 50.0;   // [MeV]
-  const double Eg = 40.0;   // [MeV]（この点は角度の許容範囲が狭い）
-  const double c  = -0.99;  // ほぼ反平行
-
-  const double wE = RMD_d3B_dEe_dEg_dcos(Ee, Eg, c);
-  std::cout << "d3B/dEe dEg dcos = " << wE << " [MeV^-2]" << std::endl;
-
-  // 物理的に許されない領域では 0 が返る
-  const double wE_bad = RMD_d3B_dEe_dEg_dcos(Ee, Eg, -0.5);
-  std::cout << "bad point = " << wE_bad << " [MeV^-2]" << std::endl;
-
-  return 0;
-}
-```
 
 ### RMD_d6B_dEe_dEg_dOmegae_dOmegag
 - Header: `include/p2meg/RMDSpectrum.h`
@@ -204,26 +132,6 @@ int main() {
 - 出力:
   - 戻り値: 完全式（偏極込み）の核 $d^6B/(dE_e\,dE_\gamma\,d\Omega_e\,d\Omega_\gamma)$（単位は MeV$^{-2}$）。運動学的に許されない領域では 0 を返す。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/RMDSpectrum.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const double Ee = 50.0;   // [MeV]
-  const double Eg = 10.0;   // [MeV]
-
-  const double cosEG = -0.8; // p̂e · k̂
-  const double cosE  = -0.2; // P̂ · p̂e
-  const double cosG  =  0.6; // P̂ · k̂
-  const double Pmu   = -1.0; // 理想偏極（例）
-
-  const double wE = RMD_d6B_dEe_dEg_dOmegae_dOmegag(Ee, Eg, cosEG, cosE, cosG, Pmu);
-  std::cout << "d6B/dEe dEg dOmegae dOmegag = " << wE << " [MeV^-2]" << std::endl;
-  return 0;
-}
-```
 
 ### MakeRMDGridPdf
 - Header: `include/p2meg/MakeRMDGridPdf.h`
@@ -239,22 +147,6 @@ int main() {
 - 出力:
   - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 3D 格子 PDF（`key`）とメタ情報（`<key>_meta`）などを保存する。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include <filesystem>
-#include "p2meg/MakeRMDGridPdf.h"
-
-int main() {
-  std::filesystem::create_directories("data/pdf_cache");
-  const char* out = "data/pdf_cache/rmd_grid.root";
-  const char* key = "rmd_grid";
-
-  const int rc = MakeRMDGridPdf(out, key);
-  std::cout << "MakeRMDGridPdf returned " << rc << std::endl;
-  return rc;
-}
-```
 
 ### RMDGridPdf_Load
 - Header: `include/p2meg/RMDGridPdf.h`
@@ -270,23 +162,6 @@ int main() {
 - 出力:
   - 戻り値: 読み込みと初期化に成功したら `true`、失敗したら `false` を返す。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/RMDGridPdf.h"
-
-int main() {
-  const char* in  = "data/pdf_cache/rmd_grid.root";
-  const char* key = "rmd_grid";
-
-  if (!RMDGridPdf_Load(in, key)) {
-    std::cerr << "RMDGridPdf_Load failed" << std::endl;
-    return 1;
-  }
-  std::cout << "loaded" << std::endl;
-  return 0;
-}
-```
 
 ### RMDGridPdf_IsLoaded
 - Header: `include/p2meg/RMDGridPdf.h`
@@ -301,16 +176,6 @@ int main() {
 - 出力:
   - 戻り値: ロード済みなら `true`、未ロードなら `false` を返す。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/RMDGridPdf.h"
-
-int main() {
-  std::cout << "loaded? " << RMDGridPdf_IsLoaded() << std::endl;
-  return 0;
-}
-```
 
 ### RMDGridPdf
 - Header: `include/p2meg/RMDGridPdf.h`
@@ -328,30 +193,6 @@ int main() {
 - 出力:
   - 戻り値: 解析窓内なら PDF 値（密度）を返す。解析窓外、未ロード、数値的に不正な場合は 0 を返す。
 
-- 使用例:
-```cpp
-#include <iostream>
-#include "p2meg/RMDGridPdf.h"
-
-int main() {
-  const char* in  = "data/pdf_cache/rmd_grid.root";
-  const char* key = "rmd_grid";
-
-  if (!RMDGridPdf_Load(in, key)) {
-    std::cerr << "RMDGridPdf_Load failed" << std::endl;
-    return 1;
-  }
-
-  const double Ee = 50.0;    // [MeV]
-  const double Eg = 48.0;    // [MeV]
-  const double t  = 0.1;     // [ns]
-  const double th = 3.05;    // [rad]（ほぼ反平行）
-
-  const double p = RMDGridPdf(Ee, Eg, t, th);
-  std::cout << "RMDGridPdf = " << p << std::endl;
-  return 0;
-}
-```
 
 ### SignalPdf
 - Header: `include/p2meg/SignalPdf.h`
@@ -372,25 +213,237 @@ int main() {
 - 出力:
   - 戻り値: 解析窓内での PDF 密度 p(Ee,Eg,t,theta) を返す。解析窓外、theta が [0,π] 外、分解能が不正、正規化定数が不正などの場合は 0 を返す。
 
-- 使用例:
+
+### Event
+- Header: `include/p2meg/Event.h`
+- 目的: 尤度計算・PDF評価・入出力を疎結合にするための、1事象の観測量をまとめたデータ構造を提供します。
+
+- シグネチャ
 ```cpp
-#include <iostream>
-#include "p2meg/SignalPdf.h"
-#include "p2meg/AnalysisWindow.h"
-#include "p2meg/DetectorResolution.h"
-#include "p2meg/Constants.h"
-
-int main() {
-  const double Ee0 = 0.5 * kMassesPDG.m_mu;
-  const double Eg0 = 0.5 * kMassesPDG.m_mu;
-  const double t0  = detres.t_mean;
-  const double th0 = pi;
-
-  const double p0  = SignalPdf(Ee0, Eg0, t0, th0, analysis_window, detres);
-  const double pth = SignalPdf(Ee0, Eg0, t0, pi - detres.sigma_theta, analysis_window, detres);
-
-  std::cout << "SignalPdf(center) = " << p0 << "\n";
-  std::cout << "SignalPdf(theta-1sigma) = " << pth << "\n";
-  return 0;
-}
+struct Event {
+  double Ee;
+  double Eg;
+  double t;
+  double theta;
+  double cos_detector_e;
+  double cos_detector_g;
+};
 ```
+
+- 入力:
+  - `Ee`: 陽電子エネルギー $E_e$ [MeV]
+  - `Eg`: ガンマ線エネルギー $E_\gamma$ [MeV]
+  - `t`: 到達時間差 $\Delta t$ [ns]
+  - `theta`: e と $\gamma$ のなす角 $\theta$ [rad]
+  - `cos_detector_e`: ミューオン偏極軸 $\hat{P}$ と e+ 側検出器代表方向 $\hat{d}_e$ の内積 $\hat{P}\cdot\hat{d}_e$（無次元、[-1,1]）
+  - `cos_detector_g`: ミューオン偏極軸 $\hat{P}$ と $\gamma$ 側検出器代表方向 $\hat{d}_\gamma$ の内積 $\hat{P}\cdot\hat{d}_\gamma$（無次元、[-1,1]）
+
+- 出力:
+  - 戻り値: （なし）
+
+### PdfComponent
+- Header: `include/p2meg/Likelihood.h`
+- 目的: 拡張尤度の混合モデルにおける1成分（例: sig, rmd, acc）の PDF 評価関数とその設定（ctx）をまとめた構造体を提供します。
+
+- シグネチャ
+```cpp
+typedef double (*PdfEval)(const Event& ev, const void* ctx);
+
+struct PdfComponent {
+  const char* name;
+  PdfEval eval;
+  const void* ctx;
+};
+```
+
+- 入力:
+  - `name`: 成分名（例: `"sig"`, `"rmd"`。デバッグ用）
+  - `eval`: PDF評価関数（`p_k(ev)` を返す関数ポインタ）
+  - `ctx`: `eval` に渡す任意の設定ポインタ（不要なら `nullptr`）
+
+- 出力:
+  - 戻り値: （なし）
+
+### ConstraintNLL
+- Header: `include/p2meg/Likelihood.h`
+- 目的: 事象数パラメータ（`yields`）に対して NLL に加算する制約項を返します。制約が不要な場合は 0 を返す実装として使用します。
+
+- シグネチャ
+```cpp
+double ConstraintNLL(const std::vector<double>& yields);
+```
+
+- 入力:
+  - `yields`: 解析窓内の期待事象数の配列（`{N_sig, N_rmd, (N_acc, ...)}`）。並びは `components` と同順
+
+- 出力:
+  - 戻り値: 制約項として NLL に加算する値（制約なしなら 0）
+
+### NLL
+- Header: `include/p2meg/Likelihood.h`
+- 目的: 拡張尤度に基づく負の対数尤度（NLL）を計算します。PDF成分 `p_k(x)`（解析窓内で正規化済み）と期待事象数 `N_k`（`yields`）を用い、ポアソン項と混合項、および `ConstraintNLL` を加算します。
+
+- シグネチャ
+```cpp
+double NLL(
+  const std::vector<Event>& events,
+  const std::vector<PdfComponent>& components,
+  const std::vector<double>& yields
+);
+```
+
+- 入力:
+  - `events`: 解析窓内のイベント配列（各要素は `Event`）
+  - `components`: PDF成分の配列（各要素は `PdfComponent`）
+  - `yields`: 期待事象数の配列（`{N_sig, N_rmd, (N_acc, ...)}`）。`components` と同順
+
+- 出力:
+  - 戻り値: NLL 値（`(Σ_k N_k) - Σ_i log(Σ_k N_k p_k(x_i)) + ConstraintNLL(yields)` に対応）
+
+### SignalPdfContext
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: `SignalPdf` を `PdfComponent` から評価できるようにするための設定（解析窓・分解能・質量）をまとめたコンテキストを提供します。
+
+- シグネチャ
+```cpp
+struct SignalPdfContext {
+  AnalysisWindow4D win;
+  DetectorResolutionConst res;
+  ParticleMasses ms;
+};
+```
+
+- 入力:
+  - `win`: 解析窓（`AnalysisWindow4D`）
+  - `res`: 分解能パラメータ（`DetectorResolutionConst`）
+  - `ms`: 粒子質量（`ParticleMasses`。信号真値 $E_{e0}=E_{\gamma0}=m_\mu/2$ に使用）
+
+- 出力:
+  - 戻り値: （なし）
+
+### SignalPdfEval
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: `Event` を入力として `SignalPdf` を評価し、信号成分の PDF 密度を返します（`PdfEval` 互換）。
+
+- シグネチャ
+```cpp
+double SignalPdfEval(const Event& ev, const void* ctx);
+```
+
+- 入力:
+  - `ev`: 観測イベント（`Event`）
+  - `ctx`: `SignalPdfContext` へのポインタ（`win,res,ms` を保持）
+
+- 出力:
+  - 戻り値: 信号 PDF 密度 $p_{\mathrm{sig}}(x)$（解析窓内で正規化済み）。窓外・不正入力などは 0
+
+### MakeSignalComponent
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: 信号 PDF を尤度計算で扱える `PdfComponent` として生成します。
+
+- シグネチャ
+```cpp
+PdfComponent MakeSignalComponent(const SignalPdfContext* ctx);
+```
+
+- 入力:
+  - `ctx`: `SignalPdfContext` へのポインタ（呼び出し側で生存管理）
+
+- 出力:
+  - 戻り値: 信号成分の `PdfComponent`（`name="sig"`, `eval=&SignalPdfEval`, `ctx=ctx`）
+
+### RMDGridPdfEval
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: `Event` を入力として `RMDGridPdf` を評価し、RMD成分の PDF 密度を返します（`PdfEval` 互換）。
+
+- シグネチャ
+```cpp
+double RMDGridPdfEval(const Event& ev, const void* ctx);
+```
+
+- 入力:
+  - `ev`: 観測イベント（`Event`）
+  - `ctx`: 未使用（`nullptr` を想定）
+
+- 出力:
+  - 戻り値: RMD PDF 密度 $p_{\mathrm{rmd}}(x)$（解析窓内で正規化済み）。窓外・未ロード・不正入力などは 0
+
+### MakeRMDComponent
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: RMD PDF を尤度計算で扱える `PdfComponent` として生成します。
+
+- シグネチャ
+```cpp
+PdfComponent MakeRMDComponent();
+```
+
+- 入力:
+  - （なし）
+
+- 出力:
+  - 戻り値: RMD成分の `PdfComponent`（`name="rmd"`, `eval=&RMDGridPdfEval`, `ctx=nullptr`）
+
+### FitConfig
+- Header: `include/p2meg/NLLFit.h`
+- 目的: `FitNLL` に渡す最小化設定（初期値・反復回数・収束判定）をまとめた構造体を提供します。
+
+- シグネチャ
+```cpp
+struct FitConfig {
+  std::vector<double> start_yields;
+  int max_calls;
+  double tol;
+};
+```
+
+- 入力:
+  - `start_yields`: 期待事象数の初期値配列（`components` と同順）
+  - `max_calls`: 最大評価回数（実装側で解釈）
+  - `tol`: 収束判定の許容値（実装側で解釈）
+
+- 出力:
+  - 戻り値: （なし）
+
+### FitResult
+- Header: `include/p2meg/NLLFit.h`
+- 目的: `FitNLL` の結果（推定値・誤差・最小NLL・ステータス）を格納します。
+
+- シグネチャ
+```cpp
+struct FitResult {
+  int status;
+  std::vector<double> yields_hat;
+  std::vector<double> yields_err;
+  double nll_min;
+};
+```
+
+- 入力:
+  - `status`: フィットの成否コード（実装側で定義）
+  - `yields_hat`: 推定された期待事象数（`components` と同順）
+  - `yields_err`: 推定誤差（取れる場合のみ。取れない場合は空でもよい）
+  - `nll_min`: 最小 NLL 値
+
+- 出力:
+  - 戻り値: （なし）
+
+### FitNLL
+- Header: `include/p2meg/NLLFit.h`
+- 目的: `NLL(...)` を最小化して、期待事象数（`yields`）の最尤推定値を求めます。尤度計算と最小化過程を分離するための入口関数です。
+
+- シグネチャ
+```cpp
+FitResult FitNLL(
+  const std::vector<Event>& events,
+  const std::vector<PdfComponent>& components,
+  const FitConfig& cfg
+);
+```
+
+- 入力:
+  - `events`: 解析窓内のイベント配列（`Event`）
+  - `components`: PDF成分の配列（`PdfComponent`）。並びが `yields` の意味を決める
+  - `cfg`: 最小化設定（`FitConfig`）
+
+- 出力:
+  - 戻り値: フィット結果（`FitResult`）
