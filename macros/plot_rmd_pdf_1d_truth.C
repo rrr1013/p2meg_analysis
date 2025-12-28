@@ -18,6 +18,16 @@ extern double RMD_d3B_dEe_dEg_dcos(double Ee, double Eg, double cosTheta, double
 // ・正規化は最後に width 付き積分で行う
 // ============================================================
 
+// 使い方
+// root -l
+// gSystem->SetBuildDir("build/root_aclic", kTRUE);
+// TString pwd = gSystem->pwd();
+// TString inc = TString::Format("-I%s/include", pwd.Data());
+// gSystem->AddIncludePath(inc);
+// .L src/RMDSpectrum.cc+
+// .L macros/plot_rmd_pdf_1d_truth.C+
+// plot_rmd_pdf_1d_truth();
+
 // ---- 解析窓（grid生成時と一致させる） ----
 static const double Ee_min = 40.0;
 static const double Ee_max = 55.0;

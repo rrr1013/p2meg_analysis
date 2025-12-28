@@ -11,15 +11,26 @@
 #include "TCanvas.h"
 #include "TROOT.h"
 #include "TStyle.h"
+#include "p2meg/AnalysisWindow.h"
+#include "p2meg/DetectorResolution.h"
+
+// 使い方
+// root -l
+// gSystem->SetBuildDir("build/root_aclic", kTRUE);
+// TString pwd = gSystem->pwd();
+// TString inc = TString::Format("-I%s/include", pwd.Data());
+// gSystem->AddIncludePath(inc);
+// .L macros/plot_rmd_pdf_1d.C+
 
 // ------------------------------------------------------------
 // t の解析的 PDF（窓内正規化）
-// DetectorResolution.h / AnalysisWindow.h と一致させること
 // ------------------------------------------------------------
-static const double t_min   = -2.0;  // [ns]
-static const double t_max   =  2.0;  // [ns]
-static const double t_mean  =  0.0;  // [ns]
-static const double sigma_t =  0.5;  // [ns]
+static const AnalysisWindow4D& win = analysis_window;
+static const DetectorResolutionConst& res = detres;
+static const double t_min   = win.t_min;   // [ns]
+static const double t_max   = win.t_max;   // [ns]
+static const double t_mean  = res.t_mean;  // [ns]
+static const double sigma_t = res.sigma_t; // [ns]
 
 static double PtNormFactor_At(double tmin, double tmax, double mean, double sigma) {
   const double s2 = std::sqrt(2.0) * sigma;

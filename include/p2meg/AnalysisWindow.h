@@ -24,10 +24,10 @@ struct AnalysisWindow4D {
 };
 
 inline constexpr AnalysisWindow4D analysis_window{
-    40.0, 55.0,    // Ee [MeV]
-    40.0, 55.0,    // Eg [MeV]
+    10.0, 60.0,    // Ee [MeV]
+    10.0, 60.0,    // Eg [MeV]
     -2.0, 2.0,     // t  [ns]
-    2.2, 3.14159265358979323846 // theta [rad]（仮：要調整）
+    2.2, 3.1415926536 // theta [rad]
 };
 
 #endif // P2MEG_ANALYSIS_WINDOW_H

@@ -27,6 +27,25 @@
 #include "p2meg/Constants.h"
 #include "p2meg/RMDGridPdf.h"
 
+// デバッグ用: 解析窓内イベントの値を表示したいときはコメントを外す
+// #define P2MEG_DEBUG_PRINT_WINDOW_EVENTS
+
+// データが解析窓に入っているかの簡易判定
+static bool IsInsideAnalysisWindow(const Event& ev, const AnalysisWindow4D& win)
+{
+  if (!std::isfinite(ev.Ee) || !std::isfinite(ev.Eg) ||
+      !std::isfinite(ev.t)  || !std::isfinite(ev.theta)) {
+    return false;
+  }
+
+  if (ev.Ee < win.Ee_min || ev.Ee > win.Ee_max) return false;
+  if (ev.Eg < win.Eg_min || ev.Eg > win.Eg_max) return false;
+  if (ev.t  < win.t_min  || ev.t  > win.t_max ) return false;
+  if (ev.theta < win.theta_min || ev.theta > win.theta_max) return false;
+
+  return true;
+}
+
 static bool ParseDoublesFromLine(const std::string& line, std::vector<double>& out)
 {
   out.clear();
@@ -77,6 +96,27 @@ static bool LoadEventsFromDat(const char* filepath, std::vector<Event>& events, 
     ev.cos_detector_e = (cols.size() >= 6) ? cols[4] : 0.0;
     ev.cos_detector_g = (cols.size() >= 6) ? cols[5] : 0.0;
 
+#ifdef P2MEG_DEBUG_PRINT_WINDOW_EVENTS
+    // 窓判定に入ったイベントを、ファイル値(raw)と Event 値の両方で表示
+    const bool in_window = IsInsideAnalysisWindow(ev, analysis_window);
+    if (in_window) {
+      std::cout << "[run_nll_fit][window] raw: Ee=" << cols[0]
+                << " Eg=" << cols[1]
+                << " t=" << cols[2]
+                << " theta=" << cols[3];
+      if (cols.size() >= 6) {
+        std::cout << " cos_e=" << cols[4] << " cos_g=" << cols[5];
+      }
+      std::cout << " | event: Ee=" << ev.Ee
+                << " Eg=" << ev.Eg
+                << " t=" << ev.t
+                << " theta=" << ev.theta
+                << " cos_e=" << ev.cos_detector_e
+                << " cos_g=" << ev.cos_detector_g
+                << "\n";
+    }
+#endif
+
     events.push_back(ev);
 
     if (max_events > 0 && static_cast<int>(events.size()) >= max_events) break;
@@ -102,6 +142,28 @@ int main(int argc, char** argv)
   std::cout << "[run_nll_fit] loaded events: " << events.size()
             << " from " << datafile << "\n";
 
+  // 解析窓内のイベント数を数えておく（窓外があるとNLLはペナルティになる）
+  int n_in_window = 0;
+  for (const auto& ev : events) {
+    if (IsInsideAnalysisWindow(ev, analysis_window)) ++n_in_window;
+  }
+
+  std::cout << "[run_nll_fit] events in analysis window: "
+            << n_in_window << " / " << events.size() << "\n";
+
+  // 解析窓内のみをフィットに使う
+  std::vector<Event> events_in_window;
+  events_in_window.reserve(events.size());
+  for (const auto& ev : events) {
+    if (IsInsideAnalysisWindow(ev, analysis_window)) {
+      events_in_window.push_back(ev);
+    }
+  }
+  if (events_in_window.empty()) {
+    std::cerr << "[run_nll_fit] no events fall inside the analysis window. Aborting fit.\n";
+    return 3;
+  }
+
   // 2) RMD 格子PDFロード
   if (!RMDGridPdf_Load(rmd_root, rmd_key)) {
     std::cerr << "[run_nll_fit] RMDGridPdf_Load failed: "
@@ -122,14 +184,14 @@ int main(int argc, char** argv)
   components.push_back(MakeRMDComponent());
 
   // 5) 初期値（データを差し替えても動くようにNに比例させる）
-  const double N = static_cast<double>(events.size());
+  const double N = static_cast<double>(events_in_window.size());
   FitConfig cfg;
   cfg.start_yields = {0.9 * N, 0.1 * N}; // {N_sig, N_rmd}
   cfg.max_calls = 20000;
   cfg.tol = 1e-3;
 
   // 6) フィット
-  const FitResult res = FitNLL(events, components, cfg);
+  const FitResult res = FitNLL(events_in_window, components, cfg);
 
   std::cout << "==================== Fit Result ====================\n";
   std::cout << "status   = " << res.status << "\n";

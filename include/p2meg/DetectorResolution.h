@@ -20,14 +20,13 @@ struct DetectorResolutionConst {
     double t_mean;       // [ns]  Δt の平均値
 };
 
-// 既定値（要調整）
 // cf. 10°=0.1745 rad, 20°=0.3491 rad
 inline constexpr DetectorResolutionConst detres{
-    5.0,    // sigma_Ee [MeV]（仮）
-    5.0,    // sigma_Eg [MeV]（仮）
-    0.5,    // sigma_t  [ns]  （仮）
-    0.26,   // sigma_theta [rad]（仮：15°相当）
-    0.0     // t_mean [ns]（現状は 0）
+    9.264,    // sigma_Ee [MeV]
+    9.908,    // sigma_Eg [MeV]
+    0.1561,    // sigma_t  [ns]
+    0.2,   // sigma_theta [rad]
+    -0.1479     // t_mean [ns]
 };
 
 #endif // P2MEG_DETECTOR_RESOLUTION_H
