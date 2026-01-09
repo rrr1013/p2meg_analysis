@@ -163,34 +163,21 @@
 
 ### RMDGridPdf_Load
 - Header: `include/p2meg/RMDGridPdf.h`
-- 目的: オフラインで生成した RMD 4D 格子 PDF（Ee, Eg, i_e, i_g）を ROOT ファイルから読み込み、`RMDGridPdf(...)` で評価できる状態に初期化します。
+- 目的: オフラインで生成した RMD 4D 格子 PDF（Ee, Eg, cos_detector_e, cos_detector_g）を ROOT ファイルから読み込み、`RMDGridPdf(...)` で評価できる状態に初期化します。内部で `key+"_p"`（cosΔφ=+1）と `key+"_m"`（cosΔφ=-1）の2枝を同時にロードします。
 
 - シグネチャ
   - `bool RMDGridPdf_Load(const char* filepath, const char* key);`
 
 - 入力:
-  - `filepath`: 入力 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
-  - `key`: ROOT ファイル中の格子 PDF のキー名（例：`"rmd_grid"`）。
+  - `filepath`: 入力 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）
+  - `key`: 格子 PDF のベースキー名（例：`"rmd_grid"`）。実際には `key+"_p"`, `key+"_m"` を読み込みます。
 
 - 出力:
-  - 戻り値: 読み込みと初期化に成功したら `true`、失敗したら `false` を返す。
-- Header: `include/p2meg/RMDGridPdf.h`
-- 目的: オフラインで生成した RMD 3D 格子 PDF（Ee, Eg, θ）を ROOT ファイルから読み込み、`RMDGridPdf(...)` で評価できる状態に初期化する。
-
-- シグネチャ
-  - `bool RMDGridPdf_Load(const char* filepath, const char* key);`
-
-- 入力:
-  - `filepath`: 入力 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
-  - `key`: ROOT ファイル中の格子 PDF のキー名（例：`"rmd_grid"`）。
-
-- 出力:
-  - 戻り値: 読み込みと初期化に成功したら `true`、失敗したら `false` を返す。
-
+  - 戻り値: 2枝（`_p`, `_m`）のロードと内部クローン生成に成功したら `true`、失敗したら `false` を返します。
 
 ### RMDGridPdf_IsLoaded
 - Header: `include/p2meg/RMDGridPdf.h`
-- 目的: RMD 格子 PDF がロード済みかどうかを返します（解析コード側の安全チェック用）。
+- 目的: RMD 格子 PDF がロード済みかどうか（2枝とも揃っているか）を返します。解析コード側の安全チェック用です。
 
 - シグネチャ
   - `bool RMDGridPdf_IsLoaded();`
@@ -199,37 +186,27 @@
   - （なし）
 
 - 出力:
-  - 戻り値: ロード済みなら `true`、未ロードなら `false` を返す。
-- Header: `include/p2meg/RMDGridPdf.h`
-- 目的: RMD 格子 PDF がロード済みかどうかを返す（解析コード側の安全チェック用）。
+  - 戻り値: ロード済み（2枝とも利用可能）なら `true`、未ロードなら `false` を返します。
 
-- シグネチャ
-  - `bool RMDGridPdf_IsLoaded();`
-
-- 入力:
-  - （なし）
-
-- 出力:
-  - 戻り値: ロード済みなら `true`、未ロードなら `false` を返す。
 
 
 ### RMDGridPdf
 - Header: `include/p2meg/RMDGridPdf.h`
-- 目的: 観測値 (Ee, Eg, t, theta, cos_detector_e, cos_detector_g) に対して RMD の PDF 値を返します。4D 格子から p(Ee,Eg|i_e,i_g) を補間し、時間因子 p(t)（窓内正規化ガウシアン）を解析的に掛けて最終 PDF を評価します。`cos_detector_e, cos_detector_g` は `N_theta` による角度格子へ最近傍に丸められ、平面配置（cosΔφ=+1 固定）から相対角 θ_eγ を再構成して解析窓の角度カットに用います。
+- 目的: 観測値 (Ee, Eg, t, theta, cos_detector_e, cos_detector_g) に対して RMD の PDF 値を返します。ROOT からロードした 4D 格子（Ee,Eg,cos_e,cos_g）を用いて評価し、時間因子 p(t)（窓内正規化ガウシアン）を解析的に掛けて最終 PDF を計算します。`theta` は生データ由来の離散化値を用い、cosΔφ=+1/-1 のどちらの枝かをハード判定して適切な格子（`_p` または `_m`）を選びます。
 
 - シグネチャ
   - `double RMDGridPdf(double Ee, double Eg, double t, double theta, double cos_detector_e, double cos_detector_g);`
 
 - 入力:
-  - `Ee`: 陽電子エネルギー Ee [MeV]。
-  - `Eg`: ガンマ線エネルギー Eg [MeV]。
-  - `t`: 到達時間差 Δt [ns]。
-  - `theta`: 互換のための引数（現行実装では内部計算の角度判定に用いず、`cos_detector_e, cos_detector_g` から再構成した角度で判定する）。
-  - `cos_detector_e`: 偏極軸と e 側検出器代表方向の内積 `cosθ_e = P̂·d̂_e`（無次元、[-1,1]）。
-  - `cos_detector_g`: 偏極軸と γ 側検出器代表方向の内積 `cosθ_γ = P̂·d̂_γ`（無次元、[-1,1]）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]（解析窓 `analysis_window.Ee_min..Ee_max` を想定）
+  - `Eg`: ガンマ線エネルギー Eg [MeV]（解析窓 `analysis_window.Eg_min..Eg_max` を想定）
+  - `t`: 到達時間差 Δt [ns]（解析窓 `analysis_window.t_min..t_max` を想定）
+  - `theta`: e と γ のなす角 θ [rad]（生データの θ を `detres.N_theta` 格子に最近傍丸めした値を想定）
+  - `cos_detector_e`: 偏極軸と e 側検出器代表方向の内積（無次元、[-1,1]）。内部で最近傍の格子点に落として評価します。
+  - `cos_detector_g`: 偏極軸と γ 側検出器代表方向の内積（無次元、[-1,1]）。内部で最近傍の格子点に落として評価します。
 
 - 出力:
-  - 戻り値: 解析窓内なら PDF 値（密度）を返す。解析窓外、未ロード、数値的に不正な場合は 0 を返す。
+  - 戻り値: 解析窓内なら PDF 密度 p(Ee,Eg,t,cos_e,cos_g) を返します。窓外、未ロード、不正入力、格子評価が不正な場合は 0 を返します。
 
 
 ### SignalPdf

@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "TFile.h"
@@ -17,11 +18,16 @@
 // 内部状態
 //============================================================
 
-static THnD* gHist4 = nullptr;
+// +枝（cosΔφ=+1）と -枝（cosΔφ=-1）の 4D 格子
+static THnD* gHistP = nullptr;
+static THnD* gHistM = nullptr;
 
-static bool IsFinite(double x) {
-  return std::isfinite(x);
-}
+// ---- 正規化モード（MakeRMDGridPdf.cc 側と合わせること） ----
+// false: plus-only（+枝のみ正規化で生成した格子を使う。評価も常に +枝。）
+// true : both（(+枝 + -枝) で正規化して生成した格子を使う。評価は生thetaで枝をハード判定。）
+static constexpr bool kBothBranchesNormalized = true;
+
+static bool IsFinite(double x) { return std::isfinite(x); }
 
 static double Clamp(double x, double lo, double hi) {
   if (x < lo) return lo;
@@ -29,66 +35,36 @@ static double Clamp(double x, double lo, double hi) {
   return x;
 }
 
-//============================================================
-// 角度離散化（cos -> theta -> 最近傍格子）
-//============================================================
-
-// theta_i = i*pi/N_theta (i=0..N_theta)
-// 入力 theta を最近傍の格子インデックスに丸める（端はクリップ）
-// 不正なら -1
-static int ThetaNearestIndex(double theta, int N_theta) {
-  if (!(N_theta >= 1)) return -1;
-  if (!IsFinite(theta)) return -1;
-  if (theta < 0.0 || theta > pi) return -1;
-
-  const double step = pi / static_cast<double>(N_theta);
-  if (!(step > 0.0) || !IsFinite(step)) return -1;
-
-  long long i_ll = std::llround(theta / step);
-
-  // 数値丸めの端のはみ出しを安全にクリップ（物理カットではない）
-  if (i_ll < 0LL) i_ll = 0LL;
-  if (i_ll > static_cast<long long>(N_theta)) i_ll = static_cast<long long>(N_theta);
-
-  return static_cast<int>(i_ll);
-}
-
-// cos -> acos -> 最近傍格子で ie を決める
-static int CosToIndex(double cosv, int N_theta) {
-  if (!(N_theta >= 1)) return -1;
-  if (!IsFinite(cosv)) return -1;
-
-  const double c = Clamp(cosv, -1.0, 1.0);
-  const double theta = std::acos(c);
-  if (!IsFinite(theta)) return -1;
-
-  return ThetaNearestIndex(theta, N_theta);
-}
-
-// (ie, ig) から相対角 thetaEG を作る（cosΔφ=+1 固定）
-static bool ThetaEG_FromIndices(int ie, int ig, int N_theta, double& thetaEG_out) {
-  if (!(N_theta >= 1)) return false;
-  if (ie < 0 || ie > N_theta) return false;
-  if (ig < 0 || ig > N_theta) return false;
-
-  const double thetaE = pi * static_cast<double>(ie) / static_cast<double>(N_theta);
-  const double thetaG = pi * static_cast<double>(ig) / static_cast<double>(N_theta);
-
-  // cos(thetaE - thetaG)（cosΔφ=+1）
-  const double cEG = std::cos(thetaE - thetaG);
-  const double c = Clamp(cEG, -1.0, 1.0);
-  const double th = std::acos(c);
-
-  if (!IsFinite(th)) return false;
-  thetaEG_out = th;
+static bool IsInsideWindow4D(double Ee, double Eg, double t, double theta) {
+  if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return false;
+  if (Eg < analysis_window.Eg_min || Eg > analysis_window.Eg_max) return false;
+  if (t  < analysis_window.t_min  || t  > analysis_window.t_max ) return false;
+  if (theta < analysis_window.theta_min || theta > analysis_window.theta_max) return false;
   return true;
 }
 
-//============================================================
-// 軸補間（Ee,Eg だけ補間、ie/ig は固定）
-//============================================================
+static int GetNTheta() {
+  const double x = static_cast<double>(detres.N_theta);
+  int N = static_cast<int>(std::lround(x));
+  if (N < 1) N = 1;
+  return N;
+}
 
-// 軸が等間隔ビンである前提で、座標 x を隣り合う2ビンに落とす。
+// θ を 0..π の (π/N) 格子へ最近傍丸め
+static double QuantizeTheta(double theta_raw, int N_theta) {
+  if (!IsFinite(theta_raw)) return 0.0;
+  const double th = Clamp(theta_raw, 0.0, pi);
+  const double step = pi / static_cast<double>(N_theta);
+  if (!(step > 0.0) || !IsFinite(step)) return 0.0;
+
+  const double kf = th / step;
+  int k = static_cast<int>(std::lround(kf));
+  if (k < 0) k = 0;
+  if (k > N_theta) k = N_theta;
+  return static_cast<double>(k) * step;
+}
+
+// 軸が等間隔ビンである前提で、座標 x を隣り合う2ビンに落とす（Ee,Eg 用）。
 // 値は「ビン中心に定義された格子値」と見做して補間するための (i0, i1, f) を返す。
 //  - i0, i1 は [1..nbins] のビン番号
 //  - f は 0..1 の補間係数（i0 側が (1-f)、i1 側が f）
@@ -122,70 +98,43 @@ static int AxisBracketUniform(const TAxis& ax, double x, int& i0, int& i1, doubl
   return 0;
 }
 
-// 4D THnD から、(Ee,Eg) のみ双一次補間（4点）し、(ie,ig) は固定
-static double Interp2D_4_FixedI(const THnD& h, double Ee, double Eg, int ie, int ig) {
-  const TAxis* ax0 = h.GetAxis(0); // Ee
-  const TAxis* ax1 = h.GetAxis(1); // Eg
-  const TAxis* ax2 = h.GetAxis(2); // ie
-  const TAxis* ax3 = h.GetAxis(3); // ig
+// Ee,Eg を 2D（4点）補間して、cos軸は固定ビン（最近傍）で評価する。
+static double InterpEeEg_4(const THnD& h, double Ee, double Eg, int bin_cos_e, int bin_cos_g) {
+  const TAxis* axE = h.GetAxis(0);
+  const TAxis* axG = h.GetAxis(1);
 
-  if (!ax0 || !ax1 || !ax2 || !ax3) return 0.0;
+  int i0, i1, j0, j1;
+  double fE, fG;
 
-  // ie, ig は整数インデックスなので、対応するビン番号を確定
-  // MakeRMDGridPdf 側では軸範囲 [-0.5, N+0.5] かつ nbins=N+1 を想定
-  // よって ie=0 -> bin1, ie=1 -> bin2, ... になる
-  const int nb_ie = ax2->GetNbins();
-  const int nb_ig = ax3->GetNbins();
+  if (AxisBracketUniform(*axE, Ee, i0, i1, fE) != 0) return 0.0;
+  if (AxisBracketUniform(*axG, Eg, j0, j1, fG) != 0) return 0.0;
 
-  const int ie_bin = ie + 1;
-  const int ig_bin = ig + 1;
-
-  if (ie_bin < 1 || ie_bin > nb_ie) return 0.0;
-  if (ig_bin < 1 || ig_bin > nb_ig) return 0.0;
-
-  int i0e = 0, i1e = 0;
-  int i0g = 0, i1g = 0;
-  double fe = 0.0, fg = 0.0;
-
-  if (AxisBracketUniform(*ax0, Ee, i0e, i1e, fe) != 0) return 0.0;
-  if (AxisBracketUniform(*ax1, Eg, i0g, i1g, fg) != 0) return 0.0;
-
-  // 4点
-  // (i0e,i0g), (i1e,i0g), (i0e,i1g), (i1e,i1g)
-  double sum = 0.0;
-
-  // idx: [EeBin, EgBin, ieBin, igBin]
   std::vector<int> idx(4, 1);
-  idx[2] = ie_bin;
-  idx[3] = ig_bin;
 
-  for (int be = 0; be < 2; ++be) {
-    const int EeBin = (be == 0) ? i0e : i1e;
-    const double we = (be == 0) ? (1.0 - fe) : fe;
+  auto get = [&](int ie, int ig) -> double {
+    idx[0] = ie;
+    idx[1] = ig;
+    idx[2] = bin_cos_e;
+    idx[3] = bin_cos_g;
+    const Long64_t bin = h.GetBin(idx.data());
+    const double v = h.GetBinContent(bin);
+    if (v > 0.0 && IsFinite(v)) return v;
+    return 0.0;
+  };
 
-    idx[0] = EeBin;
+  const double v00 = get(i0, j0);
+  const double v10 = get(i1, j0);
+  const double v01 = get(i0, j1);
+  const double v11 = get(i1, j1);
 
-    for (int bg = 0; bg < 2; ++bg) {
-      const int EgBin = (bg == 0) ? i0g : i1g;
-      const double wg = (bg == 0) ? (1.0 - fg) : fg;
+  const double a0 = (1.0 - fE) * v00 + fE * v10;
+  const double a1 = (1.0 - fE) * v01 + fE * v11;
+  const double v  = (1.0 - fG) * a0  + fG * a1;
 
-      idx[1] = EgBin;
-
-      const Long64_t bin = h.GetBin(idx.data());
-      const double v = h.GetBinContent(bin);
-      if (v > 0.0 && IsFinite(v)) {
-        sum += (we * wg) * v;
-      }
-    }
-  }
-
-  return sum;
+  return (v > 0.0 && IsFinite(v)) ? v : 0.0;
 }
 
-//============================================================
-// 時間因子（窓内正規化ガウシアン）
-//============================================================
-
+// 窓内で正規化された時間ガウシアン（密度）
 // pt(t) = N(t_mean, sigma_t) / A_t, ただし A_t = ∫_{tmin}^{tmax} N dt
 static double PtWindowNormalized(double t) {
   const double sigma_t = detres.sigma_t;
@@ -195,9 +144,9 @@ static double PtWindowNormalized(double t) {
   const double tmax = analysis_window.t_max;
 
   if (!(sigma_t > 0.0) || !IsFinite(sigma_t)) return 0.0;
-  if (!IsFinite(t) || !IsFinite(t_mean)) return 0.0;
 
-  const double z = (t - t_mean) / sigma_t;
+  const double inv_s = 1.0 / sigma_t;
+  const double z = (t - t_mean) * inv_s;
 
   const double norm = 1.0 / (std::sqrt(2.0 * pi) * sigma_t);
   const double g = norm * std::exp(-0.5 * z * z);
@@ -218,10 +167,8 @@ static double PtWindowNormalized(double t) {
 bool RMDGridPdf_Load(const char* filepath, const char* key) {
   if (!filepath || !key) return false;
 
-  if (gHist4) {
-    delete gHist4;
-    gHist4 = nullptr;
-  }
+  if (gHistP) { delete gHistP; gHistP = nullptr; }
+  if (gHistM) { delete gHistM; gHistM = nullptr; }
 
   TFile f(filepath, "READ");
   if (f.IsZombie()) {
@@ -229,50 +176,47 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
     return false;
   }
 
-  TObject* obj = f.Get(key);
-  if (!obj) {
-    std::cerr << "[RMDGridPdf_Load] key not found: " << key << "\n";
+  const std::string key_p = std::string(key) + "_p";
+  const std::string key_m = std::string(key) + "_m";
+
+  TObject* objP = f.Get(key_p.c_str());
+  TObject* objM = f.Get(key_m.c_str());
+
+  if (!objP) {
+    std::cerr << "[RMDGridPdf_Load] key not found: " << key_p << "\n";
+    f.Close();
+    return false;
+  }
+  if (!objM) {
+    std::cerr << "[RMDGridPdf_Load] key not found: " << key_m << "\n";
     f.Close();
     return false;
   }
 
-  THnD* h = dynamic_cast<THnD*>(obj);
-  if (!h) {
-    std::cerr << "[RMDGridPdf_Load] object is not THnD: " << key << "\n";
+  THnD* hP = dynamic_cast<THnD*>(objP);
+  THnD* hM = dynamic_cast<THnD*>(objM);
+
+  if (!hP || !hM) {
+    std::cerr << "[RMDGridPdf_Load] object is not THnD: " << key_p << " or " << key_m << "\n";
     f.Close();
     return false;
   }
 
-  // 4D格子のみを受け付ける
-  if (h->GetNdimensions() != 4) {
-    std::cerr << "[RMDGridPdf_Load] THnD dimension is not 4: ndims=" << h->GetNdimensions() << "\n";
+  if (hP->GetNdimensions() != 4 || hM->GetNdimensions() != 4) {
+    std::cerr << "[RMDGridPdf_Load] THnD dimension is not 4: "
+              << "P=" << hP->GetNdimensions() << " M=" << hM->GetNdimensions() << "\n";
     f.Close();
     return false;
   }
 
-  // 軸サイズの整合（N_theta+1 を期待）
-  const int N_theta = detres.N_theta;
-  if (!(N_theta >= 1)) {
-    std::cerr << "[RMDGridPdf_Load] detres.N_theta must be >= 1\n";
-    f.Close();
-    return false;
-  }
-
-  const int nb_ie = h->GetAxis(2)->GetNbins();
-  const int nb_ig = h->GetAxis(3)->GetNbins();
-  if (nb_ie != (N_theta + 1) || nb_ig != (N_theta + 1)) {
-    std::cerr << "[RMDGridPdf_Load] axis bins mismatch: "
-              << "ie=" << nb_ie << ", ig=" << nb_ig
-              << " (expected " << (N_theta + 1) << ")\n";
-    f.Close();
-    return false;
-  }
-
-  gHist4 = dynamic_cast<THnD*>(h->Clone());
+  gHistP = dynamic_cast<THnD*>(hP->Clone());
+  gHistM = dynamic_cast<THnD*>(hM->Clone());
   f.Close();
 
-  if (!gHist4) {
+  if (!gHistP || !gHistM) {
     std::cerr << "[RMDGridPdf_Load] clone failed\n";
+    if (gHistP) { delete gHistP; gHistP = nullptr; }
+    if (gHistM) { delete gHistM; gHistM = nullptr; }
     return false;
   }
 
@@ -280,45 +224,76 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
 }
 
 bool RMDGridPdf_IsLoaded() {
-  return (gHist4 != nullptr);
+  return (gHistP != nullptr && gHistM != nullptr);
 }
 
-double RMDGridPdf(double Ee, double Eg, double t, double /*theta*/,
+double RMDGridPdf(double Ee, double Eg, double t, double theta,
                   double cos_detector_e, double cos_detector_g) {
-  if (!gHist4) return 0.0;
+  if (!gHistP || !gHistM) return 0.0;
 
-  // 基本チェック
-  if (!IsFinite(Ee) || !IsFinite(Eg) || !IsFinite(t)) return 0.0;
-  if (!IsFinite(cos_detector_e) || !IsFinite(cos_detector_g)) return 0.0;
+  if (!IsFinite(Ee) || !IsFinite(Eg) || !IsFinite(t) || !IsFinite(theta) ||
+      !IsFinite(cos_detector_e) || !IsFinite(cos_detector_g)) {
+    return 0.0;
+  }
 
-  // 解析窓（Ee,Eg,t）
-  if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return 0.0;
-  if (Eg < analysis_window.Eg_min || Eg > analysis_window.Eg_max) return 0.0;
-  if (t  < analysis_window.t_min  || t  > analysis_window.t_max ) return 0.0;
+  // theta は 0..pi に丸めてから最近傍格子点へ（run_nll_fit 側で丸めていても二重で害は小さい）
+  const int N_theta = GetNTheta();
+  const double theta_q = QuantizeTheta(theta, N_theta);
 
-  const int N_theta = detres.N_theta;
-  if (!(N_theta >= 1)) return 0.0;
+  // 解析窓（4D: Ee,Eg,t,theta）でカット
+  if (!IsInsideWindow4D(Ee, Eg, t, theta_q)) return 0.0;
 
-  // cos -> (ie,ig) に丸め（角度離散化）
-  const int ie = CosToIndex(cos_detector_e, N_theta);
-  const int ig = CosToIndex(cos_detector_g, N_theta);
-  if (ie < 0 || ig < 0) return 0.0;
+  // cos は物理範囲にクリップ
+  const double ce_in = Clamp(cos_detector_e, -1.0, 1.0);
+  const double cg_in = Clamp(cos_detector_g, -1.0, 1.0);
 
-  // (ie,ig) から thetaEG を作り、解析窓の theta カットを適用
-  double thetaEG = 0.0;
-  if (!ThetaEG_FromIndices(ie, ig, N_theta, thetaEG)) return 0.0;
+  // cos 軸は「最近傍θ格子」になる可変ビンのはずなので FindBin で最近傍に落ちる
+  const TAxis* axCe = gHistP->GetAxis(2);
+  const TAxis* axCg = gHistP->GetAxis(3);
+  const int bin_ce = axCe->FindBin(ce_in);
+  const int bin_cg = axCg->FindBin(cg_in);
 
-  if (thetaEG < analysis_window.theta_min || thetaEG > analysis_window.theta_max) return 0.0;
+  // ビン中心の cos を採用（生成側と整合）
+  const double cosE = axCe->GetBinCenter(bin_ce);
+  const double cosG = axCg->GetBinCenter(bin_cg);
 
-  // 4D格子から p2(Ee,Eg|ie,ig) を補間（Ee,Eg のみ）
-  const double p2 = Interp2D_4_FixedI(*gHist4, Ee, Eg, ie, ig);
-  if (!(p2 > 0.0) || !IsFinite(p2)) return 0.0;
+  // θe, θg（0..π）
+  const double th_e = std::acos(Clamp(cosE, -1.0, 1.0));
+  const double th_g = std::acos(Clamp(cosG, -1.0, 1.0));
+
+  const double sinE = std::sin(th_e);
+  const double sinG = std::sin(th_g);
+
+  // 2枝の θeγ 候補（いずれも 0..π）
+  const double cosEG_p = Clamp(cosE * cosG + sinE * sinG, -1.0, 1.0); // cosΔφ=+1
+  const double cosEG_m = Clamp(cosE * cosG - sinE * sinG, -1.0, 1.0); // cosΔφ=-1
+  const double thEG_p  = std::acos(cosEG_p);
+  const double thEG_m  = std::acos(cosEG_m);
+
+  // 候補も同じ θ 格子へ最近傍丸めしてから比較（ハード判定）
+  const double thEG_p_q = QuantizeTheta(thEG_p, N_theta);
+  const double thEG_m_q = QuantizeTheta(thEG_m, N_theta);
+
+  const double dp = std::fabs(theta_q - thEG_p_q);
+  const double dm = std::fabs(theta_q - thEG_m_q);
+
+  // 使用する枝（plus-only のときは常に +枝）
+  const THnD* hUse = gHistP;
+  if (kBothBranchesNormalized) {
+    hUse = (dp <= dm) ? gHistP : gHistM;
+  } else {
+    hUse = gHistP;
+  }
+
+  // 4D格子から p4(Ee,Eg,cosE,cosG) を評価（Ee,Eg は補間、cos は固定ビン）
+  const double p4 = InterpEeEg_4(*hUse, Ee, Eg, bin_ce, bin_cg);
+  if (!(p4 > 0.0) || !IsFinite(p4)) return 0.0;
 
   // 時間因子を解析的に掛ける（窓内正規化）
   const double pt = PtWindowNormalized(t);
   if (!(pt > 0.0) || !IsFinite(pt)) return 0.0;
 
-  const double pdf = p2 * pt;
+  const double pdf = p4 * pt;
   if (!(pdf > 0.0) || !IsFinite(pdf)) return 0.0;
   return pdf;
 }

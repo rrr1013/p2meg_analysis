@@ -11,7 +11,8 @@
 // ============================================================
 // FitNLL 実装（Minuit2）
 //
-// 境界なし（負の N_sig も許す）。
+// 境界なし（負の N_sig も許す）
+// 56行のコメントアウトを消すことで負のNを禁止できる
 // ただし NLL が不適領域（logの引数<=0など）に入ると大ペナルティを返すので、
 // 最小化は自然に定義域内へ戻ることを期待する。
 // ============================================================
@@ -52,7 +53,7 @@ FitResult FitNLL(const std::vector<Event>& events,
     min->SetFunction(functor);
 
     // N_sig > 0, N_rmd > 0 の制約（下の 1 行のコメントを外すと有効化）
-     #define P2MEG_ENABLE_YIELD_BOUNDS
+     //#define P2MEG_ENABLE_YIELD_BOUNDS
 
     // パラメータ設定（境界なし）
     for (std::size_t i = 0; i < npar; ++i) {
