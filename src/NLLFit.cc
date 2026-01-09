@@ -51,10 +51,21 @@ FitResult FitNLL(const std::vector<Event>& events,
     ROOT::Math::Functor functor(fcn, static_cast<unsigned int>(npar));
     min->SetFunction(functor);
 
+    // N_sig > 0, N_rmd > 0 の制約（下の 1 行のコメントを外すと有効化）
+     #define P2MEG_ENABLE_YIELD_BOUNDS
+
     // パラメータ設定（境界なし）
     for (std::size_t i = 0; i < npar; ++i) {
         const double start = cfg.start_yields[i];
         const double step  = (std::abs(start) > 0.0) ? 0.1 * std::abs(start) : 1.0;
+#ifdef P2MEG_ENABLE_YIELD_BOUNDS
+        // yields = {N_sig, N_rmd, ...} を仮定（先頭2つ）
+        if (i == 0 || i == 1) {
+            min->SetLowerLimitedVariable(static_cast<unsigned int>(i),
+                                         components[i].name, start, step, 0.0);
+            continue;
+        }
+#endif
         min->SetVariable(static_cast<unsigned int>(i), components[i].name, start, step);
     }
 
