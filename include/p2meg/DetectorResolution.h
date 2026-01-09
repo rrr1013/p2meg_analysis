@@ -30,7 +30,7 @@ inline constexpr DetectorResolutionConst detres{
     9.264,   // sigma_Ee [MeV]
     9.908,   // sigma_Eg [MeV]
     0.1561,  // sigma_t  [ns]
-    18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
+    36,      // N_theta  （例：0..pi を 18 分割 → 19 点）
     -0.1479, // t_mean [ns]
     -0.8     // P_mu
 };

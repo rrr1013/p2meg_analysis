@@ -32,6 +32,9 @@
 // デバッグ用: 解析窓内イベントの値を表示したいときはコメントを外す
  #define P2MEG_DEBUG_PRINT_WINDOW_EVENTS
 
+// デバッグ用: フィット失敗時に pi<=0 を起こすイベントを表示したいときはコメントを外す
+ #define P2MEG_DEBUG_PRINT_ZERO_PI_EVENTS
+
 static bool IsFinite(double x) { return std::isfinite(x); }
 
 static double Clamp(double x, double lo, double hi)
@@ -271,6 +274,48 @@ int main(int argc, char** argv)
 
   // 6) フィット
   const FitResult res = FitNLL(events_in_window, components, cfg);
+
+#ifdef P2MEG_DEBUG_PRINT_ZERO_PI_EVENTS
+  if (res.status != 0 || !std::isfinite(res.nll_min) || res.nll_min >= 1e99) {
+    std::cout << "[run_nll_fit][zero-pi] fit failed; scanning events with pi<=0\n";
+    std::cout << "[run_nll_fit][zero-pi] start_yields:";
+    for (double y : cfg.start_yields) std::cout << " " << y;
+    std::cout << "\n";
+
+    int n_zero_pi = 0;
+    const std::size_t npar = components.size();
+    std::vector<double> pks(npar, 0.0);
+
+    for (const auto& ev : events_in_window) {
+      double pi = 0.0;
+      for (std::size_t k = 0; k < npar; ++k) {
+        double pk = components[k].eval ? components[k].eval(ev, components[k].ctx) : 0.0;
+        if (!std::isfinite(pk) || pk < 0.0) pk = 0.0;
+        pks[k] = pk;
+        const double Nk = cfg.start_yields[k];
+        pi += Nk * pk;
+      }
+
+      if (!(pi > 0.0) || !std::isfinite(pi)) {
+        ++n_zero_pi;
+        std::cout << "[run_nll_fit][zero-pi] Ee=" << ev.Ee
+                  << " Eg=" << ev.Eg
+                  << " t=" << ev.t
+                  << " theta=" << ev.theta
+                  << " cos_e=" << ev.cos_detector_e
+                  << " cos_g=" << ev.cos_detector_g
+                  << " |";
+        for (std::size_t k = 0; k < npar; ++k) {
+          std::cout << " " << components[k].name << "=" << pks[k];
+        }
+        std::cout << " pi=" << pi << "\n";
+      }
+    }
+
+    std::cout << "[run_nll_fit][zero-pi] events with pi<=0: "
+              << n_zero_pi << " / " << events_in_window.size() << "\n";
+  }
+#endif
 
   std::cout << "==================== Fit Result ====================\n";
   std::cout << "status   = " << res.status << "\n";
