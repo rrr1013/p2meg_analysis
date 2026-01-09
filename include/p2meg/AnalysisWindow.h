@@ -27,7 +27,7 @@ inline constexpr AnalysisWindow4D analysis_window{
     10.0, 60.0,    // Ee [MeV]
     10.0, 60.0,    // Eg [MeV]
     -2.0, 2.0,     // t  [ns]
-    2.2, 3.1415926536 // theta [rad]
+    1, 3.1415926536 // theta [rad]
 };
 
 #endif // P2MEG_ANALYSIS_WINDOW_H

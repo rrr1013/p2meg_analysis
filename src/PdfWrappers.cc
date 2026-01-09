@@ -1,3 +1,4 @@
+// src/PdfWrappers.cc
 #include "p2meg/PdfWrappers.h"
 
 #include <cmath>
@@ -33,7 +34,10 @@ PdfComponent MakeSignalComponent(const SignalPdfContext* ctx)
 double RMDGridPdfEval(const Event& ev, const void* /*ctx*/)
 {
     // RMDGridPdf は未ロード・窓外・不正入力で 0 を返す仕様
-    const double p = RMDGridPdf(ev.Ee, ev.Eg, ev.t, ev.theta);
+    const double p = RMDGridPdf(
+        ev.Ee, ev.Eg, ev.t, ev.theta,
+        ev.cos_detector_e, ev.cos_detector_g
+    );
     if (!std::isfinite(p) || p < 0.0) return 0.0;
     return p;
 }

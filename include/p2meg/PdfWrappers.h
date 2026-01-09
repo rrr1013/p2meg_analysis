@@ -1,3 +1,4 @@
+// include/p2meg/PdfWrappers.h
 #ifndef P2MEG_PDF_WRAPPERS_H
 #define P2MEG_PDF_WRAPPERS_H
 
@@ -40,7 +41,7 @@ PdfComponent MakeSignalComponent(const SignalPdfContext* ctx);
 
 // ---- RMD 用 ----
 // RMDGridPdf は内部でロード済み格子を参照するため、通常 ctx は不要。
-// （必要なら将来、ロード状態のチェック方針などを ctx に持たせてもよい。）
+// 角度情報は Event の (theta, cos_detector_e, cos_detector_g) を渡す。
 double RMDGridPdfEval(const Event& ev, const void* ctx);
 
 // RMD 成分の PdfComponent を作る（ctx は NULL でよい）
