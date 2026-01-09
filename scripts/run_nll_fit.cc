@@ -1,17 +1,15 @@
 // scripts/run_nll_fit.cc
 //
 // 使い方:
-//   ./build/run_nll_fit data/mockdata/signal_mock.dat data/pdf_cache/rmd_grid.root rmd_grid
-//
-// 入力データ形式（空白区切り）:
-//   Ee Egamma t theta cos_detector_e cos_detector_g   （6列必須）
+//   ./build/run_nll_fit ./data/mockdata/MEGonly_simulation_dataset.dat data/pdf_cache/rmd_grid.root rmd_grid
+//   Ee Egamma t theta cos_detector_e cos_detector_g
 //
 // 先頭行のヘッダや # コメント行は自動でスキップします。
+//
 // 注意:
-//  - 本スクリプトは RMD 成分（角度離散化）を使うため、cos_detector_e/g が必須です。
-//  - 4列(thetaのみ) から cos_detector_e/g を一意に復元できないため、4列入力は受け付けません。
-//  - 読み込んだ theta は、(cos_detector_e, cos_detector_g) を N_theta 格子へ最近傍丸めした後、
-//    cosΔφ=+1 固定の平面仮定で再構成した θ_eγ（離散）に置き換えて扱います。
+//  - theta は「生データの theta」を読み、detres.N_theta に従って最近傍格子点へ離散化して Event.theta に格納します。
+//  - cos_detector_e/g も同様に、[-1,1] にクリップした後、最近傍の cos(i*pi/N_theta) に離散化して Event に格納します。
+//  - 6列でない行はスキップし、スキップ数を表示します。
 
 #include <iostream>
 #include <fstream>
@@ -34,11 +32,6 @@
 // デバッグ用: 解析窓内イベントの値を表示したいときはコメントを外す
  #define P2MEG_DEBUG_PRINT_WINDOW_EVENTS
 
-//============================================================
-// 角度（cos_detector_*）→ 離散化 → θ_eγ 再構成
-//  - RMDGridPdf.cc と同じロジック（cosΔφ=+1 固定）
-//============================================================
-
 static bool IsFinite(double x) { return std::isfinite(x); }
 
 static double Clamp(double x, double lo, double hi)
@@ -48,67 +41,56 @@ static double Clamp(double x, double lo, double hi)
   return x;
 }
 
-static int ThetaNearestIndex(double theta, int N_theta)
+static int GetNTheta()
 {
-  if (!(N_theta >= 1)) return -1;
-  if (!IsFinite(theta)) return -1;
-  if (theta < 0.0 || theta > pi) return -1;
-
-  const double step = pi / static_cast<double>(N_theta);
-  if (!(step > 0.0) || !IsFinite(step)) return -1;
-
-  long long i_ll = std::llround(theta / step);
-  if (i_ll < 0LL) i_ll = 0LL;
-  if (i_ll > static_cast<long long>(N_theta)) i_ll = static_cast<long long>(N_theta);
-  return static_cast<int>(i_ll);
+  // detres.N_theta は int でも double でも来得るので丸めて使う
+  const double x = static_cast<double>(detres.N_theta);
+  int N = static_cast<int>(std::lround(x));
+  if (N < 1) N = 1;
+  return N;
 }
 
-static int CosToIndex(double cosv, int N_theta)
+// theta を 0..pi の (pi/N) 格子へ最近傍丸め
+static double QuantizeTheta(double theta_raw)
 {
-  if (!(N_theta >= 1)) return -1;
-  if (!IsFinite(cosv)) return -1;
+  if (!IsFinite(theta_raw)) return 0.0;
+  const int N = GetNTheta();
+  const double step = pi / static_cast<double>(N);
+  if (!(step > 0.0) || !IsFinite(step)) return 0.0;
 
-  const double c = Clamp(cosv, -1.0, 1.0);
-  const double theta = std::acos(c);
-  if (!IsFinite(theta)) return -1;
-
-  return ThetaNearestIndex(theta, N_theta);
+  const double th = Clamp(theta_raw, 0.0, pi);
+  int k = static_cast<int>(std::lround(th / step));
+  if (k < 0) k = 0;
+  if (k > N) k = N;
+  return static_cast<double>(k) * step;
 }
 
-static bool ThetaEG_FromIndices(int ie, int ig, int N_theta, double& thetaEG_out)
+// cos を最近傍の cos(i*pi/N) に丸める（i=0..N）
+static double QuantizeCosToThetaGrid(double cos_raw)
 {
-  if (!(N_theta >= 1)) return false;
-  if (ie < 0 || ie > N_theta) return false;
-  if (ig < 0 || ig > N_theta) return false;
+  if (!IsFinite(cos_raw)) return 0.0;
 
-  const double thetaE = pi * static_cast<double>(ie) / static_cast<double>(N_theta);
-  const double thetaG = pi * static_cast<double>(ig) / static_cast<double>(N_theta);
+  const int N = GetNTheta();
+  const double c = Clamp(cos_raw, -1.0, 1.0);
 
-  // cosΔφ=+1（Δφ=0）固定 → cos(thetaE - thetaG)
-  const double cEG = std::cos(thetaE - thetaG);
-  const double c = Clamp(cEG, -1.0, 1.0);
+  int best_i = 0;
+  double best_d = 1e100;
 
-  const double th = std::acos(c);
-  if (!IsFinite(th)) return false;
+  for (int i = 0; i <= N; ++i) {
+    const double th = static_cast<double>(i) * (pi / static_cast<double>(N));
+    const double ci = std::cos(th);
+    const double d = std::fabs(c - ci);
+    if (d < best_d) {
+      best_d = d;
+      best_i = i;
+    }
+  }
 
-  thetaEG_out = th;
-  return true;
+  const double th_best = static_cast<double>(best_i) * (pi / static_cast<double>(N));
+  return std::cos(th_best);
 }
 
-static bool ReconstructThetaEG_Discrete(double cos_detector_e, double cos_detector_g,
-                                       int N_theta, double& thetaEG_out)
-{
-  const int ie = CosToIndex(cos_detector_e, N_theta);
-  const int ig = CosToIndex(cos_detector_g, N_theta);
-  if (ie < 0 || ig < 0) return false;
-
-  return ThetaEG_FromIndices(ie, ig, N_theta, thetaEG_out);
-}
-
-//============================================================
-// データが解析窓に入っているかの簡易判定（Event.theta は再構成後を想定）
-//============================================================
-
+// データが解析窓に入っているかの簡易判定
 static bool IsInsideAnalysisWindow(const Event& ev, const AnalysisWindow4D& win)
 {
   if (!IsFinite(ev.Ee) || !IsFinite(ev.Eg) ||
@@ -148,9 +130,13 @@ static bool ParseDoublesFromLine(const std::string& line, std::vector<double>& o
   return true;
 }
 
-static bool LoadEventsFromDat(const char* filepath, std::vector<Event>& events, int max_events = -1)
+static bool LoadEventsFromDat(const char* filepath,
+                             std::vector<Event>& events,
+                             long& n_skipped_non6,
+                             int max_events = -1)
 {
   events.clear();
+  n_skipped_non6 = 0;
 
   std::ifstream fin(filepath);
   if (!fin) {
@@ -158,70 +144,54 @@ static bool LoadEventsFromDat(const char* filepath, std::vector<Event>& events, 
     return false;
   }
 
-  const int N_theta = detres.N_theta;
-  if (!(N_theta >= 1)) {
-    std::cerr << "[run_nll_fit] detres.N_theta must be >= 1\n";
-    return false;
-  }
-
   std::string line;
   std::vector<double> cols;
-
-  long line_no = 0;
-  long skipped_bad_cols = 0;
   while (std::getline(fin, line)) {
-    ++line_no;
     if (!ParseDoublesFromLine(line, cols)) continue;
 
-    // 必須: Ee Eg t theta cos_e cos_g（6列）
-    if (cols.size() < 6) {
-      ++skipped_bad_cols;
-      std::cerr << "[run_nll_fit] WARN: need 6 columns (Ee Eg t theta cos_detector_e cos_detector_g). "
-                << "skipping line=" << line_no << " cols=" << cols.size() << "\n";
+    // 6列必須：違う行は飛ばす（数も数える）
+    if (cols.size() != 6) {
+      ++n_skipped_non6;
       continue;
     }
 
-    Event ev{};
-    ev.Ee    = cols[0];
-    ev.Eg    = cols[1];
-    ev.t     = cols[2];
-
-    // 入力theta（raw）は保持しない（後で再構成thetaに置き換える）
+    // 生値
+    const double Ee_raw    = cols[0];
+    const double Eg_raw    = cols[1];
+    const double t_raw     = cols[2];
     const double theta_raw = cols[3];
+    const double cos_e_raw = cols[4];
+    const double cos_g_raw = cols[5];
 
-    ev.cos_detector_e = cols[4];
-    ev.cos_detector_g = cols[5];
+    Event ev{};
+    ev.Ee = Ee_raw;
+    ev.Eg = Eg_raw;
+    ev.t  = t_raw;
 
-    // cos_detector_e/g から、N_theta 最近傍格子で離散化した θ_eγ を再構成して ev.theta に入れる
-    double theta_reco = 0.0;
-    if (!ReconstructThetaEG_Discrete(ev.cos_detector_e, ev.cos_detector_g, N_theta, theta_reco)) {
-      std::cerr << "[run_nll_fit] ERROR: failed to reconstruct theta from cos detectors. "
-                << "line=" << line_no
-                << " cos_e=" << ev.cos_detector_e
-                << " cos_g=" << ev.cos_detector_g << "\n";
-      return false;
-    }
-    ev.theta = theta_reco;
+    // theta は生thetaを最近傍格子点に丸めて格納（枝判定に使う）
+    ev.theta = QuantizeTheta(theta_raw);
+
+    // cos_detector_e/g も最近傍の cos(i*pi/N) へ丸めて格納
+    ev.cos_detector_e = QuantizeCosToThetaGrid(cos_e_raw);
+    ev.cos_detector_g = QuantizeCosToThetaGrid(cos_g_raw);
 
 #ifdef P2MEG_DEBUG_PRINT_WINDOW_EVENTS
     const bool in_window = IsInsideAnalysisWindow(ev, analysis_window);
     if (in_window) {
-      std::cout << "[run_nll_fit][window] raw: Ee=" << cols[0]
-                << " Eg=" << cols[1]
-                << " t=" << cols[2]
-                << " theta_raw=" << theta_raw
-                << " cos_e=" << cols[4]
-                << " cos_g=" << cols[5]
+      std::cout << "[run_nll_fit][window] raw: Ee=" << Ee_raw
+                << " Eg=" << Eg_raw
+                << " t=" << t_raw
+                << " theta=" << theta_raw
+                << " cos_e=" << cos_e_raw
+                << " cos_g=" << cos_g_raw
                 << " | event: Ee=" << ev.Ee
                 << " Eg=" << ev.Eg
                 << " t=" << ev.t
-                << " theta(reco)=" << ev.theta
+                << " theta=" << ev.theta
                 << " cos_e=" << ev.cos_detector_e
                 << " cos_g=" << ev.cos_detector_g
                 << "\n";
     }
-#else
-    (void)theta_raw;
 #endif
 
     events.push_back(ev);
@@ -230,12 +200,8 @@ static bool LoadEventsFromDat(const char* filepath, std::vector<Event>& events, 
   }
 
   if (events.empty()) {
-    std::cerr << "[run_nll_fit] no events loaded from: " << filepath << "\n";
+    std::cerr << "[run_nll_fit] no valid 6-column events loaded from: " << filepath << "\n";
     return false;
-  }
-  if (skipped_bad_cols > 0) {
-    std::cerr << "[run_nll_fit] WARN: skipped " << skipped_bad_cols
-              << " line(s) with <6 columns in: " << filepath << "\n";
   }
   return true;
 }
@@ -246,14 +212,16 @@ int main(int argc, char** argv)
   const char* rmd_root = (argc >= 3) ? argv[2] : "data/pdf_cache/rmd_grid.root";
   const char* rmd_key  = (argc >= 4) ? argv[3] : "rmd_grid";
 
-  // 1) 入力データ読み込み（theta は再構成した離散 θ_eγ に置き換えられる）
+  // 1) 入力データ読み込み（6列必須）
   std::vector<Event> events;
-  if (!LoadEventsFromDat(datafile, events)) return 1;
+  long n_skipped_non6 = 0;
+  if (!LoadEventsFromDat(datafile, events, n_skipped_non6)) return 1;
 
   std::cout << "[run_nll_fit] loaded events: " << events.size()
             << " from " << datafile << "\n";
+  std::cout << "[run_nll_fit] skipped non-6-column lines: " << n_skipped_non6 << "\n";
 
-  // 解析窓内のイベント数を数えておく（窓外があるとNLLはペナルティになる）
+  // 解析窓内のイベント数を数えておく
   int n_in_window = 0;
   for (const auto& ev : events) {
     if (IsInsideAnalysisWindow(ev, analysis_window)) ++n_in_window;
@@ -275,7 +243,7 @@ int main(int argc, char** argv)
     return 3;
   }
 
-  // 2) RMD 格子PDFロード
+  // 2) RMD 格子PDFロード（内部で key+"_p", key+"_m" を読む）
   if (!RMDGridPdf_Load(rmd_root, rmd_key)) {
     std::cerr << "[run_nll_fit] RMDGridPdf_Load failed: "
               << rmd_root << " key=" << rmd_key << "\n";
