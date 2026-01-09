@@ -1,6 +1,7 @@
+// src/SignalPdf.cc
 #include "p2meg/SignalPdf.h"
 
-#include <cmath>   // exp, sqrt, erf, isfinite
+#include <cmath>   // exp, sqrt, erf, isfinite, llround, fmin, fmax
 
 // ------------------------------------------------------------
 // 内部: 標準正規PDF/CDFとトランケート正規
@@ -41,47 +42,26 @@ static double TruncNormalPdf(double x, double mu, double sigma,
 }
 
 // ------------------------------------------------------------
-// 内部: half-normal（折り返し）とそのトランケート版
+// 内部: 角度の離散格子への丸め
+//   theta_i = i*pi/N_theta (i=0..N_theta)
+// 入力 theta を最も近い格子点に丸め、インデックス i を返す。
+// 不正なら -1 を返す。
 // ------------------------------------------------------------
-static double HalfNormalPdf(double d, double sigma) {
-  // d >= 0 で half-normal: sqrt(2/pi)/sigma * exp(-d^2/(2 sigma^2))
-  if (!(sigma > 0.0)) return 0.0;
-  if (!std::isfinite(d) || !std::isfinite(sigma)) return 0.0;
+static int ThetaNearestIndex(double theta, int N_theta) {
+  if (!(N_theta >= 1)) return -1;
+  if (!std::isfinite(theta)) return -1;
+  if (theta < 0.0 || theta > pi) return -1;
 
-  if (d < 0.0) return 0.0;
+  const double step = pi / static_cast<double>(N_theta);
+  if (!(step > 0.0) || !std::isfinite(step)) return -1;
 
-  const double z = d / sigma;
-  const double norm = std::sqrt(2.0 / pi) / sigma;
-  return norm * std::exp(-0.5 * z * z);
-}
+  long long i_ll = std::llround(theta / step);
 
-static double TruncHalfNormalPdf(double d, double sigma,
-                                 double dmin, double dmax) {
-  // dmin<=d<=dmax（かつ d>=0）で窓内正規化した half-normal
-  if (!(sigma > 0.0)) return 0.0;
-  if (!(dmin < dmax)) return 0.0;
-  if (!std::isfinite(d) || !std::isfinite(sigma)) return 0.0;
-  if (!std::isfinite(dmin) || !std::isfinite(dmax)) return 0.0;
+  // 数値丸めの端のはみ出しを安全にクリップ（物理カットではない）
+  if (i_ll < 0LL) i_ll = 0LL;
+  if (i_ll > static_cast<long long>(N_theta)) i_ll = static_cast<long long>(N_theta);
 
-  // δ>=0 の定義なので、窓端も 0 未満なら物理的に扱わない（0を返す）
-  if (dmax < 0.0) return 0.0;
-
-  // half-normal は d>=0 のみなので下限を 0 にクリップ
-  const double a = (dmin < 0.0) ? 0.0 : dmin;
-  const double b = dmax;
-
-  if (!(a < b)) return 0.0;
-  if (d < a || d > b) return 0.0;
-
-  // half-normal のCDF: F(d)=erf(d/(sqrt2*sigma))  (d>=0)
-  const double u = a / (std::sqrt(2.0) * sigma);
-  const double v = b / (std::sqrt(2.0) * sigma);
-
-  const double Z = std::erf(v) - std::erf(u);
-  if (!(Z > 0.0) || !std::isfinite(Z)) return 0.0;
-
-  const double p = HalfNormalPdf(d, sigma) / Z;
-  return std::isfinite(p) ? p : 0.0;
+  return static_cast<int>(i_ll);
 }
 
 // ------------------------------------------------------------
@@ -94,20 +74,27 @@ double SignalPdf(double Ee, double Eg, double t, double theta,
   // 基本チェック
   if (!std::isfinite(Ee) || !std::isfinite(Eg) || !std::isfinite(t) || !std::isfinite(theta)) return 0.0;
 
-  // theta は [0,pi] を想定（解析窓以前の物理的チェック）
-  if (theta < 0.0 || theta > pi) return 0.0;
-
-  // 解析窓チェック（窓外は0）
-  if (Ee < win.Ee_min || Ee > win.Ee_max) return 0.0;
-  if (Eg < win.Eg_min || Eg > win.Eg_max) return 0.0;
-  if (t  < win.t_min  || t  > win.t_max ) return 0.0;
-  if (theta < win.theta_min || theta > win.theta_max) return 0.0;
-
-  // 分解能チェック
+  // 分解能チェック（角度は離散なので sigma_theta は不要）
   if (!(res.sigma_Ee > 0.0)) return 0.0;
   if (!(res.sigma_Eg > 0.0)) return 0.0;
   if (!(res.sigma_t  > 0.0)) return 0.0;
-  if (!(res.sigma_theta > 0.0)) return 0.0;
+  if (!(res.N_theta  >= 1))  return 0.0;
+
+  // theta は [0,pi] を想定（物理的チェック）
+  if (theta < 0.0 || theta > pi) return 0.0;
+
+  // theta を最も近い格子点に丸めてから以後の判定・評価に使う
+  const int ith = ThetaNearestIndex(theta, res.N_theta);
+  if (ith < 0) return 0.0;
+
+  const double step = pi / static_cast<double>(res.N_theta);
+  const double theta_snap = step * static_cast<double>(ith);
+
+  // 解析窓チェック（窓外は0）※角度は丸め後 theta_snap で判定
+  if (Ee < win.Ee_min || Ee > win.Ee_max) return 0.0;
+  if (Eg < win.Eg_min || Eg > win.Eg_max) return 0.0;
+  if (t  < win.t_min  || t  > win.t_max ) return 0.0;
+  if (theta_snap < win.theta_min || theta_snap > win.theta_max) return 0.0;
 
   // 真値（停止μの2体崩壊）
   const double Ee0 = 0.5 * ms.m_mu;
@@ -124,13 +111,9 @@ double SignalPdf(double Ee, double Eg, double t, double theta,
   const double pt  = TruncNormalPdf(t,  t0,  res.sigma_t,  win.t_min,  win.t_max);
   if (!(pt > 0.0)) return 0.0;
 
-  // 角度: δ = pi - theta (δ>=0) で折り返し half-normal
-  // 解析窓 [theta_min, theta_max] は δ 範囲 [pi-theta_max, pi-theta_min]
-  const double delta  = pi - theta;
-  const double dmin   = pi - win.theta_max;
-  const double dmax   = pi - win.theta_min;
-
-  const double pth = TruncHalfNormalPdf(delta, res.sigma_theta, dmin, dmax);
+  // 角度: 離散（散乱なし）→ 信号は theta=pi のみに重み
+  // theta_i = i*pi/N_theta なので、pi は i=N_theta に対応
+  const double pth = (ith == res.N_theta) ? 1.0 : 0.0;
   if (!(pth > 0.0)) return 0.0;
 
   const double p = pEe * pEg * pt * pth;

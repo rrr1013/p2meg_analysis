@@ -1,3 +1,4 @@
+// include/p2meg/SignalPdf.h
 #ifndef P2MEG_SIGNAL_PDF_H
 #define P2MEG_SIGNAL_PDF_H
 
@@ -12,12 +13,16 @@
 // モデル:
 //  - 真値: Ee0=Eg0=m_mu/2, theta0=pi, t0=t_mean
 //  - Ee, Eg, t は独立なトランケート正規分布（解析窓内で正規化）
-//  - 角度は δ = pi - theta (δ>=0) に写像して half-normal（折り返し）
-//    を用い、解析窓に対応する δ 範囲で窓内正規化してから θ に戻す。
-//    （|dδ/dθ|=1 のためヤコビアン因子は不要）
+//  - 角度は離散化して扱う（角度スメアなし）
+//      theta_i = i * pi / N_theta   (i = 0..N_theta)
+//    入力 theta は最も近い格子点 theta_i に丸めてから評価する。
+//    信号は理想化（散乱なし）により theta=pi のみに重みを持つ。
+//    したがって角度因子は
+//      P(theta=pi)=1, それ以外=0
+//    （丸め後の theta_i が解析窓外なら 0）
 //
 // 戻り値:
-//  - 解析窓外、thetaが[0,pi]外、sigma<=0、正規化定数<=0、非数などは 0
+//  - 解析窓外、thetaが[0,pi]外、sigma<=0、N_theta<1、正規化定数<=0、非数などは 0
 // ============================================================
 
 #include "p2meg/AnalysisWindow.h"
