@@ -135,7 +135,7 @@
 
 ### MakeRMDGridPdf
 - Header: `include/p2meg/MakeRMDGridPdf.h`
-- 目的: 停止ミューオン静止系における RMD の偏極込み核 `RMD_d6B_dEe_dEg_dOmegae_dOmegag` と検出器分解能（Ee, Eg の独立ガウシアン）を用いて、角度離散化（`N_theta`）込みの 4D 格子 PDF（Ee, Eg, i_e, i_g）を生成し、ROOT ファイルに保存します（時間 t は評価側で解析的に掛ける）。
+- 目的: 停止ミューオン静止系における RMD の偏極込み核 `RMD_d6B_dEe_dEg_dOmegae_dOmegag` と検出器分解能（Ee, Eg の独立ガウシアン）を用いて、角度離散化（`N_theta`）込みの 4D 格子 PDF（Ee, Eg, cos_detector_e, cos_detector_g）を 2枝（cosΔφ=+1/-1）で生成し、ROOT ファイルに保存します（時間 t は評価側で解析的に掛ける）。
 
 - シグネチャ
   - `int MakeRMDGridPdf(const char* out_filepath, const char* key);`
@@ -145,20 +145,7 @@
   - `key`: ROOT ファイル中に保存する格子 PDF のキー名（例：`"rmd_grid"`）。
 
 - 出力:
-  - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 4D 格子 PDF（`key`）とメタ情報（`<key>_meta` など）を保存する。
-
-- Header: `include/p2meg/MakeRMDGridPdf.h`
-- 目的: RMD 理論式（`RMD_d3B_dEe_dEg_dcos`）と検出器分解能（独立ガウシアン）を用いて、畳み込み済みの 3D 格子 PDF（Ee, Eg, θ）を生成し、ROOT ファイルに保存する。
-
-- シグネチャ
-  - `int MakeRMDGridPdf(const char* out_filepath, const char* key);`
-
-- 入力:
-  - `out_filepath`: 出力先 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
-  - `key`: ROOT ファイル中に保存するオブジェクトのキー名（例：`"rmd_grid"`）。
-
-- 出力:
-  - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 3D 格子 PDF（`key`）とメタ情報（`<key>_meta`）などを保存する。
+  - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 4D 格子 PDF（`key+"_p"`, `key+"_m"`）とメタ情報（`<key>_meta`, `<key>_N_theta` など）を保存する。
 
 
 ### RMDGridPdf_Load
@@ -211,7 +198,7 @@
 
 ### SignalPdf
 - Header: `include/p2meg/SignalPdf.h`
-- 目的: 停止ミューオンの信号（μ+→e+γ）に対する解析的な 4D PDF を返す。Ee, Eg, t は解析窓内で正規化したトランケート正規分布、角度は δ=π−θ（δ≥0）で折り返した half-normal を解析窓に対応する δ 範囲で正規化して用いる。
+- 目的: 停止ミューオンの信号（μ+→e+γ）に対する解析的な 4D PDF を返す。Ee, Eg, t は解析窓内で正規化したトランケート正規分布、角度は `N_theta` 格子に丸めた離散角で扱い、理想化により θ=π のみに重みを持たせる。
 
 - シグネチャ
   - `double SignalPdf(double Ee, double Eg, double t, double theta, const AnalysisWindow4D& win, const DetectorResolutionConst& res, const ParticleMasses& ms = kMassesPDG);`
@@ -220,9 +207,9 @@
   - `Ee`: 陽電子エネルギー Ee [MeV]（解析窓 `win.Ee_min..win.Ee_max` を想定）
   - `Eg`: ガンマ線エネルギー Eg [MeV]（解析窓 `win.Eg_min..win.Eg_max` を想定）
   - `t`: 到達時間差 Δt [ns]（解析窓 `win.t_min..win.t_max` を想定）
-  - `theta`: e と γ のなす角 θ [rad]（0≤θ≤π を想定。角度PDFは δ=π−θ を half-normal にして用いる）
+  - `theta`: e と γ のなす角 θ [rad]（0≤θ≤π を想定。内部で `N_theta` 格子に最近傍丸めし、θ=π のみに重み）
   - `win`: 解析窓（Ee, Eg, t, theta の各範囲）
-  - `res`: 分解能パラメータ（`sigma_Ee`, `sigma_Eg`, `sigma_t`, `sigma_theta`, `t_mean`）
+  - `res`: 分解能パラメータ（`sigma_Ee`, `sigma_Eg`, `sigma_t`, `N_theta`, `t_mean`）
   - `ms`: 粒子質量（`m_mu`, `m_e`）。省略時は `kMassesPDG`（信号真値 Ee0=Eg0=m_mu/2 に使用）
 
 - 出力:

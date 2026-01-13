@@ -35,9 +35,6 @@ PSIで行われている本物のMEG実験と区別するため、p2MEG実験と
 
 ## 2. 解析コード管理について
 
-解析コードは以下のgithubリポジトリで管理しています。コードについての質問があり、何かわからない場合があるときは必ず参照してください。
-https://github.com/rrr1013/p2meg_analysis
-
 解析コードを管理するディレクトリ構成は以下の通りです。
 ```
 p2meg_alalysis/
@@ -150,153 +147,15 @@ p2meg_alalysis/
 1. その値が「他の定数や入力（質量など）に依存しない」ことを確認する
 2. `inline constexpr` で追加し、メントに「何の定数か」「必要なら出典」を書く
 
-#### 例（12/12時点でのConstants.hのコード内容。アップデートされて追加がある可能性があります。）
-
-```cpp
-#ifndef P2MEG_CONSTANTS_H
-#define P2MEG_CONSTANTS_H
-
-// ============================================================
-// p2MEG 解析用の定数・パラメータ定義
-//
-// ・単位は MeV（エネルギー・質量）
-// ・ヘッダオンリーで使うため、inline constexpr で多重定義を防ぐ
-// ============================================================
-
-// ミシェルパラメータ（相互作用の形だけを表す）
-struct MichelParams {
-    double rho;
-    double eta;
-    double xi;
-    double delta;
-};
-
-// 粒子質量（運動学の入力）
-struct ParticleMasses {
-    double m_mu; // [MeV]
-    double m_e;  // [MeV]
-};
-
-// ---- 既定値：標準模型 (V-A) のミシェルパラメータ ----
-inline constexpr MichelParams kMichelSM{
-    0.75, // rho
-    0.0,  // eta
-    1.0,  // xi
-    0.75  // delta
-};
-
-// ---- 既定値：質量（“PDG値相当”） ----
-inline constexpr ParticleMasses kMassesPDG{
-    105.658, // m_mu [MeV]
-    0.511    // m_e  [MeV]
-};
-
-// 円周率
-inline constexpr double pi =
-    3.141592653589793238462643383279502884;
-
-// 微細構造定数
-inline constexpr double alpha =
-    1.0 / 137.035999084;
-
-#endif // P2MEG_CONSTANTS_H
-```
-
----
-
-### 新規モジュール追加のテンプレ手順
-
-1. `include/p2meg/<Name>.h` を作る（公開関数の宣言、入出力定義、注意点コメント）
-2. `src/<Name>.cc` を作る（内部補助関数 `static`、実装、数値ガード、領域チェック）
-3. `Constants.h` に独立定数が足りなければ追加（派生量は追加しない）
-4. 簡単な呼び出しテストで sanity check をする
-
 ### AnalysisWindow
 
-解析窓は /include/p2meg/AnalysisWindow.h に次の形でおいてある
-
-```cpp
-#ifndef P2MEG_ANALYSIS_WINDOW_H
-#define P2MEG_ANALYSIS_WINDOW_H
-
-// ============================================================
-// p2MEG 解析窓
-//
-// 単位:
-//  - Ee, Eg: MeV
-//  - t     : ns
-//  - theta : rad
-//
-// theta は e と γ のなす角で 0 <= theta <= pi を想定。
-// ============================================================
-
-struct AnalysisWindow4D {
-    double Ee_min;     // [MeV]
-    double Ee_max;     // [MeV]
-    double Eg_min;     // [MeV]
-    double Eg_max;     // [MeV]
-    double t_min;      // [ns]
-    double t_max;      // [ns]
-    double theta_min;  // [rad]
-    double theta_max;  // [rad]
-};
-
-inline constexpr AnalysisWindow4D analysis_window{
-    40.0, 55.0,    // Ee [MeV]
-    40.0, 55.0,    // Eg [MeV]
-    -2.0, 2.0,     // t  [ns]
-    2.2, 3.14159265358979323846 // theta [rad]（仮：要調整）
-};
-
-#endif // P2MEG_ANALYSIS_WINDOW_H
-```
+解析窓は /include/p2meg/AnalysisWindow.h においてある
 
 ### DetectorResolution
 
 装置の検出器分解能は /include/p2meg/DetectorResolution.h においてある
 名前は分解能となっているが、装置に関わるパラメータは全てここにおくことにする。
 
-```cpp
-#ifndef P2MEG_DETECTOR_RESOLUTION_H
-#define P2MEG_DETECTOR_RESOLUTION_H
-
-// ============================================================
-// p2MEG 分解能モデル（現状の簡略版）
-//
-// 単位:
-//  - Ee, Eg: MeV
-//  - t     : ns
-//
-// 角度 theta の扱い:
-//  - 測定設定に合わせて、角度は離散化する
-//      theta_i = i * pi / N_theta   (i = 0..N_theta)
-//    すなわち、0 から pi までを N_theta 分割した (N_theta+1) 点のみを許す
-//  - 崩壊後の e, γ の散乱は無視し、離散化後の角度スメアはかけない
-//
-// t_mean は Δt の平均値（現状は 0 以外にもなり得るので分離）
-// ============================================================
-
-struct DetectorResolutionConst {
-    double sigma_Ee;  // [MeV]
-    double sigma_Eg;  // [MeV]
-    double sigma_t;   // [ns]
-    int    N_theta;   // 角度分割数（theta_i = i*pi/N_theta, i=0..N_theta）
-    double t_mean;    // [ns]  Δt の平均値
-    double P_mu;      // muon polarization (signed, [-1,1])
-};
-
-inline constexpr DetectorResolutionConst detres{
-    9.264,   // sigma_Ee [MeV]
-    9.908,   // sigma_Eg [MeV]
-    0.1561,  // sigma_t  [ns]
-    18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
-    -0.1479, // t_mean [ns]
-    -0.8     // P_mu
-};
-
-#endif // P2MEG_DETECTOR_RESOLUTION_H
-```
-
 ### 関数群について
 
-便利関数を用意してあるが、chatgptのプロジェクト設定の文字数制限によりここに全てを書き込むことはできない。チャット中で何の関数が用意されているかが必要になった場合はどんな関数群が用意されているか私に聞くこと。
+FUNCTIONS.md に関数群の簡単な説明が書いてあります。
