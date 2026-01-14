@@ -1,16 +1,23 @@
 // macros/plot_data_hist.C
 //
 // 入力: .dat テキスト。先頭/途中にメタ情報行が混ざっていてもよい。
-//      「6列すべてが double として読める行」だけを Event として扱う。
-//      列順: Epos Egam dt theta cos_pos cos_gam
+//      「5列すべてが double として読める行」だけを Event として扱う。
+//      列順: Ee Eg t phi_detector_e phi_detector_g
+//
+// 旧フォーマット(6列: Epos Egam dt theta cos_pos cos_gam)からの移行手順:
+//   1) Ee, Eg, t は 1-3 列をそのまま使う。
+//   2) cos_pos, cos_gam から角度を作る場合は
+//      phi_detector_e = acos(cos_pos), phi_detector_g = acos(cos_gam)
+//      として 4-5 列に書き出す（符号情報が失われるので注意）。
+//   3) theta_eg は新フォーマット側で |phi_e - phi_g| (折り返し) として計算する。
 //
 // 解析窓: include/p2meg/AnalysisWindow.h の analysis_window を使用。
 //        解析窓内に入ったイベントのみをヒストに入れる。
 //
 // 出力: doc/data_hist_<入力ファイル名(拡張子除く)>.pdf（3ページ）
 //   1ページ目: メタ情報
-//   2ページ目: 1D (Ee, Eg, t, theta, cos_detector_e, cos_detector_g)
-//   3ページ目: 2D (Ee,Eg), (theta,t), (t,Ee), (t,Eg), (theta,Ee), (cos_e,cos_g)
+//   2ページ目: 1D (Ee, Eg, t, phi_detector_e, phi_detector_g, theta_eg)
+//   3ページ目: 2D (Ee,Eg), (theta_eg,t), (t,Ee), (t,Eg), (theta_eg,Ee), (phi_e,phi_g)
 //
 // 実行例（リポジトリ直下から）:
 //   root -l -q 'macros/plot_data_hist.C("data/mockdata/MEGonly_simulation_dataset.dat")'
@@ -36,37 +43,37 @@
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
 static constexpr int kNBins_t   = 160; // t
-static constexpr int kNBins_th  = 120; // theta
-static constexpr int kNBins_cos = 120; // cos_detector_e/g
+static constexpr int kNBins_phi = 120; // phi_detector_e/g
+static constexpr int kNBins_th  = 120; // theta_eg
 
 static constexpr int kNBins2D_E   = 120;
 static constexpr int kNBins2D_t   = 160;
 static constexpr int kNBins2D_th  = 120;
-static constexpr int kNBins2D_cos = 120;
+static constexpr int kNBins2D_phi = 120;
 
-static bool ParseEventLine6Doubles(const std::string& line,
+static bool ParseEventLine5Doubles(const std::string& line,
                                   double& Epos, double& Egam, double& dt,
-                                  double& theta, double& cos_pos, double& cos_gam)
+                                  double& phi_pos, double& phi_gam)
 {
     if (line.empty()) return false;
 
     std::istringstream iss(line);
-    if (!(iss >> Epos >> Egam >> dt >> theta >> cos_pos >> cos_gam)) {
-        return false; // 6列 double でなければメタ行としてスキップ
+    if (!(iss >> Epos >> Egam >> dt >> phi_pos >> phi_gam)) {
+        return false; // 5列 double でなければメタ行としてスキップ
     }
     if (!std::isfinite(Epos) || !std::isfinite(Egam) || !std::isfinite(dt) ||
-        !std::isfinite(theta) || !std::isfinite(cos_pos) || !std::isfinite(cos_gam)) {
+        !std::isfinite(phi_pos) || !std::isfinite(phi_gam)) {
         return false;
     }
     return true;
 }
 
-static bool InAnalysisWindow(const Event& ev)
+static bool InAnalysisWindow(double Ee, double Eg, double t, double theta_eg)
 {
-    if (ev.Ee    < analysis_window.Ee_min    || ev.Ee    > analysis_window.Ee_max)    return false;
-    if (ev.Eg    < analysis_window.Eg_min    || ev.Eg    > analysis_window.Eg_max)    return false;
-    if (ev.t     < analysis_window.t_min     || ev.t     > analysis_window.t_max)     return false;
-    if (ev.theta < analysis_window.theta_min || ev.theta > analysis_window.theta_max) return false;
+    if (Ee       < analysis_window.Ee_min    || Ee       > analysis_window.Ee_max)    return false;
+    if (Eg       < analysis_window.Eg_min    || Eg       > analysis_window.Eg_max)    return false;
+    if (t        < analysis_window.t_min     || t        > analysis_window.t_max)     return false;
+    if (theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) return false;
     return true;
 }
 
@@ -98,7 +105,7 @@ static void DrawMetaPage(const char* infile,
     lat.DrawLatex(0.05, 0.79, Form("output : %s", outpdf));
 
     lat.DrawLatex(0.05, 0.71, Form("lines read           : %lld", n_lines));
-    lat.DrawLatex(0.05, 0.66, Form("parsed (6 doubles)   : %lld", n_parsed));
+    lat.DrawLatex(0.05, 0.66, Form("parsed (5 doubles)   : %lld", n_parsed));
     lat.DrawLatex(0.05, 0.61, Form("events in window     : %lld", n_inwin));
 
     lat.SetTextSize(0.032);
@@ -107,15 +114,15 @@ static void DrawMetaPage(const char* infile,
     lat.DrawLatex(0.08, 0.47, Form("Ee [MeV]    : [%.6g, %.6g]", analysis_window.Ee_min, analysis_window.Ee_max));
     lat.DrawLatex(0.08, 0.42, Form("Eg [MeV]    : [%.6g, %.6g]", analysis_window.Eg_min, analysis_window.Eg_max));
     lat.DrawLatex(0.08, 0.37, Form("t  [ns]     : [%.6g, %.6g]", analysis_window.t_min,  analysis_window.t_max));
-    lat.DrawLatex(0.08, 0.32, Form("theta [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
+    lat.DrawLatex(0.08, 0.32, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
 
     lat.SetTextSize(0.032);
     lat.DrawLatex(0.05, 0.23, "Fixed bins:");
     lat.SetTextSize(0.030);
-    lat.DrawLatex(0.08, 0.18, Form("1D: Ee/Eg=%d  t=%d  theta=%d  cos=%d",
-                                  kNBins_E, kNBins_t, kNBins_th, kNBins_cos));
-    lat.DrawLatex(0.08, 0.13, Form("2D: E=%d  t=%d  theta=%d  cos=%d",
-                                  kNBins2D_E, kNBins2D_t, kNBins2D_th, kNBins2D_cos));
+    lat.DrawLatex(0.08, 0.18, Form("1D: Ee/Eg=%d  t=%d  phi=%d  theta_eg=%d",
+                                  kNBins_E, kNBins_t, kNBins_phi, kNBins_th));
+    lat.DrawLatex(0.08, 0.13, Form("2D: E=%d  t=%d  theta_eg=%d  phi=%d",
+                                  kNBins2D_E, kNBins2D_t, kNBins2D_th, kNBins2D_phi));
 
     lat.SetTextSize(0.026);
     lat.DrawLatex(0.05, 0.06, "Pages: (1) meta  (2) 1D  (3) 2D");
@@ -136,22 +143,26 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double t_max  = analysis_window.t_max;
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
+    const double phi_min = -3.14159265358979323846;
+    const double phi_max =  3.14159265358979323846;
+    const double two_pi = 2.0 * 3.14159265358979323846;
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
     TH1D* ht    = new TH1D("ht",    "t;t [ns];Entries",                    kNBins_t,  t_min,  t_max);
-    TH1D* hTh   = new TH1D("hTh",   "theta;theta [rad];Entries",           kNBins_th, th_min, th_max);
-    TH1D* hCose = new TH1D("hCose", "cos_{detector,e};cos_{detector,e};Entries",
-                           kNBins_cos, -1.0, 1.0);
-    TH1D* hCosg = new TH1D("hCosg", "cos_{detector,#gamma};cos_{detector,#gamma};Entries",
-                           kNBins_cos, -1.0, 1.0);
+    TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
+                           kNBins_phi, phi_min, phi_max);
+    TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
+                           kNBins_phi, phi_min, phi_max);
+    TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
+                           kNBins_th, th_min, th_max);
 
     // ---- 2D ----
     TH2D* h_EeEg = new TH2D("h_EeEg", "(Ee, Eg);Ee [MeV];Eg [MeV]",
                             kNBins2D_E, Ee_min, Ee_max, kNBins2D_E, Eg_min, Eg_max);
 
-    TH2D* h_ThT  = new TH2D("h_ThT", "(theta, t);theta [rad];t [ns]",
+    TH2D* h_ThT  = new TH2D("h_ThT", "(theta_{eg}, t);theta_{eg} [rad];t [ns]",
                             kNBins2D_th, th_min, th_max, kNBins2D_t,  t_min,  t_max);
 
     TH2D* h_TEe  = new TH2D("h_TEe", "(t, Ee);t [ns];Ee [MeV]",
@@ -160,11 +171,11 @@ void plot_data_hist(const char* infile = "data/data.dat")
     TH2D* h_TEg  = new TH2D("h_TEg", "(t, Eg);t [ns];Eg [MeV]",
                             kNBins2D_t,  t_min,  t_max, kNBins2D_E, Eg_min, Eg_max);
 
-    TH2D* h_ThEe = new TH2D("h_ThEe", "(theta, Ee);theta [rad];Ee [MeV]",
+    TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
                             kNBins2D_th, th_min, th_max, kNBins2D_E, Ee_min, Ee_max);
 
-    TH2D* h_CeCg = new TH2D("h_CeCg", "(cos_detector_e, cos_detector_g);cos_{detector,e};cos_{detector,#gamma}",
-                            kNBins2D_cos, -1.0, 1.0, kNBins2D_cos, -1.0, 1.0);
+    TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
+                            kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
 
     // 読み込み
     std::ifstream fin(infile);
@@ -179,14 +190,14 @@ void plot_data_hist(const char* infile = "data/data.dat")
 
     // 参考用に数えるが PDF には出さない
     long long n_outwin = 0;
-    long long n_cos_out = 0;
+    long long n_phi_out = 0;
 
     std::string line;
     while (std::getline(fin, line)) {
         ++n_lines;
 
-        double Epos=0.0, Egam=0.0, dt=0.0, theta=0.0, cos_pos=0.0, cos_gam=0.0;
-        if (!ParseEventLine6Doubles(line, Epos, Egam, dt, theta, cos_pos, cos_gam)) {
+        double Epos=0.0, Egam=0.0, dt=0.0, phi_pos=0.0, phi_gam=0.0;
+        if (!ParseEventLine5Doubles(line, Epos, Egam, dt, phi_pos, phi_gam)) {
             continue;
         }
         ++n_parsed;
@@ -195,36 +206,40 @@ void plot_data_hist(const char* infile = "data/data.dat")
         ev.Ee = Epos;
         ev.Eg = Egam;
         ev.t  = dt;
-        ev.theta = theta;
-        ev.cos_detector_e = cos_pos;
-        ev.cos_detector_g = cos_gam;
+        ev.phi_detector_e = phi_pos;
+        ev.phi_detector_g = phi_gam;
 
-        if (!InAnalysisWindow(ev)) {
+        double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
+        if (theta_eg > 3.14159265358979323846) {
+            theta_eg = two_pi - theta_eg;
+        }
+
+        if (!InAnalysisWindow(ev.Ee, ev.Eg, ev.t, theta_eg)) {
             ++n_outwin;
             continue;
         }
         ++n_inwin;
 
-        if (ev.cos_detector_e < -1.0 || ev.cos_detector_e > 1.0 ||
-            ev.cos_detector_g < -1.0 || ev.cos_detector_g > 1.0) {
-            ++n_cos_out;
+        if (ev.phi_detector_e < phi_min || ev.phi_detector_e > phi_max ||
+            ev.phi_detector_g < phi_min || ev.phi_detector_g > phi_max) {
+            ++n_phi_out;
         }
 
         // 1D
         hEe->Fill(ev.Ee);
         hEg->Fill(ev.Eg);
         ht->Fill(ev.t);
-        hTh->Fill(ev.theta);
-        hCose->Fill(ev.cos_detector_e);
-        hCosg->Fill(ev.cos_detector_g);
+        hPhiE->Fill(ev.phi_detector_e);
+        hPhiG->Fill(ev.phi_detector_g);
+        hThEg->Fill(theta_eg);
 
         // 2D
         h_EeEg->Fill(ev.Ee, ev.Eg);
-        h_ThT->Fill(ev.theta, ev.t);
+        h_ThT->Fill(theta_eg, ev.t);
         h_TEe->Fill(ev.t, ev.Ee);
         h_TEg->Fill(ev.t, ev.Eg);
-        h_ThEe->Fill(ev.theta, ev.Ee);
-        h_CeCg->Fill(ev.cos_detector_e, ev.cos_detector_g);
+        h_ThEe->Fill(theta_eg, ev.Ee);
+        h_PePg->Fill(ev.phi_detector_e, ev.phi_detector_g);
     }
 
     if (n_inwin == 0) {
@@ -244,9 +259,9 @@ void plot_data_hist(const char* infile = "data/data.dat")
     c1.cd(1); gPad->SetGrid(); hEe->SetLineWidth(2); hEe->Draw("hist");
     c1.cd(2); gPad->SetGrid(); hEg->SetLineWidth(2); hEg->Draw("hist");
     c1.cd(3); gPad->SetGrid(); ht->SetLineWidth(2);  ht->Draw("hist");
-    c1.cd(4); gPad->SetGrid(); hTh->SetLineWidth(2); hTh->Draw("hist");
-    c1.cd(5); gPad->SetGrid(); hCose->SetLineWidth(2); hCose->Draw("hist");
-    c1.cd(6); gPad->SetGrid(); hCosg->SetLineWidth(2); hCosg->Draw("hist");
+    c1.cd(4); gPad->SetGrid(); hPhiE->SetLineWidth(2); hPhiE->Draw("hist");
+    c1.cd(5); gPad->SetGrid(); hPhiG->SetLineWidth(2); hPhiG->Draw("hist");
+    c1.cd(6); gPad->SetGrid(); hThEg->SetLineWidth(2); hThEg->Draw("hist");
 
     // ---- ページ3：2D ----
     auto Draw2D = [](TH2D* h){
@@ -262,7 +277,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
     c2.cd(3); Draw2D(h_TEe);
     c2.cd(4); Draw2D(h_TEg);
     c2.cd(5); Draw2D(h_ThEe);
-    c2.cd(6); Draw2D(h_CeCg);
+    c2.cd(6); Draw2D(h_PePg);
 
     // ---- PDF（3ページ）----
     c0.Print(Form("%s[", outpdf.Data()));
@@ -272,6 +287,6 @@ void plot_data_hist(const char* infile = "data/data.dat")
     c2.Print(Form("%s]", outpdf.Data()));
 
     Info("plot_data_hist", "wrote: %s (3 pages)", outpdf.Data());
-    Info("plot_data_hist", "lines=%lld, parsed=%lld, inwin=%lld, outwin=%lld, cos_out=%lld",
-         n_lines, n_parsed, n_inwin, n_outwin, n_cos_out);
+    Info("plot_data_hist", "lines=%lld, parsed=%lld, inwin=%lld, outwin=%lld, phi_out=%lld",
+         n_lines, n_parsed, n_inwin, n_outwin, n_phi_out);
 }
