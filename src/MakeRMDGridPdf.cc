@@ -153,7 +153,7 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
           idx[3] = i3;
           const double w3 = ax3->GetBinWidth(i3);
 
-          const double vol = w0 * w1 * w2 * w3; // [MeV^2 * (cos)^2]
+          const double vol = w0 * w1 * w2 * w3; // [MeV^2 * rad^2]
           if (!(vol > 0.0) || !IsFinite(vol)) continue;
 
           const Long64_t bin = h.GetBin(idx.data());

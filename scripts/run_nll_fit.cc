@@ -162,7 +162,7 @@ static bool LoadEventsFromDat(const char* filepath,
     ev.Eg = Eg_raw;
     ev.t  = t_raw;
 
-    // theta は生thetaを最近傍格子点に丸めて格納（枝判定に使う）
+    // theta は生thetaを最近傍格子点に丸めて格納（信号PDFや解析窓判定に使用）
     ev.theta = QuantizeTheta(theta_raw);
 
     // phi_detector_e/g も最近傍の phi(i*pi/N) へ丸めて格納
