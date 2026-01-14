@@ -126,7 +126,59 @@ p2meg_alalysis/
 
 ---
 
-### `Constants.h` の運用ルール（何をどう追加するか）
+### Constants
+
+物理定数は include/p2meg/Constants.h に次の形で置いてある。
+
+```cpp
+#ifndef P2MEG_CONSTANTS_H
+#define P2MEG_CONSTANTS_H
+
+// ============================================================
+// p2MEG 解析用の定数・パラメータ定義
+//
+// ・単位は MeV（エネルギー・質量）
+// ・ヘッダオンリーで使うため、inline constexpr で多重定義を防ぐ
+// ============================================================
+
+// ミシェルパラメータ（相互作用の形だけを表す）
+struct MichelParams {
+    double rho;
+    double eta;
+    double xi;
+    double delta;
+};
+
+// 粒子質量（運動学の入力）
+struct ParticleMasses {
+    double m_mu; // [MeV]
+    double m_e;  // [MeV]
+};
+
+// ---- 既定値：標準模型 (V-A) のミシェルパラメータ ----
+inline constexpr MichelParams kMichelSM{
+    0.75, // rho
+    0.0,  // eta
+    1.0,  // xi
+    0.75  // delta
+};
+
+// ---- 既定値：質量（“PDG値相当”） ----
+inline constexpr ParticleMasses kMassesPDG{
+    105.658, // m_mu [MeV]
+    0.511    // m_e  [MeV]
+};
+
+// 円周率
+inline constexpr double pi =
+    3.141592653589793238462643383279502884;
+
+// 微細構造定数
+inline constexpr double alpha =
+    1.0 / 137.035999084;
+
+#endif // P2MEG_CONSTANTS_H
+```
 
 #### 置いてよいもの（独立な定数のみ）
 
@@ -149,13 +201,92 @@ p2meg_alalysis/
 
 ### AnalysisWindow
 
-解析窓は /include/p2meg/AnalysisWindow.h においてある
+解析窓は /include/p2meg/AnalysisWindow.h に次の形でおいてある
+
+```cpp
+#ifndef P2MEG_ANALYSIS_WINDOW_H
+#define P2MEG_ANALYSIS_WINDOW_H
+
+// ============================================================
+// p2MEG 解析窓
+//
+// 単位:
+//  - Ee, Eg: MeV
+//  - t     : ns
+//  - theta : rad
+//
+// theta は e と γ のなす角で 0 <= theta <= pi を想定。
+// ============================================================
+
+struct AnalysisWindow4D {
+    double Ee_min;     // [MeV]
+    double Ee_max;     // [MeV]
+    double Eg_min;     // [MeV]
+    double Eg_max;     // [MeV]
+    double t_min;      // [ns]
+    double t_max;      // [ns]
+    double theta_min;  // [rad]
+    double theta_max;  // [rad]
+};
+
+inline constexpr AnalysisWindow4D analysis_window{
+    10.0, 60.0,    // Ee [MeV]
+    10.0, 60.0,    // Eg [MeV]
+    -2.0, 2.0,     // t  [ns]
+    1, 3.1415926536 // theta [rad]
+};
+
+#endif // P2MEG_ANALYSIS_WINDOW_H
+
+```
 
 ### DetectorResolution
 
-装置の検出器分解能は /include/p2meg/DetectorResolution.h においてある
+装置の検出器分解能は /include/p2meg/DetectorResolution.h に次の形でおいてある。
 名前は分解能となっているが、装置に関わるパラメータは全てここにおくことにする。
+
+```cpp
+#ifndef P2MEG_DETECTOR_RESOLUTION_H
+#define P2MEG_DETECTOR_RESOLUTION_H
+
+// ============================================================
+// p2MEG 分解能モデル（現状の簡略版）
+//
+// 単位:
+//  - Ee, Eg: MeV
+//  - t     : ns
+//
+// 角度 theta の扱い:
+//  - 測定設定に合わせて、角度は離散化する
+//      theta_i = i * pi / N_theta   (i = 0..N_theta)
+//    すなわち、0 から pi までを N_theta 分割した (N_theta+1) 点のみを許す
+//  - 崩壊後の e, γ の散乱は無視し、離散化後の角度スメアはかけない
+//
+// t_mean は Δt の平均値（現状は 0 以外にもなり得るので分離）
+// ============================================================
+
+struct DetectorResolutionConst {
+    double sigma_Ee;  // [MeV]
+    double sigma_Eg;  // [MeV]
+    double sigma_t;   // [ns]
+    int    N_theta;   // 角度分割数（theta_i = i*pi/N_theta, i=0..N_theta）
+    double t_mean;    // [ns]  Δt の平均値
+    double P_mu;      // muon polarization (signed, [-1,1])
+};
+
+inline constexpr DetectorResolutionConst detres{
+    9.264,   // sigma_Ee [MeV]
+    9.908,   // sigma_Eg [MeV]
+    0.1561,  // sigma_t  [ns]
+    36,      // N_theta  （例：0..pi を 18 分割 → 19 点）
+    -0.1479, // t_mean [ns]
+    -0.8     // P_mu
+};
+
+#endif // P2MEG_DETECTOR_RESOLUTION_H
+
+```
 
 ### 関数群について
 
-FUNCTIONS.md に関数群の簡単な説明が書いてあります。
+FUNCTIONS.md に関数群の簡単な説明が書いてある。

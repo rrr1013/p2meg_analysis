@@ -4,14 +4,120 @@
 //   g++ -std=c++17 scripts/inspect_rmd_grid.cc $(root-config --cflags --libs) -o build/inspect_rmd_grid
 //   ./build/inspect_rmd_grid data/pdf_cache/rmd_grid.root rmd_grid
 //
-// rmd_grid.root に保存されたメタ情報を表示する。
+// rmd_grid.root に保存された 4D 格子PDF（key+"_p", key+"_m"）と
+// メタ情報（key+"_meta", key+"_d_min", key+"_seed", key+"_N_theta", key+"_P_mu"）を表示する。
 
+#include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <string>
+#include <vector>
 
 #include "TFile.h"
 #include "TNamed.h"
 #include "TParameter.h"
+#include "THn.h"
+#include "TAxis.h"
+#include "TArrayD.h"
+
+// 密度格子の体積積分（4D）と簡易統計を計算する
+static void SumDensityStats4D(const THnD& h, double& sum, long& n_negative, long& n_nonfinite) {
+  const TAxis* ax0 = h.GetAxis(0);
+  const TAxis* ax1 = h.GetAxis(1);
+  const TAxis* ax2 = h.GetAxis(2);
+  const TAxis* ax3 = h.GetAxis(3);
+
+  sum = 0.0;
+  n_negative = 0;
+  n_nonfinite = 0;
+
+  if (!ax0 || !ax1 || !ax2 || !ax3) return;
+
+  const int n0 = ax0->GetNbins();
+  const int n1 = ax1->GetNbins();
+  const int n2 = ax2->GetNbins();
+  const int n3 = ax3->GetNbins();
+
+  std::vector<int> idx(4, 1);
+  for (int i0 = 1; i0 <= n0; ++i0) {
+    idx[0] = i0;
+    const double w0 = ax0->GetBinWidth(i0);
+    for (int i1 = 1; i1 <= n1; ++i1) {
+      idx[1] = i1;
+      const double w1 = ax1->GetBinWidth(i1);
+      for (int i2 = 1; i2 <= n2; ++i2) {
+        idx[2] = i2;
+        const double w2 = ax2->GetBinWidth(i2);
+        for (int i3 = 1; i3 <= n3; ++i3) {
+          idx[3] = i3;
+          const double w3 = ax3->GetBinWidth(i3);
+          const double vol = w0 * w1 * w2 * w3;
+          if (!(vol > 0.0)) continue;
+
+          const Long64_t bin = h.GetBin(idx.data());
+          const double v = h.GetBinContent(bin);
+          if (!std::isfinite(v)) {
+            ++n_nonfinite;
+            continue;
+          }
+          if (v < 0.0) ++n_negative;
+          sum += v * vol;
+        }
+      }
+    }
+  }
+}
+
+// THnD の軸情報を出力する
+static void PrintAxisInfo(const TAxis* ax, const char* label) {
+  if (!ax || !label) return;
+
+  std::cout << "[inspect_rmd_grid] axis " << label
+            << ": nbins=" << ax->GetNbins()
+            << " range=[" << ax->GetXmin() << "," << ax->GetXmax() << "]"
+            << " title=\"" << ax->GetTitle() << "\"\n";
+
+  const TArrayD* edges = ax->GetXbins();
+  if (edges && edges->GetSize() > 0) {
+    std::cout << "[inspect_rmd_grid] axis " << label << " edges (" << edges->GetSize() << "): ";
+    for (int i = 0; i < edges->GetSize(); ++i) {
+      std::cout << std::setprecision(6) << edges->At(i);
+      if (i + 1 < edges->GetSize()) std::cout << ", ";
+    }
+    std::cout << "\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] axis " << label
+              << " bin_width=" << ax->GetBinWidth(1) << "\n";
+  }
+}
+
+// 4D 格子の概要を出力する
+static void PrintGridSummary(const THnD& h, const char* label) {
+  std::cout << "[inspect_rmd_grid] " << label << " hist: name=" << h.GetName()
+            << " title=\"" << h.GetTitle() << "\"\n";
+  std::cout << "[inspect_rmd_grid] " << label << " ndim=" << h.GetNdimensions()
+            << " entries=" << h.GetEntries() << "\n";
+
+  if (h.GetNdimensions() == 4) {
+    PrintAxisInfo(h.GetAxis(0), "0(Ee)");
+    PrintAxisInfo(h.GetAxis(1), "1(Eg)");
+    PrintAxisInfo(h.GetAxis(2), "2(cos_e)");
+    PrintAxisInfo(h.GetAxis(3), "3(cos_g)");
+    double mass = 0.0;
+    long n_negative = 0;
+    long n_nonfinite = 0;
+    SumDensityStats4D(h, mass, n_negative, n_nonfinite);
+    std::cout << "[inspect_rmd_grid] " << label
+              << " density integral (sum v*vol)=" << std::setprecision(10)
+              << mass << "\n";
+    std::cout << "[inspect_rmd_grid] " << label
+              << " negative bins=" << n_negative
+              << " nonfinite bins=" << n_nonfinite << "\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] " << label
+              << " unexpected ndim (expected 4)\n";
+  }
+}
 
 int main(int argc, char** argv)
 {
@@ -27,6 +133,10 @@ int main(int argc, char** argv)
   std::cout << "[inspect_rmd_grid] file: " << filepath << "\n";
   std::cout << "[inspect_rmd_grid] key: " << key << "\n";
 
+  const std::string key_p = std::string(key) + "_p";
+  const std::string key_m = std::string(key) + "_m";
+  std::cout << "[inspect_rmd_grid] keys: " << key_p << ", " << key_m << "\n";
+
   const std::string meta_name = std::string(key) + "_meta";
   TNamed* meta = nullptr;
   f.GetObject(meta_name.c_str(), meta);
@@ -39,6 +149,8 @@ int main(int argc, char** argv)
 
   const std::string dmin_name = std::string(key) + "_d_min";
   const std::string seed_name = std::string(key) + "_seed";
+  const std::string ntheta_name = std::string(key) + "_N_theta";
+  const std::string pmu_name = std::string(key) + "_P_mu";
 
   TParameter<double>* par_dmin = nullptr;
   f.GetObject(dmin_name.c_str(), par_dmin);
@@ -54,6 +166,46 @@ int main(int argc, char** argv)
     std::cout << "[inspect_rmd_grid] seed=" << par_seed->GetVal() << "\n";
   } else {
     std::cout << "[inspect_rmd_grid] seed not found: " << seed_name << "\n";
+  }
+
+  TParameter<int>* par_ntheta = nullptr;
+  f.GetObject(ntheta_name.c_str(), par_ntheta);
+  if (par_ntheta) {
+    std::cout << "[inspect_rmd_grid] N_theta=" << par_ntheta->GetVal() << "\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] N_theta not found: " << ntheta_name << "\n";
+  }
+
+  TParameter<double>* par_pmu = nullptr;
+  f.GetObject(pmu_name.c_str(), par_pmu);
+  if (par_pmu) {
+    std::cout << "[inspect_rmd_grid] P_mu=" << par_pmu->GetVal() << "\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] P_mu not found: " << pmu_name << "\n";
+  }
+
+  TObject* obj_p = f.Get(key_p.c_str());
+  if (!obj_p) {
+    std::cout << "[inspect_rmd_grid] grid not found: " << key_p << "\n";
+  } else {
+    THnD* hP = dynamic_cast<THnD*>(obj_p);
+    if (!hP) {
+      std::cout << "[inspect_rmd_grid] object is not THnD: " << key_p << "\n";
+    } else {
+      PrintGridSummary(*hP, "plus");
+    }
+  }
+
+  TObject* obj_m = f.Get(key_m.c_str());
+  if (!obj_m) {
+    std::cout << "[inspect_rmd_grid] grid not found: " << key_m << "\n";
+  } else {
+    THnD* hM = dynamic_cast<THnD*>(obj_m);
+    if (!hM) {
+      std::cout << "[inspect_rmd_grid] object is not THnD: " << key_m << "\n";
+    } else {
+      PrintGridSummary(*hM, "minus");
+    }
   }
 
   f.Close();
