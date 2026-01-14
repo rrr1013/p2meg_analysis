@@ -41,8 +41,7 @@ PdfComponent MakeSignalComponent(const SignalPdfContext* ctx);
 
 // ---- RMD 用 ----
 // RMDGridPdf は内部でロード済み格子を参照するため、通常 ctx は不要。
-// 角度情報は Event の (phi_detector_e, phi_detector_g) から
-// theta_eg と cos_detector_e/g を計算して渡す。
+// 角度情報は Event の (phi_detector_e, phi_detector_g) をそのまま渡す。
 double RMDGridPdfEval(const Event& ev, const void* ctx);
 
 // RMD 成分の PdfComponent を作る（ctx は NULL でよい）
