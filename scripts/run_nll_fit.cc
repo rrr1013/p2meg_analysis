@@ -2,13 +2,13 @@
 //
 // 使い方:
 //   ./build/run_nll_fit ./data/mockdata/MEGonly_simulation_dataset.dat data/pdf_cache/rmd_grid.root rmd_grid
-//   Ee Egamma t theta cos_detector_e cos_detector_g
+//   Ee Egamma t theta phi_detector_e phi_detector_g
 //
 // 先頭行のヘッダや # コメント行は自動でスキップします。
 //
 // 注意:
 //  - theta は「生データの theta」を読み、detres.N_theta に従って最近傍格子点へ離散化して Event.theta に格納します。
-//  - cos_detector_e/g も同様に、[-1,1] にクリップした後、最近傍の cos(i*pi/N_theta) に離散化して Event に格納します。
+//  - phi_detector_e/g も同様に、[0,pi] にクリップした後、最近傍の phi(i*pi/N_theta) に離散化して Event に格納します。
 //  - 6列でない行はスキップし、スキップ数を表示します。
 
 #include <iostream>
@@ -68,29 +68,20 @@ static double QuantizeTheta(double theta_raw)
   return static_cast<double>(k) * step;
 }
 
-// cos を最近傍の cos(i*pi/N) に丸める（i=0..N）
-static double QuantizeCosToThetaGrid(double cos_raw)
+// phi を最近傍の phi(i*pi/N) に丸める（i=0..N）
+static double QuantizePhiToThetaGrid(double phi_raw)
 {
-  if (!IsFinite(cos_raw)) return 0.0;
+  if (!IsFinite(phi_raw)) return 0.0;
 
   const int N = GetNTheta();
-  const double c = Clamp(cos_raw, -1.0, 1.0);
+  const double phi = Clamp(phi_raw, 0.0, pi);
+  const double step = pi / static_cast<double>(N);
+  if (!(step > 0.0) || !IsFinite(step)) return 0.0;
 
-  int best_i = 0;
-  double best_d = 1e100;
-
-  for (int i = 0; i <= N; ++i) {
-    const double th = static_cast<double>(i) * (pi / static_cast<double>(N));
-    const double ci = std::cos(th);
-    const double d = std::fabs(c - ci);
-    if (d < best_d) {
-      best_d = d;
-      best_i = i;
-    }
-  }
-
-  const double th_best = static_cast<double>(best_i) * (pi / static_cast<double>(N));
-  return std::cos(th_best);
+  int k = static_cast<int>(std::lround(phi / step));
+  if (k < 0) k = 0;
+  if (k > N) k = N;
+  return static_cast<double>(k) * step;
 }
 
 // データが解析窓に入っているかの簡易判定
@@ -163,8 +154,8 @@ static bool LoadEventsFromDat(const char* filepath,
     const double Eg_raw    = cols[1];
     const double t_raw     = cols[2];
     const double theta_raw = cols[3];
-    const double cos_e_raw = cols[4];
-    const double cos_g_raw = cols[5];
+    const double phi_e_raw = cols[4];
+    const double phi_g_raw = cols[5];
 
     Event ev{};
     ev.Ee = Ee_raw;
@@ -174,9 +165,9 @@ static bool LoadEventsFromDat(const char* filepath,
     // theta は生thetaを最近傍格子点に丸めて格納（枝判定に使う）
     ev.theta = QuantizeTheta(theta_raw);
 
-    // cos_detector_e/g も最近傍の cos(i*pi/N) へ丸めて格納
-    ev.cos_detector_e = QuantizeCosToThetaGrid(cos_e_raw);
-    ev.cos_detector_g = QuantizeCosToThetaGrid(cos_g_raw);
+    // phi_detector_e/g も最近傍の phi(i*pi/N) へ丸めて格納
+    ev.phi_detector_e = QuantizePhiToThetaGrid(phi_e_raw);
+    ev.phi_detector_g = QuantizePhiToThetaGrid(phi_g_raw);
 
 #ifdef P2MEG_DEBUG_PRINT_WINDOW_EVENTS
     const bool in_window = IsInsideAnalysisWindow(ev, analysis_window);
@@ -185,14 +176,14 @@ static bool LoadEventsFromDat(const char* filepath,
                 << " Eg=" << Eg_raw
                 << " t=" << t_raw
                 << " theta=" << theta_raw
-                << " cos_e=" << cos_e_raw
-                << " cos_g=" << cos_g_raw
+                << " phi_e=" << phi_e_raw
+                << " phi_g=" << phi_g_raw
                 << " | event: Ee=" << ev.Ee
                 << " Eg=" << ev.Eg
                 << " t=" << ev.t
                 << " theta=" << ev.theta
-                << " cos_e=" << ev.cos_detector_e
-                << " cos_g=" << ev.cos_detector_g
+                << " phi_e=" << ev.phi_detector_e
+                << " phi_g=" << ev.phi_detector_g
                 << "\n";
     }
 #endif
@@ -246,7 +237,7 @@ int main(int argc, char** argv)
     return 3;
   }
 
-  // 2) RMD 格子PDFロード（内部で key+"_p", key+"_m" を読む）
+  // 2) RMD 格子PDFロード
   if (!RMDGridPdf_Load(rmd_root, rmd_key)) {
     std::cerr << "[run_nll_fit] RMDGridPdf_Load failed: "
               << rmd_root << " key=" << rmd_key << "\n";
@@ -302,8 +293,8 @@ int main(int argc, char** argv)
                   << " Eg=" << ev.Eg
                   << " t=" << ev.t
                   << " theta=" << ev.theta
-                  << " cos_e=" << ev.cos_detector_e
-                  << " cos_g=" << ev.cos_detector_g
+                  << " phi_e=" << ev.phi_detector_e
+                  << " phi_g=" << ev.phi_detector_g
                   << " |";
         for (std::size_t k = 0; k < npar; ++k) {
           std::cout << " " << components[k].name << "=" << pks[k];

@@ -13,16 +13,14 @@
 // 設計方針（重要）
 //  - 角度は「検出器配置の離散化」により扱う（角度スメアなし）。
 //    DetectorResolutionConst::N_theta により 0..pi を N_theta 分割し、
-//      theta_i = i * pi / N_theta  (i = 0..N_theta)
+//      phi_i = i * pi / N_theta  (i = 0..N_theta)
 //    を許される検出器角度とする。
-//  - cos_detector_e, cos_detector_g はそれぞれ
-//      cosThetaE = cos(theta_ie),  cosThetaG = cos(theta_ig)
-//    の離散値として扱い、設定集合は (ie, ig) の全組（全部あり）とする。
-//  - さらに、装置配置の仮定として 3ベクトルが同一平面上にあり、
-//    cosΔφ = +1（Δφ=0）で固定する。
-//    よって e-γ 相対角は
-//      cosThetaEG = cosThetaE*cosThetaG + sinThetaE*sinThetaG
-//                = cos(theta_ie - theta_ig)
+//  - phi_detector_e, phi_detector_g はそれぞれ
+//      cosThetaE = cos(phi_ie),  cosThetaG = cos(phi_ig)
+//    を使って RMD 式に渡す。
+//  - e-γ 相対角は
+//      theta_eg = |phi_ie - phi_ig|,
+//      cosThetaEG = cos(phi_ie - phi_ig)
 //    で与える。
 //  - 時間 t は RMD のモデルでは独立（t_true = t_mean）なので、
 //    PDF 評価側（RMDGridPdf）で解析的に p_t(t)（窓内正規化ガウシアン）を掛ける。
