@@ -40,6 +40,9 @@
 #include "../include/p2meg/AnalysisWindow.h"
 #include "../include/p2meg/Event.h"
 
+// ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
+// #define P2MEG_PLOT_ALLDATA
+
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
 static constexpr int kNBins_t   = 160; // t
@@ -84,7 +87,11 @@ static TString MakeOutputPdfPath(const char* infile)
     if (dot != kNPOS) base.Remove(dot);       // e.g. xxx
 
     gSystem->mkdir("doc", /*recursive=*/true);
+#ifdef P2MEG_PLOT_ALLDATA
+    return Form("doc/data_hist_%s_alldata.pdf", base.Data());
+#else
     return Form("doc/data_hist_%s.pdf", base.Data());
+#endif
 }
 
 static void DrawMetaPage(const char* infile,
@@ -106,15 +113,28 @@ static void DrawMetaPage(const char* infile,
 
     lat.DrawLatex(0.05, 0.71, Form("lines read           : %lld", n_lines));
     lat.DrawLatex(0.05, 0.66, Form("parsed (5 doubles)   : %lld", n_parsed));
+#ifdef P2MEG_PLOT_ALLDATA
+    lat.DrawLatex(0.05, 0.61, Form("events plotted       : %lld", n_inwin));
+#else
     lat.DrawLatex(0.05, 0.61, Form("events in window     : %lld", n_inwin));
+#endif
 
     lat.SetTextSize(0.032);
+#ifdef P2MEG_PLOT_ALLDATA
+    lat.DrawLatex(0.05, 0.52, "Plot range (alldata):");
+    lat.SetTextSize(0.030);
+    lat.DrawLatex(0.08, 0.47, "Ee [MeV]    : [0, 60]");
+    lat.DrawLatex(0.08, 0.42, "Eg [MeV]    : [0, 60]");
+    lat.DrawLatex(0.08, 0.37, "t  [ns]     : [-10, 10]");
+    lat.DrawLatex(0.08, 0.32, "theta_eg [rad] : [0, pi]");
+#else
     lat.DrawLatex(0.05, 0.52, "Analysis window:");
     lat.SetTextSize(0.030);
     lat.DrawLatex(0.08, 0.47, Form("Ee [MeV]    : [%.6g, %.6g]", analysis_window.Ee_min, analysis_window.Ee_max));
     lat.DrawLatex(0.08, 0.42, Form("Eg [MeV]    : [%.6g, %.6g]", analysis_window.Eg_min, analysis_window.Eg_max));
     lat.DrawLatex(0.08, 0.37, Form("t  [ns]     : [%.6g, %.6g]", analysis_window.t_min,  analysis_window.t_max));
     lat.DrawLatex(0.08, 0.32, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
+#endif
 
     lat.SetTextSize(0.032);
     lat.DrawLatex(0.05, 0.23, "Fixed bins:");
@@ -134,7 +154,18 @@ void plot_data_hist(const char* infile = "data/data.dat")
 
     gStyle->SetOptStat(0);
 
-    // 表示範囲＝解析窓
+    // 表示範囲
+    const double pi_val = 3.14159265358979323846;
+#ifdef P2MEG_PLOT_ALLDATA
+    const double Ee_min = 0.0;
+    const double Ee_max = 60.0;
+    const double Eg_min = 0.0;
+    const double Eg_max = 60.0;
+    const double t_min  = -10.0;
+    const double t_max  = 10.0;
+    const double th_min = 0.0;
+    const double th_max = pi_val;
+#else
     const double Ee_min = analysis_window.Ee_min;
     const double Ee_max = analysis_window.Ee_max;
     const double Eg_min = analysis_window.Eg_min;
@@ -143,8 +174,9 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double t_max  = analysis_window.t_max;
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
+#endif
     const double phi_min = 0.0;
-    const double phi_max = 3.14159265358979323846;
+    const double phi_max = pi_val;
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
@@ -210,11 +242,15 @@ void plot_data_hist(const char* infile = "data/data.dat")
 
         double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
 
+#ifndef P2MEG_PLOT_ALLDATA
         if (!InAnalysisWindow(ev.Ee, ev.Eg, ev.t, theta_eg)) {
             ++n_outwin;
             continue;
         }
         ++n_inwin;
+#else
+        ++n_inwin;
+#endif
 
         if (ev.phi_detector_e < phi_min || ev.phi_detector_e > phi_max ||
             ev.phi_detector_g < phi_min || ev.phi_detector_g > phi_max) {

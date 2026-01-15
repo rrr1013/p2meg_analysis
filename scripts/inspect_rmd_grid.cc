@@ -4,8 +4,9 @@
 //   g++ -std=c++17 scripts/inspect_rmd_grid.cc $(root-config --cflags --libs) -o build/inspect_rmd_grid
 //   ./build/inspect_rmd_grid data/pdf_cache/rmd_grid.root rmd_grid
 //
-// rmd_grid.root に保存された 4D 格子PDF（key+"_p", key+"_m"）と
+// rmd_grid.root に保存された 4D 格子PDF（key）と
 // メタ情報（key+"_meta", key+"_d_min", key+"_seed", key+"_N_theta", key+"_P_mu"）を表示する。
+// 格子の軸は (Ee, Eg, phi_detector_e, phi_detector_g) を想定。
 
 #include <cmath>
 #include <iostream>
@@ -101,8 +102,8 @@ static void PrintGridSummary(const THnD& h, const char* label) {
   if (h.GetNdimensions() == 4) {
     PrintAxisInfo(h.GetAxis(0), "0(Ee)");
     PrintAxisInfo(h.GetAxis(1), "1(Eg)");
-    PrintAxisInfo(h.GetAxis(2), "2(cos_e)");
-    PrintAxisInfo(h.GetAxis(3), "3(cos_g)");
+    PrintAxisInfo(h.GetAxis(2), "2(phi_detector_e)");
+    PrintAxisInfo(h.GetAxis(3), "3(phi_detector_g)");
     double mass = 0.0;
     long n_negative = 0;
     long n_nonfinite = 0;
@@ -132,10 +133,6 @@ int main(int argc, char** argv)
 
   std::cout << "[inspect_rmd_grid] file: " << filepath << "\n";
   std::cout << "[inspect_rmd_grid] key: " << key << "\n";
-
-  const std::string key_p = std::string(key) + "_p";
-  const std::string key_m = std::string(key) + "_m";
-  std::cout << "[inspect_rmd_grid] keys: " << key_p << ", " << key_m << "\n";
 
   const std::string meta_name = std::string(key) + "_meta";
   TNamed* meta = nullptr;
@@ -184,27 +181,15 @@ int main(int argc, char** argv)
     std::cout << "[inspect_rmd_grid] P_mu not found: " << pmu_name << "\n";
   }
 
-  TObject* obj_p = f.Get(key_p.c_str());
-  if (!obj_p) {
-    std::cout << "[inspect_rmd_grid] grid not found: " << key_p << "\n";
+  TObject* obj = f.Get(key);
+  if (!obj) {
+    std::cout << "[inspect_rmd_grid] grid not found: " << key << "\n";
   } else {
-    THnD* hP = dynamic_cast<THnD*>(obj_p);
-    if (!hP) {
-      std::cout << "[inspect_rmd_grid] object is not THnD: " << key_p << "\n";
+    THnD* h = dynamic_cast<THnD*>(obj);
+    if (!h) {
+      std::cout << "[inspect_rmd_grid] object is not THnD: " << key << "\n";
     } else {
-      PrintGridSummary(*hP, "plus");
-    }
-  }
-
-  TObject* obj_m = f.Get(key_m.c_str());
-  if (!obj_m) {
-    std::cout << "[inspect_rmd_grid] grid not found: " << key_m << "\n";
-  } else {
-    THnD* hM = dynamic_cast<THnD*>(obj_m);
-    if (!hM) {
-      std::cout << "[inspect_rmd_grid] object is not THnD: " << key_m << "\n";
-    } else {
-      PrintGridSummary(*hM, "minus");
+      PrintGridSummary(*h, "grid");
     }
   }
 
