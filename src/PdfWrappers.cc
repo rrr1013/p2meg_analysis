@@ -13,7 +13,11 @@ double SignalPdfEval(const Event& ev, const void* ctx)
     const auto* c = static_cast<const SignalPdfContext*>(ctx);
 
     // SignalPdf は窓外や不正入力で 0 を返す仕様
-    const double p = SignalPdf(ev.Ee, ev.Eg, ev.t, ev.theta, c->win, c->res, c->ms);
+    const double p = SignalPdf(
+        ev.Ee, ev.Eg, ev.t,
+        ev.phi_detector_e, ev.phi_detector_g,
+        c->win, c->res, c->ms
+    );
     if (!std::isfinite(p) || p < 0.0) return 0.0;
     return p;
 }
@@ -35,8 +39,8 @@ double RMDGridPdfEval(const Event& ev, const void* /*ctx*/)
 {
     // RMDGridPdf は未ロード・窓外・不正入力で 0 を返す仕様
     const double p = RMDGridPdf(
-        ev.Ee, ev.Eg, ev.t, ev.theta,
-        ev.cos_detector_e, ev.cos_detector_g
+        ev.Ee, ev.Eg, ev.t,
+        ev.phi_detector_e, ev.phi_detector_g
     );
     if (!std::isfinite(p) || p < 0.0) return 0.0;
     return p;

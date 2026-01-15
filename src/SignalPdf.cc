@@ -1,7 +1,7 @@
 // src/SignalPdf.cc
 #include "p2meg/SignalPdf.h"
 
-#include <cmath>   // exp, sqrt, erf, isfinite, llround, fmin, fmax
+#include <cmath>   // exp, sqrt, erf, isfinite, llround, fmod, fabs
 
 // ------------------------------------------------------------
 // 内部: 標準正規PDF/CDFとトランケート正規
@@ -65,14 +65,29 @@ static int ThetaNearestIndex(double theta, int N_theta) {
 }
 
 // ------------------------------------------------------------
+// 内部: phi から e-γ の相対角 theta を作る
+//   theta_eg = |phi_e - phi_g| を [0,pi] に折り畳む。
+//   phi は [0,pi] を想定（範囲外は不正入力扱い）
+// ------------------------------------------------------------
+static double ThetaFromPhi(double phi_e, double phi_g) {
+  if (!std::isfinite(phi_e) || !std::isfinite(phi_g)) return -1.0;
+
+  if (phi_e < 0.0 || phi_e > pi) return -1.0;
+  if (phi_g < 0.0 || phi_g > pi) return -1.0;
+
+  return std::fabs(phi_e - phi_g);
+}
+
+// ------------------------------------------------------------
 // 公開: SignalPdf
 // ------------------------------------------------------------
-double SignalPdf(double Ee, double Eg, double t, double theta,
+double SignalPdf(double Ee, double Eg, double t,
+                 double phi_detector_e, double phi_detector_g,
                  const AnalysisWindow4D& win,
                  const DetectorResolutionConst& res,
                  const ParticleMasses& ms) {
   // 基本チェック
-  if (!std::isfinite(Ee) || !std::isfinite(Eg) || !std::isfinite(t) || !std::isfinite(theta)) return 0.0;
+  if (!std::isfinite(Ee) || !std::isfinite(Eg) || !std::isfinite(t)) return 0.0;
 
   // 分解能チェック（角度は離散なので sigma_theta は不要）
   if (!(res.sigma_Ee > 0.0)) return 0.0;
@@ -80,11 +95,12 @@ double SignalPdf(double Ee, double Eg, double t, double theta,
   if (!(res.sigma_t  > 0.0)) return 0.0;
   if (!(res.N_theta  >= 1))  return 0.0;
 
-  // theta は [0,pi] を想定（物理的チェック）
-  if (theta < 0.0 || theta > pi) return 0.0;
+  // phi から相対角 theta_eg を作る（phi ベースで角度評価）
+  const double theta_eg = ThetaFromPhi(phi_detector_e, phi_detector_g);
+  if (!(theta_eg >= 0.0)) return 0.0;
 
   // theta を最も近い格子点に丸めてから以後の判定・評価に使う
-  const int ith = ThetaNearestIndex(theta, res.N_theta);
+  const int ith = ThetaNearestIndex(theta_eg, res.N_theta);
   if (ith < 0) return 0.0;
 
   const double step = pi / static_cast<double>(res.N_theta);
@@ -111,9 +127,14 @@ double SignalPdf(double Ee, double Eg, double t, double theta,
   const double pt  = TruncNormalPdf(t,  t0,  res.sigma_t,  win.t_min,  win.t_max);
   if (!(pt > 0.0)) return 0.0;
 
-  // 角度: 離散（散乱なし）→ 信号は theta=pi のみに重み
+  // 角度: 離散（散乱なし）→ 信号の角度デルタ条件として theta=pi のみに重み
   // theta_i = i*pi/N_theta なので、pi は i=N_theta に対応
-  const double pth = (ith == res.N_theta) ? 1.0 : 0.0;
+  // phi 空間での正規化を満たすよう、theta=pi に丸め込まれる領域面積を使う。
+  // |phi_e-phi_g| >= pi - Δtheta/2 の領域は 2 つの直角三角形になり、
+  // 面積は Area_pi = (Δtheta/2)^2。
+  const double area_pi = 0.25 * step * step;
+  if (!(area_pi > 0.0) || !std::isfinite(area_pi)) return 0.0;
+  const double pth = (ith == res.N_theta) ? (1.0 / area_pi) : 0.0;
   if (!(pth > 0.0)) return 0.0;
 
   const double p = pEe * pEg * pt * pth;

@@ -13,17 +13,14 @@
 // 設計方針（重要）
 //  - 角度は「検出器配置の離散化」により扱う（角度スメアなし）。
 //    DetectorResolutionConst::N_theta により 0..pi を N_theta 分割し、
-//      theta_i = i * pi / N_theta  (i = 0..N_theta)
+//      phi_i = i * pi / N_theta  (i = 0..N_theta)
 //    を許される検出器角度とする。
-//  - cos_detector_e, cos_detector_g はそれぞれ
-//      cosThetaE = cos(theta_ie),  cosThetaG = cos(theta_ig)
-//    の離散値として扱い、設定集合は (ie, ig) の全組（全部あり）とする。
-//  - さらに、装置配置の仮定として 3ベクトルが同一平面上にあり、
-//    cosΔφ = +1（Δφ=0）で固定する。
-//    よって e-γ 相対角は
-//      cosThetaEG = cosThetaE*cosThetaG + sinThetaE*sinThetaG
-//                = cos(theta_ie - theta_ig)
-//    で与える。
+//  - phi_detector_e, phi_detector_g はそれぞれ
+//      cosThetaE = cos(phi_e),  cosThetaG = cos(phi_g)
+//    を介して RMD 式に入力する。
+//  - e-γ 相対角は
+//      cosThetaEG = cos(phi_e - phi_g)
+//    で与える（theta_eg = |phi_e - phi_g|）。
 //  - 時間 t は RMD のモデルでは独立（t_true = t_mean）なので、
 //    PDF 評価側（RMDGridPdf）で解析的に p_t(t)（窓内正規化ガウシアン）を掛ける。
 //    これにより生成・保存を軽くし、評価も高速にする。
@@ -37,9 +34,9 @@
 //
 // 出力（ROOT）
 //  - key 名で「設定込み」の格子PDFを保存する。
-//    例：4次元 THnD（Ee, Eg, ie, ig）
+//    例：4次元 THnD（Ee, Eg, phi_e, phi_g）
 //      Ee, Eg : 連続（ビン）
-//      ie, ig : 離散（0..N_theta の整数インデックス）
+//      phi_e, phi_g : 離散（0..pi の格子点）
 //    ※ 実際の格子表現（THnD/TH2D配列など）は実装側で固定する。
 //  - メタ情報（窓・分解能・N_theta・P_mu・ビニング等）も併せて保存する。
 //
