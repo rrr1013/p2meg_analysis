@@ -67,19 +67,15 @@ static int ThetaNearestIndex(double theta, int N_theta) {
 // ------------------------------------------------------------
 // 内部: phi から e-γ の相対角 theta を作る
 //   theta_eg = |phi_e - phi_g| を [0,pi] に折り畳む。
-//   phi は [0,2pi] を想定（範囲外は不正入力扱い）
+//   phi は [0,pi] を想定（範囲外は不正入力扱い）
 // ------------------------------------------------------------
 static double ThetaFromPhi(double phi_e, double phi_g) {
   if (!std::isfinite(phi_e) || !std::isfinite(phi_g)) return -1.0;
 
-  const double two_pi = 2.0 * pi;
-  if (phi_e < 0.0 || phi_e > two_pi) return -1.0;
-  if (phi_g < 0.0 || phi_g > two_pi) return -1.0;
+  if (phi_e < 0.0 || phi_e > pi) return -1.0;
+  if (phi_g < 0.0 || phi_g > pi) return -1.0;
 
-  const double dphi_raw = std::fabs(phi_e - phi_g);
-  double dphi = std::fmod(dphi_raw, two_pi);
-  if (dphi > pi) dphi = two_pi - dphi;
-  return dphi;
+  return std::fabs(phi_e - phi_g);
 }
 
 // ------------------------------------------------------------
@@ -133,10 +129,12 @@ double SignalPdf(double Ee, double Eg, double t,
 
   // 角度: 離散（散乱なし）→ 信号の角度デルタ条件として theta=pi のみに重み
   // theta_i = i*pi/N_theta なので、pi は i=N_theta に対応
-  // phi 空間での正規化を満たすよう、ビン体積 (2*pi*Δtheta) を考慮する。
-  const double angle_bin = 2.0 * pi * step;
-  if (!(angle_bin > 0.0) || !std::isfinite(angle_bin)) return 0.0;
-  const double pth = (ith == res.N_theta) ? (1.0 / angle_bin) : 0.0;
+  // phi 空間での正規化を満たすよう、theta=pi に丸め込まれる領域面積を使う。
+  // |phi_e-phi_g| >= pi - Δtheta/2 の領域は 2 つの直角三角形になり、
+  // 面積は Area_pi = (Δtheta/2)^2。
+  const double area_pi = 0.25 * step * step;
+  if (!(area_pi > 0.0) || !std::isfinite(area_pi)) return 0.0;
+  const double pth = (ith == res.N_theta) ? (1.0 / area_pi) : 0.0;
   if (!(pth > 0.0)) return 0.0;
 
   const double p = pEe * pEg * pt * pth;

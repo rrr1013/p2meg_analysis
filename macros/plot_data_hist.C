@@ -9,7 +9,7 @@
 //   2) cos_pos, cos_gam から角度を作る場合は
 //      phi_detector_e = acos(cos_pos), phi_detector_g = acos(cos_gam)
 //      として 4-5 列に書き出す（符号情報が失われるので注意）。
-//   3) theta_eg は新フォーマット側で |phi_e - phi_g| (折り返し) として計算する。
+//   3) theta_eg は新フォーマット側で |phi_e - phi_g| として計算する。
 //
 // 解析窓: include/p2meg/AnalysisWindow.h の analysis_window を使用。
 //        解析窓内に入ったイベントのみをヒストに入れる。
@@ -143,9 +143,8 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double t_max  = analysis_window.t_max;
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
-    const double phi_min = -3.14159265358979323846;
-    const double phi_max =  3.14159265358979323846;
-    const double two_pi = 2.0 * 3.14159265358979323846;
+    const double phi_min = 0.0;
+    const double phi_max = 3.14159265358979323846;
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
@@ -210,9 +209,6 @@ void plot_data_hist(const char* infile = "data/data.dat")
         ev.phi_detector_g = phi_gam;
 
         double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
-        if (theta_eg > 3.14159265358979323846) {
-            theta_eg = two_pi - theta_eg;
-        }
 
         if (!InAnalysisWindow(ev.Ee, ev.Eg, ev.t, theta_eg)) {
             ++n_outwin;
