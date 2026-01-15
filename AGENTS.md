@@ -290,3 +290,28 @@ inline constexpr DetectorResolutionConst detres{
 ### 関数群について
 
 FUNCTIONS.md に関数群の簡単な説明が書いてある。
+
+### Event
+- Header: `include/p2meg/Event.h`
+- 目的: 尤度計算・PDF評価・入出力を疎結合にするための、1事象の観測量をまとめたデータ構造を提供します。
+
+- シグネチャ
+```cpp
+struct Event {
+  double Ee;
+  double Eg;
+  double t;
+  double phi_detector_e;
+  double phi_detector_g;
+};
+```
+
+- 入力:
+  - `Ee`: 陽電子エネルギー $E_e$ [MeV]
+  - `Eg`: ガンマ線エネルギー $E_\gamma$ [MeV]
+  - `t`: 到達時間差 $\Delta t$ [ns]
+  - `phi_detector_e`: 偏極軸 $\hat{P}$ を基準に、同一平面内で測った e+ 側検出器代表方向の方位角 $\phi_e$ [rad]（0..π を想定。角度の原点は $\hat{P}$ 方向）
+  - `phi_detector_g`: 偏極軸 $\hat{P}$ を基準に、同一平面内で測った γ 側検出器代表方向の方位角 $\phi_g$ [rad]（0..π を想定。角度の原点は $\hat{P}$ 方向）
+
+- 出力:
+  - 戻り値: （なし）
