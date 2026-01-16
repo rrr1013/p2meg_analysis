@@ -16,8 +16,7 @@
 //                      受理されたら (Eg, phi_g) のみ採用（Ee_dummy,phi_e_dummy は捨てる）
 //      * cosθe = cos(phi_e_dummy), cosθg = cos(phi_g), cosθeg = cos(phi_e_dummy-phi_g)
 //  - エネルギースメア:
-//      * Ee_obs = Ee_true + N(0, sigma_Ee)
-//      * Eg_obs = Eg_true + N(0, sigma_Eg)
+//      * DetectorResolution.h の energy_response(E_res,E_true) に従う
 //      * 観測値が解析窓外なら、その側だけ再生成（窓内条件付け）
 //  - t: 解析窓内で一様分布（analysis_window.t_min..t_max）
 //
@@ -26,7 +25,7 @@
 //
 // 自動設定:
 //  - 解析窓: analysis_window
-//  - 分解能: detres（sigma_Ee, sigma_Eg, N_theta, P_mu など）
+//  - 分解能: detres（N_theta, P_mu など）
 //  - 質量:   kMassesPDG（内部で使う場合）
 //
 // ビルド例（repo直下で）:
@@ -52,12 +51,12 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
-#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "TError.h"
+#include "TRandom3.h"
 
 #include "../include/p2meg/Event.h"
 #include "../include/p2meg/AnalysisWindow.h"
@@ -164,17 +163,15 @@ struct MichelCand {
     double w;       // Michel shape (non-normalized)
 };
 
-static MichelCand ProposeMichel2D(std::mt19937_64& rng, double Pmu)
+static MichelCand ProposeMichel2D(TRandom3& rng, double Pmu)
 {
-    std::uniform_real_distribution<double> uEe(analysis_window.Ee_min, analysis_window.Ee_max);
-
     int N = detres.N_theta;
     if (N < 1) N = 1;
-    std::uniform_int_distribution<int> ui(0, N);
     const double step = pi / static_cast<double>(N);
 
-    const double Ee = uEe(rng);
-    const double phi = step * static_cast<double>(ui(rng));
+    const double Ee = rng.Uniform(analysis_window.Ee_min, analysis_window.Ee_max);
+    const int ui = static_cast<int>(rng.Integer(static_cast<ULong_t>(N + 1)));
+    const double phi = step * static_cast<double>(ui);
     const double costh = std::cos(phi);
 
     MichelCand c;
@@ -184,7 +181,7 @@ static MichelCand ProposeMichel2D(std::mt19937_64& rng, double Pmu)
     return c;
 }
 
-static double EstimatePMaxMichel2D(std::mt19937_64& rng, int trials, double Pmu)
+static double EstimatePMaxMichel2D(TRandom3& rng, int trials, double Pmu)
 {
     double pmax = 0.0;
     for (int i = 0; i < trials; ++i) {
@@ -195,11 +192,9 @@ static double EstimatePMaxMichel2D(std::mt19937_64& rng, int trials, double Pmu)
     return pmax * kSafetyFactor;
 }
 
-static bool SampleMichel2D_AR(std::mt19937_64& rng, double Pmu, double& pmax_inout,
+static bool SampleMichel2D_AR(TRandom3& rng, double Pmu, double& pmax_inout,
                              double& Ee_true_out, double& phi_e_out, long long& tries_inout)
 {
-    std::uniform_real_distribution<double> u01(0.0, 1.0);
-
     while (true) {
         ++tries_inout;
         const MichelCand c = ProposeMichel2D(rng, Pmu);
@@ -215,7 +210,7 @@ static bool SampleMichel2D_AR(std::mt19937_64& rng, double Pmu, double& pmax_ino
             pmax_inout = w * kUpdateFactor;
         }
 
-        const double u = u01(rng);
+        const double u = rng.Rndm();
         if (u < (w / pmax_inout)) {
             Ee_true_out = c.Ee_true;
             phi_e_out   = c.phi_e;
@@ -236,20 +231,18 @@ struct Rmd6Cand {
     double w; // RMD_d6B...
 };
 
-static Rmd6Cand ProposeRmd6_4D(std::mt19937_64& rng, double Pmu)
+static Rmd6Cand ProposeRmd6_4D(TRandom3& rng, double Pmu)
 {
-    std::uniform_real_distribution<double> uEe(analysis_window.Ee_min, analysis_window.Ee_max);
-    std::uniform_real_distribution<double> uEg(analysis_window.Eg_min, analysis_window.Eg_max);
-
     int N = detres.N_theta;
     if (N < 1) N = 1;
-    std::uniform_int_distribution<int> ui(0, N);
     const double step = pi / static_cast<double>(N);
 
-    const double Ee = uEe(rng);
-    const double Eg = uEg(rng);
-    const double phie = step * static_cast<double>(ui(rng));
-    const double phig = step * static_cast<double>(ui(rng));
+    const double Ee = rng.Uniform(analysis_window.Ee_min, analysis_window.Ee_max);
+    const double Eg = rng.Uniform(analysis_window.Eg_min, analysis_window.Eg_max);
+    const int ui_e = static_cast<int>(rng.Integer(static_cast<ULong_t>(N + 1)));
+    const int ui_g = static_cast<int>(rng.Integer(static_cast<ULong_t>(N + 1)));
+    const double phie = step * static_cast<double>(ui_e);
+    const double phig = step * static_cast<double>(ui_g);
 
     const double cosE  = std::cos(phie);
     const double cosG  = std::cos(phig);
@@ -264,7 +257,7 @@ static Rmd6Cand ProposeRmd6_4D(std::mt19937_64& rng, double Pmu)
     return c;
 }
 
-static double EstimatePMaxRmd6_4D(std::mt19937_64& rng, int trials, double Pmu)
+static double EstimatePMaxRmd6_4D(TRandom3& rng, int trials, double Pmu)
 {
     double pmax = 0.0;
     for (int i = 0; i < trials; ++i) {
@@ -275,11 +268,9 @@ static double EstimatePMaxRmd6_4D(std::mt19937_64& rng, int trials, double Pmu)
     return pmax * kSafetyFactor;
 }
 
-static bool SampleGammaFromRmd6_AR(std::mt19937_64& rng, double Pmu, double& pmax_inout,
+static bool SampleGammaFromRmd6_AR(TRandom3& rng, double Pmu, double& pmax_inout,
                                   double& Eg_true_out, double& phi_g_out, long long& tries_inout)
 {
-    std::uniform_real_distribution<double> u01(0.0, 1.0);
-
     while (true) {
         ++tries_inout;
         const Rmd6Cand c = ProposeRmd6_4D(rng, Pmu);
@@ -295,7 +286,7 @@ static bool SampleGammaFromRmd6_AR(std::mt19937_64& rng, double Pmu, double& pma
             pmax_inout = w * kUpdateFactor;
         }
 
-        const double u = u01(rng);
+        const double u = rng.Rndm();
         if (u < (w / pmax_inout)) {
             Eg_true_out = c.Eg_true;
             phi_g_out   = c.phi_g;
@@ -341,8 +332,8 @@ int main(int argc, char** argv)
     // RNG（引数なしなので自動seed）
     const uint64_t seed =
         static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    std::mt19937_64 rng(seed);
-    std::mt19937_64 rng_scan(seed ^ 0x9e3779b97f4a7c15ULL);
+    TRandom3 rng(static_cast<ULong_t>(seed));
+    TRandom3 rng_scan(static_cast<ULong_t>(seed ^ 0x9e3779b97f4a7c15ULL));
 
     const double Pmu = detres.P_mu;
 
@@ -354,17 +345,9 @@ int main(int argc, char** argv)
         pmax_rmd6   = EstimatePMaxRmd6_4D(rng_scan, kScanTrialsRmd6, Pmu);
     }
 
-    // ---- スメア用 ----
-    std::normal_distribution<double> smearE(detres.sigma_Ee > 0.0 ? 0.0 : 0.0,
-                                            detres.sigma_Ee > 0.0 ? detres.sigma_Ee : 1.0);
-    std::normal_distribution<double> smearG(detres.sigma_Eg > 0.0 ? 0.0 : 0.0,
-                                            detres.sigma_Eg > 0.0 ? detres.sigma_Eg : 1.0);
-
-    const bool do_smear_e = (detres.sigma_Ee > 0.0) && std::isfinite(detres.sigma_Ee);
-    const bool do_smear_g = (detres.sigma_Eg > 0.0) && std::isfinite(detres.sigma_Eg);
-
     // ---- t 一様 ----
-    std::uniform_real_distribution<double> ut(analysis_window.t_min, analysis_window.t_max);
+    const double tmin = analysis_window.t_min;
+    const double tmax = analysis_window.t_max;
 
     // ---- 生成 ----
     std::vector<Event> out;
@@ -383,7 +366,7 @@ int main(int argc, char** argv)
         while (true) {
             SampleMichel2D_AR(rng, Pmu, pmax_michel, Ee_true, phi_e, tries_e);
 
-            Ee_obs = Ee_true + (do_smear_e ? smearE(rng) : 0.0);
+            Ee_obs = smear_energy_trandom3(rng, Ee_true);
             if (std::isfinite(Ee_obs) &&
                 Ee_obs >= analysis_window.Ee_min && Ee_obs <= analysis_window.Ee_max) {
                 break;
@@ -396,7 +379,7 @@ int main(int argc, char** argv)
         while (true) {
             SampleGammaFromRmd6_AR(rng, Pmu, pmax_rmd6, Eg_true, phi_g, tries_g);
 
-            Eg_obs = Eg_true + (do_smear_g ? smearG(rng) : 0.0);
+            Eg_obs = smear_energy_trandom3(rng, Eg_true);
             if (std::isfinite(Eg_obs) &&
                 Eg_obs >= analysis_window.Eg_min && Eg_obs <= analysis_window.Eg_max) {
                 break;
@@ -404,7 +387,7 @@ int main(int argc, char** argv)
         }
 
         // t 一様
-        const double t = ut(rng);
+        const double t = rng.Uniform(tmin, tmax);
 
         Event ev;
         ev.Ee = Ee_obs;
@@ -437,7 +420,7 @@ int main(int argc, char** argv)
 
     fout << "# acc mockdata generated from Michel(2D AR) + RMD_d6(4D AR -> gamma singles)\n";
     fout << "# t is uniform in analysis window\n";
-    fout << "# energies are smeared by independent Gaussians (sigma_Ee, sigma_Eg)\n";
+    fout << "# energies are smeared by energy_response(E_res,E_true)\n";
     fout << "# phi_detector_e/g are snapped to phi_i=i*pi/N_theta at output\n";
     fout << "# n_acc=" << nacc << " seed=" << seed << " P_mu=" << detres.P_mu << "\n";
     fout << "Ee\tEg\tt\tphi_detector_e\tphi_detector_g\n";
