@@ -244,13 +244,19 @@ inline constexpr AnalysisWindow4D analysis_window{
 
 装置の検出器分解能は /include/p2meg/DetectorResolution.h に次の形でおいてある。
 名前は分解能となっているが、装置に関わるパラメータは全てここにおくことにする。
+エネルギー分解能は `energy_response_shape_e/g(E_res, E_true)` で未正規化の形状を定義し、正規化・スメア生成はヘッダ内の補助関数が自動で行う。
 
 ```cpp
 #ifndef P2MEG_DETECTOR_RESOLUTION_H
 #define P2MEG_DETECTOR_RESOLUTION_H
 
+#include <cmath>
+#include "TRandom3.h"
+
+#include "p2meg/Constants.h"
+
 // ============================================================
-// p2MEG 分解能モデル（現状の簡略版）
+// p2MEG 分解能モデル
 //
 // 単位:
 //  - Ee, Eg: MeV
@@ -262,12 +268,17 @@ inline constexpr AnalysisWindow4D analysis_window{
 //    すなわち、0 から pi までを N_theta 分割した (N_theta+1) 点のみを許す
 //  - 崩壊後の e, γ の散乱は無視し、離散化後の角度スメアはかけない
 //
+// エネルギー分解能:
+//  - energy_response_shape_e/g(E_res, E_true) は
+//      「真値 E_true に対する再構成 E_res の分布 shape（未正規化）」を返す
+//  - e+ と γ で別の shape を持てるように分離する
+//  - 正規化やスメア生成は内部で自動化する
+//  - ユーザが変更するのは shape 部分だけでよい
+//
 // t_mean は Δt の平均値（現状は 0 以外にもなり得るので分離）
 // ============================================================
 
 struct DetectorResolutionConst {
-    double sigma_Ee;  // [MeV]
-    double sigma_Eg;  // [MeV]
     double sigma_t;   // [ns]
     int    N_theta;   // 角度分割数（theta_i = i*pi/N_theta, i=0..N_theta）
     double t_mean;    // [ns]  Δt の平均値
@@ -275,10 +286,8 @@ struct DetectorResolutionConst {
 };
 
 inline constexpr DetectorResolutionConst detres{
-    9.264,   // sigma_Ee [MeV]
-    9.908,   // sigma_Eg [MeV]
     0.1561,  // sigma_t  [ns]
-    36,      // N_theta  （例：0..pi を 18 分割 → 19 点）
+    18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
     -0.1479, // t_mean [ns]
     -0.8     // P_mu
 };
@@ -286,6 +295,12 @@ inline constexpr DetectorResolutionConst detres{
 #endif // P2MEG_DETECTOR_RESOLUTION_H
 
 ```
+
+エネルギー分解能の使い方:
+* `energy_response_shape_e/g`: E_true に対する E_res の未正規化 shape（ここだけ変更すればよい）
+* `energy_response_pdf_window_e/g`: 解析窓内で正規化した PDF（SignalPdf で使用）
+* `smear_energy_trandom3_e/g`: shape に従う乱数サンプル（MakeRMDGridPdf で使用）
+* `energy_response_offset_low/high_e/g`: shape の 0.1 倍点を使った幅推定（真値窓の拡張に使用）
 
 ### 関数群について
 
