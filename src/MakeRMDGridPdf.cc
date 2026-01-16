@@ -85,15 +85,15 @@ static bool IsValidTruthWindowEeEg(const AnalysisWindow4D& win) {
   return true;
 }
 
-// 解析窓から energy_response の 0.1 倍点まで広げた真値窓を作り、
+// 解析窓から energy_response_shape_e/g の 0.1 倍点まで広げた真値窓を作り、
 // 非物理領域（負のエネルギーなど）を除外する
 static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base_win) {
   AnalysisWindow4D out = base_win;
 
-  const double Ee_low = energy_response_offset_low(base_win.Ee_min);
-  const double Ee_high = energy_response_offset_high(base_win.Ee_max);
-  const double Eg_low = energy_response_offset_low(base_win.Eg_min);
-  const double Eg_high = energy_response_offset_high(base_win.Eg_max);
+  const double Ee_low = energy_response_offset_low_e(base_win.Ee_min);
+  const double Ee_high = energy_response_offset_high_e(base_win.Ee_max);
+  const double Eg_low = energy_response_offset_low_g(base_win.Eg_min);
+  const double Eg_high = energy_response_offset_high_g(base_win.Eg_max);
 
   out.Ee_min = base_win.Ee_min - Ee_high;
   out.Ee_max = base_win.Ee_max + Ee_low;
@@ -267,7 +267,7 @@ static std::string BuildMetaString(long n_theta_ok, long n_wpos,
   oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns (applied at evaluation)\n";
   oss << "window: theta=[" << analysis_window.theta_min << "," << analysis_window.theta_max << "] rad (theta_eg=|phi_e-phi_g| cut at generation)\n";
 
-  oss << "res: energy_response model in DetectorResolution.h\n";
+  oss << "res: energy_response_shape_e/g model in DetectorResolution.h\n";
   oss << "res: sigma_t=" << detres.sigma_t << " ns (used analytically at evaluation)\n";
   oss << "res: t_mean=" << detres.t_mean << " ns (used analytically at evaluation)\n";
   oss << "res: N_theta=" << GetNTheta() << "\n";
@@ -394,8 +394,8 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
     // 同じ真値点から複数回（Ee,Eg のみ）スメアして観測分布を埋める
     for (int is = 0; is < kNSmearPerTruth; ++is) {
-      const double Ee_obs = smear_energy_trandom3(rng, Ee_true);
-      const double Eg_obs = smear_energy_trandom3(rng, Eg_true);
+      const double Ee_obs = smear_energy_trandom3_e(rng, Ee_true);
+      const double Eg_obs = smear_energy_trandom3_g(rng, Eg_true);
 
       if (!IsInsideWindow_EeEg(Ee_obs, Eg_obs)) continue;
 

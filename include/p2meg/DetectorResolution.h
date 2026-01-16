@@ -20,8 +20,9 @@
 //  - 崩壊後の e, γ の散乱は無視し、離散化後の角度スメアはかけない
 //
 // エネルギー分解能:
-//  - energy_response_shape(E_res, E_true) は
+//  - energy_response_shape_e/g(E_res, E_true) は
 //      「真値 E_true に対する再構成 E_res の分布 shape（未正規化）」を返す
+//  - e+ と γ で別の shape を持てるように分離する
 //  - 正規化やスメア生成は内部で自動化する
 //  - ユーザが変更するのは shape 部分だけでよい
 //
@@ -42,10 +43,12 @@ inline constexpr DetectorResolutionConst detres{
     -0.8     // P_mu
 };
 
+
 // ------------------------------------------------------------
 // エネルギー応答 shape（ユーザが自由に変更する部分）
+//  - e+ と γ で別々に定義する
 // ------------------------------------------------------------
-inline double energy_response_shape(double E_res, double E_true) {
+inline double energy_response_shape_e(double E_res, double E_true) {
 
     // 例: E_true を中心とする幅 0.1*E_true のガウシアン（未正規化）
     //  - 単位: E_res, E_true ともに MeV
@@ -53,8 +56,7 @@ inline double energy_response_shape(double E_res, double E_true) {
     if (!(E_true > 0.0)) return 0.0;
     if (!std::isfinite(E_res) || !std::isfinite(E_true)) return 0.0;
 
-    //const double sigma = 0.1 * E_true;
-    const double sigma = 1;
+    const double sigma = 0.1 * E_true;
     if (!(sigma > 0.0) || !std::isfinite(sigma)) return 0.0;
 
     const double z = (E_res - E_true) / sigma;
@@ -62,18 +64,28 @@ inline double energy_response_shape(double E_res, double E_true) {
     return std::isfinite(p) ? p : 0.0;
 }
 
+inline double energy_response_shape_g(double E_res, double E_true) {
 
+    // 例: E_true を中心とする幅 0.1*E_true のガウシアン（未正規化）
+    //  - 単位: E_res, E_true ともに MeV
+    //  - 不正入力や非物理は 0 を返す
+    if (!(E_true > 0.0)) return 0.0;
+    if (!std::isfinite(E_res) || !std::isfinite(E_true)) return 0.0;
 
+    const double sigma = 0.1 * E_true;
+    if (!(sigma > 0.0) || !std::isfinite(sigma)) return 0.0;
 
-
-
+    const double z = (E_res - E_true) / sigma;
+    const double p = std::exp(-0.5 * z * z);
+    return std::isfinite(p) ? p : 0.0;
+}
 
 // ------------------------------------------------------------
-// energy_response_shape の数値積分（未正規化）
-//  - 数値積分は分解能モデルの詳細に依存するため、最小限の台形則で扱う
-//  - 物理カットではなく数値ガードとして使う
+// 内部: energy_response_shape の共通処理（e/g で共用）
 // ------------------------------------------------------------
-inline double energy_response_integral(double E_min, double E_max, double E_true) {
+static inline double energy_response_integral_impl(double E_min, double E_max, double E_true,
+                                                    double (*shape)(double, double)) {
+    if (shape == nullptr) return 0.0;
     if (!(E_true > 0.0)) return 0.0;
     if (!(E_min < E_max)) return 0.0;
     if (!std::isfinite(E_min) || !std::isfinite(E_max) || !std::isfinite(E_true)) return 0.0;
@@ -86,7 +98,7 @@ inline double energy_response_integral(double E_min, double E_max, double E_true
     for (int i = 0; i <= n; ++i) {
         const double x = E_min + h * static_cast<double>(i);
         const double w = (i == 0 || i == n) ? 0.5 : 1.0;
-        const double fx = energy_response_shape(x, E_true);
+        const double fx = shape(x, E_true);
         if (fx > 0.0 && std::isfinite(fx)) sum += w * fx;
     }
     const double A = h * sum;
@@ -97,9 +109,11 @@ inline double energy_response_integral(double E_min, double E_max, double E_true
 // energy_response_shape の正規化レンジを自動決定
 //  - 応答が単峰で E_true 周りに減衰する前提
 // ------------------------------------------------------------
-inline bool energy_response_autorange(double E_true, double& E_min, double& E_max) {
+static inline bool energy_response_autorange_impl(double E_true, double& E_min, double& E_max,
+                                                   double (*shape)(double, double)) {
+    if (shape == nullptr) return false;
     if (!(E_true > 0.0)) return false;
-    const double p0 = energy_response_shape(E_true, E_true);
+    const double p0 = shape(E_true, E_true);
     if (!(p0 > 0.0) || !std::isfinite(p0)) return false;
 
     const double tail = 1e-6 * p0;
@@ -109,8 +123,8 @@ inline bool energy_response_autorange(double E_true, double& E_min, double& E_ma
     for (int i = 0; i < 40; ++i) {
         const double lo = E_true - range;
         const double hi = E_true + range;
-        const double plo = energy_response_shape(lo, E_true);
-        const double phi = energy_response_shape(hi, E_true);
+        const double plo = shape(lo, E_true);
+        const double phi = shape(hi, E_true);
         if ((plo < tail || !std::isfinite(plo)) && (phi < tail || !std::isfinite(phi))) {
             E_min = lo;
             E_max = hi;
@@ -124,23 +138,27 @@ inline bool energy_response_autorange(double E_true, double& E_min, double& E_ma
     return true;
 }
 
-inline double energy_response_pdf(double E_res, double E_true) {
+static inline double energy_response_pdf_impl(double E_res, double E_true,
+                                              double (*shape)(double, double)) {
+    if (shape == nullptr) return 0.0;
     double E_min = 0.0;
     double E_max = 0.0;
-    if (!energy_response_autorange(E_true, E_min, E_max)) return 0.0;
+    if (!energy_response_autorange_impl(E_true, E_min, E_max, shape)) return 0.0;
     if (E_res < E_min || E_res > E_max) return 0.0;
-    const double A = energy_response_integral(E_min, E_max, E_true);
+    const double A = energy_response_integral_impl(E_min, E_max, E_true, shape);
     if (!(A > 0.0) || !std::isfinite(A)) return 0.0;
-    const double p = energy_response_shape(E_res, E_true) / A;
+    const double p = shape(E_res, E_true) / A;
     return std::isfinite(p) ? p : 0.0;
 }
 
-inline double energy_response_pdf_window(double E_res, double E_true,
-                                         double E_min, double E_max) {
+static inline double energy_response_pdf_window_impl(double E_res, double E_true,
+                                                     double E_min, double E_max,
+                                                     double (*shape)(double, double)) {
+    if (shape == nullptr) return 0.0;
     if (E_res < E_min || E_res > E_max) return 0.0;
-    const double A = energy_response_integral(E_min, E_max, E_true);
+    const double A = energy_response_integral_impl(E_min, E_max, E_true, shape);
     if (!(A > 0.0) || !std::isfinite(A)) return 0.0;
-    const double p = energy_response_shape(E_res, E_true) / A;
+    const double p = shape(E_res, E_true) / A;
     return std::isfinite(p) ? p : 0.0;
 }
 
@@ -149,9 +167,11 @@ inline double energy_response_pdf_window(double E_res, double E_true,
 //  - 応答が単峰で E_true 周りに対称に減衰する前提
 //  - 数値ガードは「物理カットではない」ことに注意
 // ------------------------------------------------------------
-inline double energy_response_offset_high(double E_true) {
+static inline double energy_response_offset_high_impl(double E_true,
+                                                      double (*shape)(double, double)) {
+    if (shape == nullptr) return 0.0;
     if (!(E_true > 0.0)) return 0.0;
-    const double p0 = energy_response_shape(E_true, E_true);
+    const double p0 = shape(E_true, E_true);
     if (!(p0 > 0.0) || !std::isfinite(p0)) return 0.0;
     const double target = 0.1 * p0;
 
@@ -160,23 +180,25 @@ inline double energy_response_offset_high(double E_true) {
     if (!(hi > 0.0)) hi = 1.0;
 
     int expand = 0;
-    while (expand < 50 && energy_response_shape(E_true + hi, E_true) > target) {
+    while (expand < 50 && shape(E_true + hi, E_true) > target) {
         hi *= 2.0;
         ++expand;
     }
 
     for (int i = 0; i < 80; ++i) {
         const double mid = 0.5 * (lo + hi);
-        const double p = energy_response_shape(E_true + mid, E_true);
+        const double p = shape(E_true + mid, E_true);
         if (p > target) lo = mid;
         else hi = mid;
     }
     return hi;
 }
 
-inline double energy_response_offset_low(double E_true) {
+static inline double energy_response_offset_low_impl(double E_true,
+                                                     double (*shape)(double, double)) {
+    if (shape == nullptr) return 0.0;
     if (!(E_true > 0.0)) return 0.0;
-    const double p0 = energy_response_shape(E_true, E_true);
+    const double p0 = shape(E_true, E_true);
     if (!(p0 > 0.0) || !std::isfinite(p0)) return 0.0;
     const double target = 0.1 * p0;
 
@@ -185,14 +207,14 @@ inline double energy_response_offset_low(double E_true) {
     if (!(hi > 0.0)) hi = 1.0;
 
     int expand = 0;
-    while (expand < 50 && energy_response_shape(E_true - hi, E_true) > target) {
+    while (expand < 50 && shape(E_true - hi, E_true) > target) {
         hi *= 2.0;
         ++expand;
     }
 
     for (int i = 0; i < 80; ++i) {
         const double mid = 0.5 * (lo + hi);
-        const double p = energy_response_shape(E_true - mid, E_true);
+        const double p = shape(E_true - mid, E_true);
         if (p > target) lo = mid;
         else hi = mid;
     }
@@ -203,32 +225,108 @@ inline double energy_response_offset_low(double E_true) {
 // energy_response_shape を正規化した分布から乱数サンプル（スメア）
 //  - 正規化は自動化され、ユーザは shape を変更するだけでよい
 // ------------------------------------------------------------
-inline double energy_response_max_on_range(double E_true, double E_min, double E_max) {
+static inline double energy_response_max_on_range_impl(double E_true, double E_min, double E_max,
+                                                       double (*shape)(double, double)) {
+    if (shape == nullptr) return 0.0;
     if (!(E_min < E_max)) return 0.0;
     const int n = 200;
     double pmax = 0.0;
     for (int i = 0; i <= n; ++i) {
         const double x = E_min + (E_max - E_min) * (static_cast<double>(i) / static_cast<double>(n));
-        const double p = energy_response_shape(x, E_true);
+        const double p = shape(x, E_true);
         if (p > pmax && std::isfinite(p)) pmax = p;
     }
     return pmax;
 }
 
-inline double smear_energy_trandom3(TRandom3& rng, double E_true) {
+static inline double smear_energy_trandom3_impl(TRandom3& rng, double E_true,
+                                                double (*shape)(double, double)) {
+    if (shape == nullptr) return E_true;
     double E_min = 0.0;
     double E_max = 0.0;
-    if (!energy_response_autorange(E_true, E_min, E_max)) return E_true;
+    if (!energy_response_autorange_impl(E_true, E_min, E_max, shape)) return E_true;
 
-    const double pmax = energy_response_max_on_range(E_true, E_min, E_max);
+    const double pmax = energy_response_max_on_range_impl(E_true, E_min, E_max, shape);
     if (!(pmax > 0.0) || !std::isfinite(pmax)) return E_true;
 
     for (int it = 0; it < 100000; ++it) {
         const double x = rng.Uniform(E_min, E_max);
         const double u = rng.Uniform(0.0, pmax);
-        if (u < energy_response_shape(x, E_true)) return x;
+        if (u < shape(x, E_true)) return x;
     }
     return E_true;
+}
+
+// ------------------------------------------------------------
+// e+ 用の energy_response ラッパー
+// ------------------------------------------------------------
+inline double energy_response_integral_e(double E_min, double E_max, double E_true) {
+    return energy_response_integral_impl(E_min, E_max, E_true, energy_response_shape_e);
+}
+
+inline bool energy_response_autorange_e(double E_true, double& E_min, double& E_max) {
+    return energy_response_autorange_impl(E_true, E_min, E_max, energy_response_shape_e);
+}
+
+inline double energy_response_pdf_e(double E_res, double E_true) {
+    return energy_response_pdf_impl(E_res, E_true, energy_response_shape_e);
+}
+
+inline double energy_response_pdf_window_e(double E_res, double E_true,
+                                           double E_min, double E_max) {
+    return energy_response_pdf_window_impl(E_res, E_true, E_min, E_max, energy_response_shape_e);
+}
+
+inline double energy_response_offset_high_e(double E_true) {
+    return energy_response_offset_high_impl(E_true, energy_response_shape_e);
+}
+
+inline double energy_response_offset_low_e(double E_true) {
+    return energy_response_offset_low_impl(E_true, energy_response_shape_e);
+}
+
+inline double energy_response_max_on_range_e(double E_true, double E_min, double E_max) {
+    return energy_response_max_on_range_impl(E_true, E_min, E_max, energy_response_shape_e);
+}
+
+inline double smear_energy_trandom3_e(TRandom3& rng, double E_true) {
+    return smear_energy_trandom3_impl(rng, E_true, energy_response_shape_e);
+}
+
+// ------------------------------------------------------------
+// γ 用の energy_response ラッパー
+// ------------------------------------------------------------
+inline double energy_response_integral_g(double E_min, double E_max, double E_true) {
+    return energy_response_integral_impl(E_min, E_max, E_true, energy_response_shape_g);
+}
+
+inline bool energy_response_autorange_g(double E_true, double& E_min, double& E_max) {
+    return energy_response_autorange_impl(E_true, E_min, E_max, energy_response_shape_g);
+}
+
+inline double energy_response_pdf_g(double E_res, double E_true) {
+    return energy_response_pdf_impl(E_res, E_true, energy_response_shape_g);
+}
+
+inline double energy_response_pdf_window_g(double E_res, double E_true,
+                                           double E_min, double E_max) {
+    return energy_response_pdf_window_impl(E_res, E_true, E_min, E_max, energy_response_shape_g);
+}
+
+inline double energy_response_offset_high_g(double E_true) {
+    return energy_response_offset_high_impl(E_true, energy_response_shape_g);
+}
+
+inline double energy_response_offset_low_g(double E_true) {
+    return energy_response_offset_low_impl(E_true, energy_response_shape_g);
+}
+
+inline double energy_response_max_on_range_g(double E_true, double E_min, double E_max) {
+    return energy_response_max_on_range_impl(E_true, E_min, E_max, energy_response_shape_g);
+}
+
+inline double smear_energy_trandom3_g(TRandom3& rng, double E_true) {
+    return smear_energy_trandom3_impl(rng, E_true, energy_response_shape_g);
 }
 
 #endif // P2MEG_DETECTOR_RESOLUTION_H

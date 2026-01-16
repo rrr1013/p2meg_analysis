@@ -16,7 +16,7 @@
 //                      受理されたら (Eg, phi_g) のみ採用（Ee_dummy,phi_e_dummy は捨てる）
 //      * cosθe = cos(phi_e_dummy), cosθg = cos(phi_g), cosθeg = cos(phi_e_dummy-phi_g)
 //  - エネルギースメア:
-//      * DetectorResolution.h の energy_response(E_res,E_true) に従う
+//      * DetectorResolution.h の energy_response_shape_e/g(E_res,E_true) に従う
 //      * 観測値が解析窓外なら、その側だけ再生成（窓内条件付け）
 //  - t: 解析窓内で一様分布（analysis_window.t_min..t_max）
 //
@@ -366,7 +366,7 @@ int main(int argc, char** argv)
         while (true) {
             SampleMichel2D_AR(rng, Pmu, pmax_michel, Ee_true, phi_e, tries_e);
 
-            Ee_obs = smear_energy_trandom3(rng, Ee_true);
+            Ee_obs = smear_energy_trandom3_e(rng, Ee_true);
             if (std::isfinite(Ee_obs) &&
                 Ee_obs >= analysis_window.Ee_min && Ee_obs <= analysis_window.Ee_max) {
                 break;
@@ -379,7 +379,7 @@ int main(int argc, char** argv)
         while (true) {
             SampleGammaFromRmd6_AR(rng, Pmu, pmax_rmd6, Eg_true, phi_g, tries_g);
 
-            Eg_obs = smear_energy_trandom3(rng, Eg_true);
+            Eg_obs = smear_energy_trandom3_g(rng, Eg_true);
             if (std::isfinite(Eg_obs) &&
                 Eg_obs >= analysis_window.Eg_min && Eg_obs <= analysis_window.Eg_max) {
                 break;
@@ -420,7 +420,7 @@ int main(int argc, char** argv)
 
     fout << "# acc mockdata generated from Michel(2D AR) + RMD_d6(4D AR -> gamma singles)\n";
     fout << "# t is uniform in analysis window\n";
-    fout << "# energies are smeared by energy_response(E_res,E_true)\n";
+    fout << "# energies are smeared by energy_response_shape_e/g(E_res,E_true)\n";
     fout << "# phi_detector_e/g are snapped to phi_i=i*pi/N_theta at output\n";
     fout << "# n_acc=" << nacc << " seed=" << seed << " P_mu=" << detres.P_mu << "\n";
     fout << "Ee\tEg\tt\tphi_detector_e\tphi_detector_g\n";

@@ -115,11 +115,11 @@ double SignalPdf(double Ee, double Eg, double t,
   const double Eg0 = 0.5 * ms.m_mu;
   const double t0  = res.t_mean;
 
-  // Ee, Eg は energy_response で評価（窓内で正規化）
-  const double pEe = energy_response_pdf_window(Ee, Ee0, win.Ee_min, win.Ee_max);
+  // Ee, Eg は energy_response_shape_e/g で評価（窓内で正規化）
+  const double pEe = energy_response_pdf_window_e(Ee, Ee0, win.Ee_min, win.Ee_max);
   if (!(pEe > 0.0)) return 0.0;
 
-  const double pEg = energy_response_pdf_window(Eg, Eg0, win.Eg_min, win.Eg_max);
+  const double pEg = energy_response_pdf_window_g(Eg, Eg0, win.Eg_min, win.Eg_max);
   if (!(pEg > 0.0)) return 0.0;
 
   const double pt  = TruncNormalPdf(t,  t0,  res.sigma_t,  win.t_min,  win.t_max);
