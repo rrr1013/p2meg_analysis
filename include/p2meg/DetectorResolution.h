@@ -46,19 +46,27 @@ inline constexpr DetectorResolutionConst detres{
 // エネルギー応答 shape（ユーザが自由に変更する部分）
 // ------------------------------------------------------------
 inline double energy_response_shape(double E_res, double E_true) {
+
     // 例: E_true を中心とする幅 0.1*E_true のガウシアン（未正規化）
     //  - 単位: E_res, E_true ともに MeV
     //  - 不正入力や非物理は 0 を返す
     if (!(E_true > 0.0)) return 0.0;
     if (!std::isfinite(E_res) || !std::isfinite(E_true)) return 0.0;
 
-    const double sigma = 0.1 * E_true;
+    //const double sigma = 0.1 * E_true;
+    const double sigma = 1;
     if (!(sigma > 0.0) || !std::isfinite(sigma)) return 0.0;
 
     const double z = (E_res - E_true) / sigma;
     const double p = std::exp(-0.5 * z * z);
     return std::isfinite(p) ? p : 0.0;
 }
+
+
+
+
+
+
 
 // ------------------------------------------------------------
 // energy_response_shape の数値積分（未正規化）
@@ -88,7 +96,6 @@ inline double energy_response_integral(double E_min, double E_max, double E_true
 // ------------------------------------------------------------
 // energy_response_shape の正規化レンジを自動決定
 //  - 応答が単峰で E_true 周りに減衰する前提
-//  - 0.1 倍点とは無関係（真値窓の話とは切り離す）
 // ------------------------------------------------------------
 inline bool energy_response_autorange(double E_true, double& E_min, double& E_max) {
     if (!(E_true > 0.0)) return false;

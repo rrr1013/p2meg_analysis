@@ -40,8 +40,8 @@ static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
 
 // ---- 生成統計 ----
-static constexpr long kNTruthSamples  = 5000000L; // 真値サンプル数（Ee,Eg を一様）
-static constexpr int  kNSmearPerTruth = 500;       // 1真値あたりのエネルギースメア回数
+static constexpr long kNTruthSamples  = 1000000L; // 真値サンプル数（Ee,Eg を一様）
+static constexpr int  kNSmearPerTruth = 100;       // 1真値あたりのエネルギースメア回数
 static constexpr unsigned long kSeed  = 20260109UL;
 
 // ---- RMD 理論関数の d_min ----
@@ -95,10 +95,10 @@ static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base
   const double Eg_low = energy_response_offset_low(base_win.Eg_min);
   const double Eg_high = energy_response_offset_high(base_win.Eg_max);
 
-  out.Ee_min = base_win.Ee_min - Ee_low;
-  out.Ee_max = base_win.Ee_max + Ee_high;
-  out.Eg_min = base_win.Eg_min - Eg_low;
-  out.Eg_max = base_win.Eg_max + Eg_high;
+  out.Ee_min = base_win.Ee_min - Ee_high;
+  out.Ee_max = base_win.Ee_max + Ee_low;
+  out.Eg_min = base_win.Eg_min - Eg_high;
+  out.Eg_max = base_win.Eg_max + Eg_low;
 
   // 物理的な上限（RMD の運動学: x<=1+r, y<=1-r）
   const double mmu = kMassesPDG.m_mu;

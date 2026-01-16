@@ -14,11 +14,6 @@
 //  3) `./build/make_rmd_grid_pdf` で新しい `rmd_grid.root` を作成
 //  4) 続けて解析コード実行（例: `./build/run_nll_fit ...`）
 //
-// 真値エネルギー窓は「解析窓+/-2sigma（物理領域でクリップ）」で自動決定される。
-// 解析窓（Ee, Eg）の基準を指定して生成する場合:
-//  - `./build/make_rmd_grid_pdf Ee_min Ee_max Eg_min Eg_max`
-//  - 指定した範囲を「解析窓」と見做し、+/-2sigma で広げた真値窓を使う
-//  - 解析窓（観測窓）は AnalysisWindow.h の設定を使う
 //
 // 参考: 一括ビルド用ワンライナー
 //  - 前提: カレントが repo 直下、`build/` と `data/pdf_cache/` が存在、root-config が使える
