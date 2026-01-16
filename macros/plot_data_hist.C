@@ -20,7 +20,7 @@
 //   3ページ目: 2D (Ee,Eg), (theta_eg,t), (t,Ee), (theta_eg,Ee), (theta_eg,Eg), (phi_e,phi_g)
 //
 // 実行例（リポジトリ直下から）:
-//   root -l -q 'macros/plot_data_hist.C("data/mockdata/MEGonly_simulation_dataset.dat")'
+//   root -l -q 'macros/plot_data_hist.C("data/mockdata/testdata1.dat")'
 //
 
 #include <fstream>
@@ -290,7 +290,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
 
     c1.cd(1); gPad->SetGrid(); hEe->SetLineWidth(2); hEe->Draw("hist");
     c1.cd(2); gPad->SetGrid(); hEg->SetLineWidth(2); hEg->Draw("hist");
-    c1.cd(3); gPad->SetGrid(); ht->SetLineWidth(2);  ht->Draw("hist");
+    c1.cd(3); gPad->SetGrid(); ht->SetLineWidth(2); ht->SetMinimum(0);  ht->Draw("hist");
     c1.cd(4); gPad->SetGrid(); hPhiE->SetLineWidth(2); hPhiE->Draw("hist");
     c1.cd(5); gPad->SetGrid(); hPhiG->SetLineWidth(2); hPhiG->Draw("hist");
     c1.cd(6); gPad->SetGrid(); hThEg->SetLineWidth(2); hThEg->Draw("hist");

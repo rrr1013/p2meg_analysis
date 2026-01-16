@@ -108,12 +108,7 @@ static double RmdWeightNoSmear(double Ee, double Eg,
 
     if (!(w0 > 0.0) || !IsFinite(w0)) return 0.0;
 
-    // dcos = -sin(phi) dphi の Jacobian（角度離散なし）
-    const double w_ang = std::sin(phi_e) * std::sin(phi_g);
-    if (!(w_ang > 0.0) || !IsFinite(w_ang)) return 0.0;
-
-    const double w = w0 * w_ang;
-    return (w > 0.0 && IsFinite(w)) ? w : 0.0;
+    return w0;
 }
 
 static void PrintProgressBar(const char* label, long long done, long long total)

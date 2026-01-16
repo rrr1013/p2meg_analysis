@@ -137,6 +137,21 @@ static bool ParseDoublesFromLine(const std::string& line, std::vector<double>& o
   return true;
 }
 
+static double EvalPiWithStartYields(const Event& ev,
+                                    const std::vector<PdfComponent>& components,
+                                    const std::vector<double>& yields)
+{
+  const std::size_t npar = components.size();
+  double pi = 0.0;
+  for (std::size_t k = 0; k < npar; ++k) {
+    double pk = components[k].eval ? components[k].eval(ev, components[k].ctx) : 0.0;
+    if (!std::isfinite(pk) || pk < 0.0) pk = 0.0;
+    const double Nk = (k < yields.size()) ? yields[k] : 0.0;
+    pi += Nk * pk;
+  }
+  return pi;
+}
+
 static bool LoadEventsFromDat(const char* filepath,
                              std::vector<Event>& events,
                              long& n_skipped_non5,
@@ -265,14 +280,31 @@ int main(int argc, char** argv)
   components.push_back(MakeRMDComponent());
 
   // 5) 初期値（データを差し替えても動くようにNに比例させる）
-  const double N = static_cast<double>(events_in_window.size());
+  const double N0 = static_cast<double>(events_in_window.size());
   FitConfig cfg;
-  cfg.start_yields = {0.9 * N, 0.1 * N}; // {N_sig, N_rmd}
+  cfg.start_yields = {0.9 * N0, 0.1 * N0}; // {N_sig, N_rmd}
   cfg.max_calls = 20000;
   cfg.tol = 1e-3;
 
-  // 6) フィット
-  const FitResult res = FitNLL(events_in_window, components, cfg);
+  // 6) pi<=0 のイベントはフィットから除外（デバッグ表示は後段のまま）
+  std::vector<Event> events_fit;
+  events_fit.reserve(events_in_window.size());
+  for (const auto& ev : events_in_window) {
+    const double pi = EvalPiWithStartYields(ev, components, cfg.start_yields);
+    if (pi > 0.0 && std::isfinite(pi)) {
+      events_fit.push_back(ev);
+    }
+  }
+  if (events_fit.empty()) {
+    std::cerr << "[run_nll_fit] no events remain after pi<=0 cut. Aborting fit.\n";
+    return 4;
+  }
+
+  const double N = static_cast<double>(events_fit.size());
+  cfg.start_yields = {0.9 * N, 0.1 * N}; // {N_sig, N_rmd}
+
+  // 7) フィット
+  const FitResult res = FitNLL(events_fit, components, cfg);
 
 #ifdef P2MEG_DEBUG_PRINT_ZERO_PI_EVENTS
   if (res.status != 0 || !std::isfinite(res.nll_min) || res.nll_min >= 1e99) {

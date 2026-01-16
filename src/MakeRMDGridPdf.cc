@@ -366,18 +366,12 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
     const double cosThetaE = std::cos(phi_e);
     const double cosThetaG = std::cos(phi_g);
-    const double sinE = std::sin(phi_e);
-    const double sinG = std::sin(phi_g);
 
     const double cosThetaEG = Clamp(std::cos(phi_e - phi_g), -1.0, 1.0);
     const double theta_eg = std::fabs(phi_e - phi_g);
 
     const bool theta_ok = IsInsideWindowTheta(theta_eg);
     if (theta_ok) ++n_theta_ok;
-
-    // 変数変換の Jacobian（dcos = -sinφ dφ）
-    const double w_ang = sinE * sinG;
-    if (!(w_ang > 0.0) || !IsFinite(w_ang)) continue;
 
     double w0 = 0.0;
     if (theta_ok) {
@@ -389,8 +383,8 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
     if (!(w0 > 0.0)) continue;
 
-    // proposal 補正（角度離散の補正）
-    const double w = w0 * w_ang;
+    // 検出器の立体角は不変なため Jacobian 補正は不要
+    const double w = w0;
 
     // 同じ真値点から複数回（Ee,Eg のみ）スメアして観測分布を埋める
     for (int is = 0; is < kNSmearPerTruth; ++is) {
