@@ -12,10 +12,6 @@
 
 ---
 
-
-
-
-
 ### プロンプト本文
 
 今実装した関数について、`p2meg_analysis/FUNCTIONS.md` に追記する「使い方」だけを書いてください。実装の変更提案や改善案は不要です。  
@@ -135,14 +131,16 @@
 
 ### MakeRMDGridPdf
 - Header: `include/p2meg/MakeRMDGridPdf.h`
-- 目的: 停止ミューオン静止系における RMD の偏極込み核 `RMD_d6B_dEe_dEg_dOmegae_dOmegag` と検出器分解能（Ee, Eg の独立ガウシアン）を用いて、角度離散化（`N_theta`）込みの 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を生成し、ROOT ファイルに保存します（時間 t は評価側で解析的に掛ける）。
+- 目的: 停止ミューオン静止系における RMD の偏極込み核 `RMD_d6B_dEe_dEg_dOmegae_dOmegag` と検出器分解能（Ee, Eg の独立ガウシアン）を用いて、角度離散化（`N_theta`）込みの 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を生成し、ROOT ファイルに保存します（時間 t は評価側で解析的に掛ける）。真値サンプル窓は解析窓を +/-2sigma で広げ、物理領域でクリップしたものを使います。
 
 - シグネチャ
   - `int MakeRMDGridPdf(const char* out_filepath, const char* key);`
+  - `int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key, const AnalysisWindow4D& truth_win);`
 
 - 入力:
   - `out_filepath`: 出力先 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
   - `key`: ROOT ファイル中に保存する格子 PDF のキー名（例：`"rmd_grid"`）。
+  - `truth_win`: 解析窓として扱う Ee/Eg を指定し、+/-2sigma だけ広げた真値サンプル窓を内部で作る（非物理領域は除外）。t, theta は未使用。単位は MeV。
 
 - 出力:
   - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 4D 格子 PDF（`key`）とメタ情報（`<key>_meta`, `<key>_N_theta` など）を保存する。

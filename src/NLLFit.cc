@@ -53,7 +53,7 @@ FitResult FitNLL(const std::vector<Event>& events,
     min->SetFunction(functor);
 
     // N_sig > 0, N_rmd > 0 の制約（下の 1 行のコメントを外すと有効化）
-     //#define P2MEG_ENABLE_YIELD_BOUNDS
+     #define P2MEG_ENABLE_YIELD_BOUNDS
 
     // パラメータ設定（境界なし）
     for (std::size_t i = 0; i < npar; ++i) {

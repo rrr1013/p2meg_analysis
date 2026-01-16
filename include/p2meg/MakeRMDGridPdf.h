@@ -46,7 +46,18 @@
 //    このモジュール内部に固定で持つ（ヘッダには出さない）。
 // ============================================================
 
+struct AnalysisWindow4D;
+
 // 成功: 0、失敗: 非0
 int MakeRMDGridPdf(const char* out_filepath, const char* key);
+
+// 真値生成窓（Ee, Eg）を解析窓から自動的に作って格子PDFを作成する。
+//  - truth_win の Ee/Eg を「解析窓」と見做し、+/-2sigma だけ広げた窓で真値をサンプルする
+//  - 非物理領域（負のエネルギーや運動学上限超え）は除外する
+//  - t, theta は未使用（観測窓は AnalysisWindow.h の analysis_window を使う）
+//  - 単位は MeV（Ee, Eg）
+int MakeRMDGridPdfWithTruthWindow(const char* out_filepath,
+                                  const char* key,
+                                  const AnalysisWindow4D& analysis_win_for_truth);
 
 #endif // P2MEG_MAKE_RMD_GRID_PDF_H

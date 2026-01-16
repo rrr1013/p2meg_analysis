@@ -38,8 +38,8 @@ static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
 
 // ---- 生成統計 ----
-static constexpr long kNTruthSamples  = 1000000L; // 真値サンプル数（Ee,Eg を一様）
-static constexpr int  kNSmearPerTruth = 50;       // 1真値あたりのエネルギースメア回数
+static constexpr long kNTruthSamples  = 5000000L; // 真値サンプル数（Ee,Eg を一様）
+static constexpr int  kNSmearPerTruth = 500;       // 1真値あたりのエネルギースメア回数
 static constexpr unsigned long kSeed  = 20260109UL;
 
 // ---- RMD 理論関数の d_min ----
@@ -66,6 +66,49 @@ static bool IsInsideWindow_EeEg(double Ee, double Eg) {
 static bool IsInsideWindowTheta(double theta_eg) {
   if (theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) return false;
   return true;
+}
+
+// 真値サンプル窓のチェック（Ee, Eg のみ使用）
+static bool IsValidTruthWindowEeEg(const AnalysisWindow4D& win) {
+  if (!IsFinite(win.Ee_min) || !IsFinite(win.Ee_max)) return false;
+  if (!IsFinite(win.Eg_min) || !IsFinite(win.Eg_max)) return false;
+  if (!(win.Ee_min < win.Ee_max)) return false;
+  if (!(win.Eg_min < win.Eg_max)) return false;
+  // soft photon 発散のため Eg_min > 0 を要求
+  if (!(win.Eg_min > 0.0)) return false;
+  return true;
+}
+
+// 解析窓から +/-2sigma だけ広げた真値窓を作り、非物理領域（負のエネルギーなど）を除外する
+static AnalysisWindow4D ExpandTruthWindow2Sigma(const AnalysisWindow4D& base_win) {
+  AnalysisWindow4D out = base_win;
+
+  const double n_sigma = 2.0;
+  const double sigma_Ee = detres.sigma_Ee;
+  const double sigma_Eg = detres.sigma_Eg;
+
+  out.Ee_min = base_win.Ee_min - n_sigma * sigma_Ee;
+  out.Ee_max = base_win.Ee_max + n_sigma * sigma_Ee;
+  out.Eg_min = base_win.Eg_min - n_sigma * sigma_Eg;
+  out.Eg_max = base_win.Eg_max + n_sigma * sigma_Eg;
+
+  // 物理的な上限（RMD の運動学: x<=1+r, y<=1-r）
+  const double mmu = kMassesPDG.m_mu;
+  const double me  = kMassesPDG.m_e;
+  const double r = (me * me) / (mmu * mmu);
+
+  const double Ee_phys_max = 0.5 * mmu * (1.0 + r);
+  const double Eg_phys_max = 0.5 * mmu * (1.0 - r);
+
+  if (out.Ee_min < 0.0) out.Ee_min = 0.0;
+  if (out.Eg_min < 0.0) out.Eg_min = 0.0;
+  if (out.Ee_max > Ee_phys_max) out.Ee_max = Ee_phys_max;
+  if (out.Eg_max > Eg_phys_max) out.Eg_max = Eg_phys_max;
+
+  // soft photon 発散のため Eg_min は正に保つ
+  if (out.Eg_min <= 0.0) out.Eg_min = 1e-6;
+
+  return out;
 }
 
 // detres.N_theta を int として使う（型が double でもここで丸める）
@@ -176,7 +219,8 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
 }
 
 static std::string BuildMetaString(long n_theta_ok, long n_wpos,
-                                   long n_fill, double total_mass) {
+                                   long n_fill, double total_mass,
+                                   const AnalysisWindow4D& truth_win) {
   std::ostringstream oss;
   oss << "MakeRMDGridPdf meta (4D grid, phi only)\n";
   oss << "bins: Ee=" << kNBins_Ee << ", Eg=" << kNBins_Eg
@@ -186,8 +230,12 @@ static std::string BuildMetaString(long n_theta_ok, long n_wpos,
   oss << "seed=" << kSeed << "\n";
   oss << "d_min=" << kDMin << "\n";
 
-  oss << "window: Ee=[" << analysis_window.Ee_min << "," << analysis_window.Ee_max << "] MeV\n";
-  oss << "window: Eg=[" << analysis_window.Eg_min << "," << analysis_window.Eg_max << "] MeV\n";
+  oss << "truth window: Ee=[" << truth_win.Ee_min << "," << truth_win.Ee_max
+      << "] MeV (analysis +/-2sigma, physical clip)\n";
+  oss << "truth window: Eg=[" << truth_win.Eg_min << "," << truth_win.Eg_max
+      << "] MeV (analysis +/-2sigma, physical clip)\n";
+  oss << "window: Ee=[" << analysis_window.Ee_min << "," << analysis_window.Ee_max << "] MeV (observed)\n";
+  oss << "window: Eg=[" << analysis_window.Eg_min << "," << analysis_window.Eg_max << "] MeV (observed)\n";
   oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns (applied at evaluation)\n";
   oss << "window: theta=[" << analysis_window.theta_min << "," << analysis_window.theta_max << "] rad (theta_eg=|phi_e-phi_g| cut at generation)\n";
 
@@ -212,15 +260,32 @@ static std::string BuildMetaString(long n_theta_ok, long n_wpos,
 //============================================================
 
 int MakeRMDGridPdf(const char* out_filepath, const char* key) {
+  return MakeRMDGridPdfWithTruthWindow(out_filepath, key, analysis_window);
+}
+
+int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
+                                  const AnalysisWindow4D& analysis_win_for_truth) {
   if (!out_filepath || !key) {
     std::cerr << "[MakeRMDGridPdf] invalid arguments\n";
     return 1;
   }
 
-  // soft photon 発散対策：Eg_min > 0
-  if (!(analysis_window.Eg_min > 0.0)) {
-    std::cerr << "[MakeRMDGridPdf] Eg_min must be > 0 to avoid soft photon divergence.\n";
+  // 解析窓と真値窓の基本チェック
+  const AnalysisWindow4D truth_win = ExpandTruthWindow2Sigma(analysis_win_for_truth);
+  if (!IsValidTruthWindowEeEg(truth_win)) {
+    std::cerr << "[MakeRMDGridPdf] truth window (Ee/Eg) is invalid.\n";
     return 2;
+  }
+  if (!(analysis_window.Eg_min > 0.0)) {
+    std::cerr << "[MakeRMDGridPdf] analysis Eg_min must be > 0 to avoid soft photon divergence.\n";
+    return 2;
+  }
+  if (truth_win.Ee_min > analysis_window.Ee_min ||
+      truth_win.Ee_max < analysis_window.Ee_max ||
+      truth_win.Eg_min > analysis_window.Eg_min ||
+      truth_win.Eg_max < analysis_window.Eg_max) {
+    std::cerr << "[MakeRMDGridPdf] WARNING: truth window (analysis +/-2sigma, physical clip) is narrower than analysis window.\n";
+    std::cerr << "[MakeRMDGridPdf] WARNING: smearing-in contributions may be lost.\n";
   }
 
   const int N_theta = GetNTheta();
@@ -247,10 +312,10 @@ int MakeRMDGridPdf(const char* out_filepath, const char* key) {
 
   TRandom3 rng(kSeed);
 
-  const double Ee_min = analysis_window.Ee_min;
-  const double Ee_max = analysis_window.Ee_max;
-  const double Eg_min = analysis_window.Eg_min;
-  const double Eg_max = analysis_window.Eg_max;
+  const double Ee_true_min = truth_win.Ee_min;
+  const double Ee_true_max = truth_win.Ee_max;
+  const double Eg_true_min = truth_win.Eg_min;
+  const double Eg_true_max = truth_win.Eg_max;
 
   const double sigma_Ee = detres.sigma_Ee;
   const double sigma_Eg = detres.sigma_Eg;
@@ -267,8 +332,8 @@ int MakeRMDGridPdf(const char* out_filepath, const char* key) {
   long n_fill = 0;
 
   for (long it = 0; it < kNTruthSamples; ++it) {
-    const double Ee_true = rng.Uniform(Ee_min, Ee_max);
-    const double Eg_true = rng.Uniform(Eg_min, Eg_max);
+    const double Ee_true = rng.Uniform(Ee_true_min, Ee_true_max);
+    const double Eg_true = rng.Uniform(Eg_true_min, Eg_true_max);
 
     // 検出器角（離散）：θ = i*pi/N (i=0..N)
     const int ie = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_theta + 1)));
@@ -350,7 +415,7 @@ int MakeRMDGridPdf(const char* out_filepath, const char* key) {
   h.SetName(key);
   h.Write(key);
 
-  const std::string meta = BuildMetaString(n_theta_ok, n_wpos, n_fill, total_mass);
+  const std::string meta = BuildMetaString(n_theta_ok, n_wpos, n_fill, total_mass, truth_win);
   TNamed meta_obj((std::string(key) + "_meta").c_str(), meta.c_str());
   meta_obj.Write();
 

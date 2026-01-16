@@ -14,6 +14,12 @@
 //  3) `./build/make_rmd_grid_pdf` で新しい `rmd_grid.root` を作成
 //  4) 続けて解析コード実行（例: `./build/run_nll_fit ...`）
 //
+// 真値エネルギー窓は「解析窓+/-2sigma（物理領域でクリップ）」で自動決定される。
+// 解析窓（Ee, Eg）の基準を指定して生成する場合:
+//  - `./build/make_rmd_grid_pdf Ee_min Ee_max Eg_min Eg_max`
+//  - 指定した範囲を「解析窓」と見做し、+/-2sigma で広げた真値窓を使う
+//  - 解析窓（観測窓）は AnalysisWindow.h の設定を使う
+//
 // 参考: 一括ビルド用ワンライナー
 //  - 前提: カレントが repo 直下、`build/` と `data/pdf_cache/` が存在、root-config が使える
 //  - コマンド（make_rmd_grid_pdf と run_nll_fit をまとめてビルド）:
@@ -21,13 +27,39 @@
 // ------------------------------------------------------------
 
 #include <iostream>
-#include "p2meg/MakeRMDGridPdf.h"
+#include <cstdlib>
 
-int main() {
+#include "p2meg/MakeRMDGridPdf.h"
+#include "p2meg/AnalysisWindow.h"
+
+static bool ParseDouble(const char* s, double& out) {
+  if (!s) return false;
+  char* end = nullptr;
+  const double v = std::strtod(s, &end);
+  if (end == s || *end != '\0') return false;
+  out = v;
+  return true;
+}
+
+int main(int argc, char** argv) {
   const char* out = "data/pdf_cache/rmd_grid.root";
   const char* key = "rmd_grid";
 
-  const int rc = MakeRMDGridPdf(out, key);
+  AnalysisWindow4D truth_win = analysis_window;
+  if (argc == 5) {
+    if (!ParseDouble(argv[1], truth_win.Ee_min) ||
+        !ParseDouble(argv[2], truth_win.Ee_max) ||
+        !ParseDouble(argv[3], truth_win.Eg_min) ||
+        !ParseDouble(argv[4], truth_win.Eg_max)) {
+      std::cerr << "Usage: " << argv[0] << " [Ee_min Ee_max Eg_min Eg_max]\n";
+      return 1;
+    }
+  } else if (argc != 1) {
+    std::cerr << "Usage: " << argv[0] << " [Ee_min Ee_max Eg_min Eg_max]\n";
+    return 1;
+  }
+
+  const int rc = MakeRMDGridPdfWithTruthWindow(out, key, truth_win);
   std::cout << "MakeRMDGridPdf returned " << rc << std::endl;
   return rc;
 }

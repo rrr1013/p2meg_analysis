@@ -17,7 +17,7 @@
 // 出力: doc/data_hist_<入力ファイル名(拡張子除く)>.pdf（3ページ）
 //   1ページ目: メタ情報
 //   2ページ目: 1D (Ee, Eg, t, phi_detector_e, phi_detector_g, theta_eg)
-//   3ページ目: 2D (Ee,Eg), (theta_eg,t), (t,Ee), (t,Eg), (theta_eg,Ee), (phi_e,phi_g)
+//   3ページ目: 2D (Ee,Eg), (theta_eg,t), (t,Ee), (t,Eg), (theta_eg,Eg), (phi_e,phi_g)
 //
 // 実行例（リポジトリ直下から）:
 //   root -l -q 'macros/plot_data_hist.C("data/mockdata/MEGonly_simulation_dataset.dat")'
@@ -123,8 +123,8 @@ static void DrawMetaPage(const char* infile,
 #ifdef P2MEG_PLOT_ALLDATA
     lat.DrawLatex(0.05, 0.52, "Plot range (alldata):");
     lat.SetTextSize(0.030);
-    lat.DrawLatex(0.08, 0.47, "Ee [MeV]    : [0, 60]");
-    lat.DrawLatex(0.08, 0.42, "Eg [MeV]    : [0, 60]");
+    lat.DrawLatex(0.08, 0.47, "Ee [MeV]    : [0, 70]");
+    lat.DrawLatex(0.08, 0.42, "Eg [MeV]    : [0, 70]");
     lat.DrawLatex(0.08, 0.37, "t  [ns]     : [-10, 10]");
     lat.DrawLatex(0.08, 0.32, "theta_eg [rad] : [0, pi]");
 #else
@@ -158,9 +158,9 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double pi_val = 3.14159265358979323846;
 #ifdef P2MEG_PLOT_ALLDATA
     const double Ee_min = 0.0;
-    const double Ee_max = 60.0;
+    const double Ee_max = 70.0;
     const double Eg_min = 0.0;
-    const double Eg_max = 60.0;
+    const double Eg_max = 70.0;
     const double t_min  = -10.0;
     const double t_max  = 10.0;
     const double th_min = 0.0;
@@ -202,8 +202,8 @@ void plot_data_hist(const char* infile = "data/data.dat")
     TH2D* h_TEg  = new TH2D("h_TEg", "(t, Eg);t [ns];Eg [MeV]",
                             kNBins2D_t,  t_min,  t_max, kNBins2D_E, Eg_min, Eg_max);
 
-    TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
-                            kNBins2D_th, th_min, th_max, kNBins2D_E, Ee_min, Ee_max);
+    TH2D* h_ThEg = new TH2D("h_ThEg", "(theta_{eg}, Eg);theta_{eg} [rad];Eg [MeV]",
+                            kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
                             kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
@@ -270,7 +270,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
         h_ThT->Fill(theta_eg, ev.t);
         h_TEe->Fill(ev.t, ev.Ee);
         h_TEg->Fill(ev.t, ev.Eg);
-        h_ThEe->Fill(theta_eg, ev.Ee);
+        h_ThEg->Fill(theta_eg, ev.Eg);
         h_PePg->Fill(ev.phi_detector_e, ev.phi_detector_g);
     }
 
@@ -308,7 +308,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
     c2.cd(2); Draw2D(h_ThT);
     c2.cd(3); Draw2D(h_TEe);
     c2.cd(4); Draw2D(h_TEg);
-    c2.cd(5); Draw2D(h_ThEe);
+    c2.cd(5); Draw2D(h_ThEg);
     c2.cd(6); Draw2D(h_PePg);
 
     // ---- PDF（3ページ）----
