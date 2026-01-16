@@ -12,10 +12,6 @@
 
 ---
 
-
-
-
-
 ### プロンプト本文
 
 今実装した関数について、`p2meg_analysis/FUNCTIONS.md` に追記する「使い方」だけを書いてください。実装の変更提案や改善案は不要です。  
@@ -135,14 +131,16 @@
 
 ### MakeRMDGridPdf
 - Header: `include/p2meg/MakeRMDGridPdf.h`
-- 目的: 停止ミューオン静止系における RMD の偏極込み核 `RMD_d6B_dEe_dEg_dOmegae_dOmegag` と検出器分解能（Ee, Eg の独立ガウシアン）を用いて、角度離散化（`N_theta`）込みの 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を生成し、ROOT ファイルに保存します（時間 t は評価側で解析的に掛ける）。
+- 目的: 停止ミューオン静止系における RMD の偏極込み核 `RMD_d6B_dEe_dEg_dOmegae_dOmegag` と検出器分解能（`energy_response_shape_e/g` による Ee/Eg スメア）を用いて、角度離散化（`N_theta`）込みの 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を生成し、ROOT ファイルに保存します（時間 t は評価側で解析的に掛ける）。真値サンプル窓は解析窓を energy_response の 0.1 倍点まで広げ、物理領域でクリップしたものを使います。
 
 - シグネチャ
   - `int MakeRMDGridPdf(const char* out_filepath, const char* key);`
+  - `int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key, const AnalysisWindow4D& truth_win);`
 
 - 入力:
   - `out_filepath`: 出力先 ROOT ファイルパス（例：`"data/pdf_cache/rmd_grid.root"`）。
   - `key`: ROOT ファイル中に保存する格子 PDF のキー名（例：`"rmd_grid"`）。
+  - `truth_win`: 解析窓として扱う Ee/Eg を指定し、`energy_response_shape_e/g` の 0.1 倍点まで広げた真値サンプル窓を内部で作る（非物理領域は除外、Eg_min>0 が必要）。t, theta は未使用。単位は MeV。
 
 - 出力:
   - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 4D 格子 PDF（`key`）とメタ情報（`<key>_meta`, `<key>_N_theta` など）を保存する。
@@ -197,7 +195,7 @@
 
 ### SignalPdf
 - Header: `include/p2meg/SignalPdf.h`
-- 目的: 停止ミューオンの信号（μ+→e+γ）に対する解析的な 5D PDF を返す。Ee, Eg, t は解析窓内で正規化したトランケート正規分布、角度は `N_theta` 格子に丸めた離散角で扱い、理想化により θ=π のみに重みを持たせる。角度は `phi_detector_e/g`（0..π）から `theta_eg=|phi_e-phi_g|` を作って評価する（phi ベースの角度評価）。
+- 目的: 停止ミューオンの信号（μ+→e+γ）に対する解析的な 5D PDF を返す。Ee, Eg は `energy_response_shape_e/g` を解析窓内で正規化したエネルギー応答、t は解析窓内で正規化したトランケート正規分布、角度は `N_theta` 格子に丸めた離散角で扱い、理想化により θ=π のみに重みを持たせる。角度は `phi_detector_e/g`（0..π）から `theta_eg=|phi_e-phi_g|` を作って評価する（phi ベースの角度評価）。
 
 - シグネチャ
   - `double SignalPdf(double Ee, double Eg, double t, double phi_detector_e, double phi_detector_g, const AnalysisWindow4D& win, const DetectorResolutionConst& res, const ParticleMasses& ms = kMassesPDG);`
@@ -209,7 +207,7 @@
   - `phi_detector_e`: 偏極軸と e 側検出器代表方向の角度 φ_e [rad]（0..π を想定）
   - `phi_detector_g`: 偏極軸と γ 側検出器代表方向の角度 φ_g [rad]（0..π を想定）
   - `win`: 解析窓（Ee, Eg, t, theta の各範囲）
-  - `res`: 分解能パラメータ（`sigma_Ee`, `sigma_Eg`, `sigma_t`, `N_theta`, `t_mean`）
+  - `res`: 分解能パラメータ（`sigma_t`, `N_theta`, `t_mean` を使用。Ee/Eg の応答 shape は `DetectorResolution.h` の `energy_response_shape_e/g` を参照）
   - `ms`: 粒子質量（`m_mu`, `m_e`）。省略時は `kMassesPDG`（信号真値 Ee0=Eg0=m_mu/2 に使用）
 
 - 出力:

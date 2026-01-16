@@ -4,6 +4,9 @@
 //   ./build/run_nll_fit ./data/mockdata/MEGonly_simulation_dataset.dat data/pdf_cache/rmd_grid.root rmd_grid
 //   Ee Egamma t phi_detector_e phi_detector_g
 //
+// コンパイル例:
+//   g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude $(root-config --cflags) -o build/run_nll_fit scripts/run_nll_fit.cc src/RMDGridPdf.cc src/Likelihood.cc src/NLLFit.cc src/PdfWrappers.cc src/SignalPdf.cc src/ConstraintNLL.cc $(root-config --libs)
+//
 // 先頭行のヘッダや # コメント行は自動でスキップします。
 //
 // 注意:
@@ -17,6 +20,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cmath>
+#include <limits>
 
 #include "p2meg/Event.h"
 #include "p2meg/Likelihood.h"
@@ -29,10 +33,13 @@
 #include "p2meg/RMDGridPdf.h"
 
 // デバッグ用: 解析窓内イベントの値を表示したいときはコメントを外す
- #define P2MEG_DEBUG_PRINT_WINDOW_EVENTS
+// #define P2MEG_DEBUG_PRINT_WINDOW_EVENTS
 
 // デバッグ用: フィット失敗時に pi<=0 を起こすイベントを表示したいときはコメントを外す
  #define P2MEG_DEBUG_PRINT_ZERO_PI_EVENTS
+
+// デバッグ用: pi<=0 イベントの q^2 を表示したいときはコメントを外す
+ #define P2MEG_DEBUG_PRINT_ZERO_PI_Q2
 
 static bool IsFinite(double x) { return std::isfinite(x); }
 
@@ -49,6 +56,43 @@ static double ThetaFromPhi(double phi_e, double phi_g)
   const double pe = Clamp(phi_e, 0.0, pi);
   const double pg = Clamp(phi_g, 0.0, pi);
   return std::fabs(pe - pg);
+}
+
+// RMD の q^2/m_mu^2 を評価（参考: RMDSpectrum の定義）
+static double RmdQ2OverM2(double Ee, double Eg, double phi_e, double phi_g)
+{
+  if (!IsFinite(Ee) || !IsFinite(Eg)) return std::numeric_limits<double>::quiet_NaN();
+  if (!(Ee > 0.0) || !(Eg > 0.0)) return std::numeric_limits<double>::quiet_NaN();
+
+  const double mmu = kMassesPDG.m_mu; // [MeV]
+  const double me  = kMassesPDG.m_e;  // [MeV]
+  if (!(mmu > 0.0) || !IsFinite(mmu) || !IsFinite(me)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  // x=2Ee/m_mu, y=2Eg/m_mu（無次元）
+  const double x = 2.0 * Ee / mmu;
+  const double y = 2.0 * Eg / mmu;
+  if (!(x > 0.0) || !(y > 0.0)) return std::numeric_limits<double>::quiet_NaN();
+
+  // r=(me/m_mu)^2（無次元）
+  const double r = (me * me) / (mmu * mmu);
+
+  // beta = sqrt(1 - 4r/x^2)（無次元）
+  const double t = 1.0 - 4.0 * r / (x * x);
+  if (!(t > 0.0) || !IsFinite(t)) return std::numeric_limits<double>::quiet_NaN();
+  const double beta = std::sqrt(t);
+
+  // theta_eg = |phi_e - phi_g|（rad）
+  const double theta_eg = ThetaFromPhi(phi_e, phi_g);
+  if (!(theta_eg >= 0.0)) return std::numeric_limits<double>::quiet_NaN();
+
+  // d = 1 - beta * cos(theta_eg)（無次元）
+  const double d = 1.0 - beta * std::cos(theta_eg);
+
+  // q^2/m_mu^2 = 1 + r - x - y + (x*y/2)*d（無次元）
+  const double q2_over_m2 = 1.0 + r - x - y + 0.5 * x * y * d;
+  return IsFinite(q2_over_m2) ? q2_over_m2 : std::numeric_limits<double>::quiet_NaN();
 }
 
 // データが解析窓に入っているかの簡易判定
@@ -91,6 +135,21 @@ static bool ParseDoublesFromLine(const std::string& line, std::vector<double>& o
   while (iss >> v) out.push_back(v);
 
   return true;
+}
+
+static double EvalPiWithStartYields(const Event& ev,
+                                    const std::vector<PdfComponent>& components,
+                                    const std::vector<double>& yields)
+{
+  const std::size_t npar = components.size();
+  double pi = 0.0;
+  for (std::size_t k = 0; k < npar; ++k) {
+    double pk = components[k].eval ? components[k].eval(ev, components[k].ctx) : 0.0;
+    if (!std::isfinite(pk) || pk < 0.0) pk = 0.0;
+    const double Nk = (k < yields.size()) ? yields[k] : 0.0;
+    pi += Nk * pk;
+  }
+  return pi;
 }
 
 static bool LoadEventsFromDat(const char* filepath,
@@ -221,14 +280,31 @@ int main(int argc, char** argv)
   components.push_back(MakeRMDComponent());
 
   // 5) 初期値（データを差し替えても動くようにNに比例させる）
-  const double N = static_cast<double>(events_in_window.size());
+  const double N0 = static_cast<double>(events_in_window.size());
   FitConfig cfg;
-  cfg.start_yields = {0.9 * N, 0.1 * N}; // {N_sig, N_rmd}
+  cfg.start_yields = {0.9 * N0, 0.1 * N0}; // {N_sig, N_rmd}
   cfg.max_calls = 20000;
   cfg.tol = 1e-3;
 
-  // 6) フィット
-  const FitResult res = FitNLL(events_in_window, components, cfg);
+  // 6) pi<=0 のイベントはフィットから除外（デバッグ表示は後段のまま）
+  std::vector<Event> events_fit;
+  events_fit.reserve(events_in_window.size());
+  for (const auto& ev : events_in_window) {
+    const double pi = EvalPiWithStartYields(ev, components, cfg.start_yields);
+    if (pi > 0.0 && std::isfinite(pi)) {
+      events_fit.push_back(ev);
+    }
+  }
+  if (events_fit.empty()) {
+    std::cerr << "[run_nll_fit] no events remain after pi<=0 cut. Aborting fit.\n";
+    return 4;
+  }
+
+  const double N = static_cast<double>(events_fit.size());
+  cfg.start_yields = {0.9 * N, 0.1 * N}; // {N_sig, N_rmd}
+
+  // 7) フィット
+  const FitResult res = FitNLL(events_fit, components, cfg);
 
 #ifdef P2MEG_DEBUG_PRINT_ZERO_PI_EVENTS
   if (res.status != 0 || !std::isfinite(res.nll_min) || res.nll_min >= 1e99) {
@@ -262,6 +338,14 @@ int main(int argc, char** argv)
         for (std::size_t k = 0; k < npar; ++k) {
           std::cout << " " << components[k].name << "=" << pks[k];
         }
+#ifdef P2MEG_DEBUG_PRINT_ZERO_PI_Q2
+        const double q2_over_m2 = RmdQ2OverM2(ev.Ee, ev.Eg, ev.phi_detector_e, ev.phi_detector_g);
+        const double mmu = kMassesPDG.m_mu; // [MeV]
+        const double q2 = (std::isfinite(q2_over_m2) && std::isfinite(mmu)) ? (q2_over_m2 * mmu * mmu)
+                                                                            : std::numeric_limits<double>::quiet_NaN();
+        std::cout << " q2_over_m2=" << q2_over_m2
+                  << " q2=" << q2;
+#endif
         std::cout << " pi=" << pi << "\n";
       }
     }

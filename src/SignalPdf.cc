@@ -90,8 +90,6 @@ double SignalPdf(double Ee, double Eg, double t,
   if (!std::isfinite(Ee) || !std::isfinite(Eg) || !std::isfinite(t)) return 0.0;
 
   // 分解能チェック（角度は離散なので sigma_theta は不要）
-  if (!(res.sigma_Ee > 0.0)) return 0.0;
-  if (!(res.sigma_Eg > 0.0)) return 0.0;
   if (!(res.sigma_t  > 0.0)) return 0.0;
   if (!(res.N_theta  >= 1))  return 0.0;
 
@@ -117,11 +115,11 @@ double SignalPdf(double Ee, double Eg, double t,
   const double Eg0 = 0.5 * ms.m_mu;
   const double t0  = res.t_mean;
 
-  // Ee, Eg, t の窓内正規化トランケート正規
-  const double pEe = TruncNormalPdf(Ee, Ee0, res.sigma_Ee, win.Ee_min, win.Ee_max);
+  // Ee, Eg は energy_response_shape_e/g で評価（窓内で正規化）
+  const double pEe = energy_response_pdf_window_e(Ee, Ee0, win.Ee_min, win.Ee_max);
   if (!(pEe > 0.0)) return 0.0;
 
-  const double pEg = TruncNormalPdf(Eg, Eg0, res.sigma_Eg, win.Eg_min, win.Eg_max);
+  const double pEg = energy_response_pdf_window_g(Eg, Eg0, win.Eg_min, win.Eg_max);
   if (!(pEg > 0.0)) return 0.0;
 
   const double pt  = TruncNormalPdf(t,  t0,  res.sigma_t,  win.t_min,  win.t_max);

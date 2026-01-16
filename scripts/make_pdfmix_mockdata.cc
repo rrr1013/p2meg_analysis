@@ -21,7 +21,7 @@
 //  - 解析窓: analysis_window
 //  - 分解能: detres
 //  - 質量:   kMassesPDG
-//  - RMD 格子: data/pdf_cache/rmd_grid.root, key="rmd_grid"
+//  - RMD 格子: data/pdf_cache/rmd_grid_gen.root, key="rmd_grid"
 //
 // g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude \
     $(root-config --cflags) \
@@ -60,7 +60,7 @@
 
 // ---- 自動設定（必要ならここだけ変更）----
 static const char* kOutDir = "data/mockdata";
-static const char* kRmdGridFile = "data/pdf_cache/rmd_grid.root";
+static const char* kRmdGridFile = "data/pdf_cache/rmd_grid_gen.root";
 static const char* kRmdGridKey  = "rmd_grid";
 
 // pmax 初期推定のプリスキャン回数（0でも動くが、あると少し速い）
