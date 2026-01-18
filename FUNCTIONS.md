@@ -57,6 +57,211 @@
 
 # Function list
 
+## Index
+- Math_IsFinite (include/p2meg/MathUtils.h)
+- Math_Clamp (include/p2meg/MathUtils.h)
+- Math_GetNTheta (include/p2meg/MathUtils.h)
+- Angle_ClipPhi0Pi (include/p2meg/AngleUtils.h)
+- Angle_DiscretizePhi (include/p2meg/AngleUtils.h)
+- Angle_ThetaFromPhiStrict (include/p2meg/AngleUtils.h)
+- Angle_ThetaFromPhiClipped (include/p2meg/AngleUtils.h)
+- AnalysisWindow_In4D (include/p2meg/AnalysisWindowUtils.h)
+- AnalysisWindow_In3D (include/p2meg/AnalysisWindowUtils.h)
+- AnalysisWindow_InTime (include/p2meg/AnalysisWindowUtils.h)
+- Hist_AxisBracketUniform (include/p2meg/HistUtils.h)
+- Hist_InterpEeEg4 (include/p2meg/HistUtils.h)
+- Hist_SumAllBins4 (include/p2meg/HistUtils.h)
+
+### Math_IsFinite
+- Header: `include/p2meg/MathUtils.h`
+- 目的: 数値が有限かどうかを判定します（NaN/inf を除外するガード）。
+
+- シグネチャ
+  - `static inline bool Math_IsFinite(double x);`
+
+- 入力:
+  - `x`: 判定対象の実数。
+
+- 出力:
+  - 戻り値: 有限なら `true`、NaN または ±inf なら `false` を返します。
+
+### Math_Clamp
+- Header: `include/p2meg/MathUtils.h`
+- 目的: 値を指定範囲 [lo, hi] にクリップします（物理カットではない数値ガード）。
+
+- シグネチャ
+  - `static inline double Math_Clamp(double x, double lo, double hi);`
+
+- 入力:
+  - `x`: 入力値。
+  - `lo`: 下限。
+  - `hi`: 上限。
+
+- 出力:
+  - 戻り値: `x` を [lo, hi] に収めた値を返します。
+
+### Math_GetNTheta
+- Header: `include/p2meg/MathUtils.h`
+- 目的: 分解能設定 `N_theta` を安全に int として取得し、最小値 1 を保証します。
+
+- シグネチャ
+  - `static inline int Math_GetNTheta(const DetectorResolutionConst& res);`
+
+- 入力:
+  - `res`: 検出器分解能設定（`DetectorResolutionConst`）。
+
+- 出力:
+  - 戻り値: `res.N_theta` を丸めた整数値（下限 1）。不正値でも 1 を返します。
+
+### Angle_ClipPhi0Pi
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: 角度 φ を [0, π] にクリップします（不正入力は 0 に落とす）。
+
+- シグネチャ
+  - `static inline double Angle_ClipPhi0Pi(double phi);`
+
+- 入力:
+  - `phi`: 角度 φ [rad]。
+
+- 出力:
+  - 戻り値: φ を [0, π] に収めた値を返します。
+
+### Angle_DiscretizePhi
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: 角度 φ を [0, π] にクリップしたうえで、離散格子点 φ_i=iπ/N_theta に丸めます。
+
+- シグネチャ
+  - `static inline double Angle_DiscretizePhi(double phi, int N_theta);`
+
+- 入力:
+  - `phi`: 角度 φ [rad]。
+  - `N_theta`: 角度分割数（`N_theta>=1` を想定）。
+
+- 出力:
+  - 戻り値: 離散格子点に丸めた φ を返します。不正値の場合は 0 を返します。
+
+### Angle_ThetaFromPhiStrict
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: φ_e, φ_g から e-γ の相対角 θ=|φ_e-φ_g| を求めます（範囲外は不正扱い）。
+
+- シグネチャ
+  - `static inline double Angle_ThetaFromPhiStrict(double phi_e, double phi_g);`
+
+- 入力:
+  - `phi_e`: e 側検出器の角度 φ_e [rad]（0..π を想定）。
+  - `phi_g`: γ 側検出器の角度 φ_g [rad]（0..π を想定）。
+
+- 出力:
+  - 戻り値: 有効なら θ=|φ_e-φ_g| を返します。不正入力では -1 を返します。
+
+### Angle_ThetaFromPhiClipped
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: φ_e, φ_g を [0, π] に収めてから相対角 θ=|φ_e-φ_g| を求めます。
+
+- シグネチャ
+  - `static inline double Angle_ThetaFromPhiClipped(double phi_e, double phi_g);`
+
+- 入力:
+  - `phi_e`: e 側検出器の角度 φ_e [rad]。
+  - `phi_g`: γ 側検出器の角度 φ_g [rad]。
+
+- 出力:
+  - 戻り値: クリップ後の θ を返します。不正入力では 0 を返します。
+
+### AnalysisWindow_In4D
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 解析窓 (Ee, Eg, t, theta) の範囲内かどうかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_In4D(const AnalysisWindow4D& win, double Ee, double Eg, double t, double theta);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `t`: 到達時間差 Δt [ns]。
+  - `theta`: e-γ 相対角 θ [rad]。
+
+- 出力:
+  - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### AnalysisWindow_In3D
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 解析窓 (Ee, Eg, theta) の範囲内かどうかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_In3D(const AnalysisWindow4D& win, double Ee, double Eg, double theta);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `theta`: e-γ 相対角 θ [rad]。
+
+- 出力:
+  - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### AnalysisWindow_InTime
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 解析窓の時間範囲に入っているかどうかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_InTime(const AnalysisWindow4D& win, double t);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `t`: 到達時間差 Δt [ns]。
+
+- 出力:
+  - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### Hist_AxisBracketUniform
+- Header: `include/p2meg/HistUtils.h`
+- 目的: 等間隔ビン軸に対して、補間用の隣接ビンと係数 (i0, i1, f) を求めます。
+
+- シグネチャ
+  - `int Hist_AxisBracketUniform(const TAxis& ax, double x, int& i0, int& i1, double& f);`
+
+- 入力:
+  - `ax`: ROOT の軸（等間隔ビン前提）。
+  - `x`: 対象の座標。
+  - `i0`: 出力（下側のビン番号 1..n-1）。
+  - `i1`: 出力（上側のビン番号 i0+1）。
+  - `f`: 出力（補間係数、0..1）。
+
+- 出力:
+  - 戻り値: 成功時 0、失敗時は非0 を返します。
+
+### Hist_InterpEeEg4
+- Header: `include/p2meg/HistUtils.h`
+- 目的: 4D THnD の Ee/Eg を 2D（4点）補間し、phi は固定ビンで評価します。
+
+- シグネチャ
+  - `double Hist_InterpEeEg4(const THnD& h, double Ee, double Eg, int bin_phi_e, int bin_phi_g);`
+
+- 入力:
+  - `h`: 4D ヒストグラム（Ee, Eg, phi_e, phi_g）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `bin_phi_e`: phi_e のビン番号。
+  - `bin_phi_g`: phi_g のビン番号。
+
+- 出力:
+  - 戻り値: 補間値（不正/負値は 0 を返します）。
+
+### Hist_SumAllBins4
+- Header: `include/p2meg/HistUtils.h`
+- 目的: 4D THnD の全ビン内容の総和を返します。
+
+- シグネチャ
+  - `double Hist_SumAllBins4(const THnD& h);`
+
+- 入力:
+  - `h`: 4D ヒストグラム。
+
+- 出力:
+  - 戻り値: 全ビンの総和を返します。
+
 
 ### Michel_d2Shape_dE_dCosTheta
 - Header: `include/p2meg/MichelSpectrum.h`
