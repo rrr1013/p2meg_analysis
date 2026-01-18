@@ -23,6 +23,8 @@
 //   root -l -q 'macros/plot_data_hist.C("data/mockdata/testdata1.dat")'
 //
 
+R__ADD_INCLUDE_PATH(./include)
+
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -37,9 +39,9 @@
 #include "TString.h"
 #include "TLatex.h"
 
-#include "../include/p2meg/AnalysisWindow.h"
-#include "../include/p2meg/AnalysisWindowUtils.h"
-#include "../include/p2meg/Event.h"
+#include "p2meg/AnalysisWindow.h"
+#include "p2meg/AnalysisWindowUtils.h"
+#include "p2meg/Event.h"
 
 // ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
  #define P2MEG_PLOT_ALLDATA

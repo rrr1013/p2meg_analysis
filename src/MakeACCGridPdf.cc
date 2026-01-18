@@ -28,6 +28,11 @@
 static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
 
+// ---- TSB の全時間範囲（基本案）----
+// 実データの取得レンジに合わせて変更すること。
+static constexpr double kTAllMin = -10.0; // [ns]
+static constexpr double kTAllMax =  10.0; // [ns]
+
 //============================================================
 // 内部補助
 //============================================================
@@ -118,7 +123,9 @@ static double CheckNormalizationEeEg(const THnD& h) {
 static std::string BuildMetaString(long n_total, long n_finite,
                                    long n_in_window, long n_tsb,
                                    long n_fill, double total_mass,
-                                   double norm_check, int N_theta) {
+                                   double norm_check, int N_theta,
+                                   double t_all_min, double t_all_max,
+                                   double w_tsb) {
   const double dphi = pi / static_cast<double>(N_theta);
 
   std::ostringstream oss;
@@ -129,7 +136,9 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "phi axis: stored as uniform bins [-dphi/2, pi+dphi/2], dphi=" << dphi << " rad\n";
   oss << "window: Ee=[" << analysis_window.Ee_min << "," << analysis_window.Ee_max << "] MeV\n";
   oss << "window: Eg=[" << analysis_window.Eg_min << "," << analysis_window.Eg_max << "] MeV\n";
-  oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns (TSB uses t outside)\n";
+  oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns\n";
+  oss << "t_all: [" << t_all_min << "," << t_all_max << "] ns\n";
+  oss << "TSB: t in [t_all] and outside window (width=" << w_tsb << " ns)\n";
   oss << "window: theta=[" << analysis_window.theta_min << "," << analysis_window.theta_max << "] rad (theta_eg=|phi_e-phi_g|)\n";
   oss << "normalization: sum_{phi_e,phi_g} integral dEe dEg p4 = 1\n";
   oss << "events_total=" << n_total << "\n";
@@ -180,6 +189,8 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   long n_tsb = 0;
   long n_fill = 0;
 
+  const double w_tsb = AnalysisWindow_TimeSidebandWidth(analysis_window, kTAllMin, kTAllMax);
+
   for (const auto& ev : events) {
     ++n_total;
     const double Ee = ev.Ee;
@@ -201,7 +212,9 @@ int MakeACCGridPdf(const std::vector<Event>& events,
     if (!AnalysisWindow_In3D(analysis_window, Ee, Eg, theta_eg)) continue;
     ++n_in_window;
 
-    if (AnalysisWindow_InTime(analysis_window, t)) continue;
+    if (!AnalysisWindow_InTSB(analysis_window, Ee, Eg, theta_eg, t, kTAllMin, kTAllMax)) {
+      continue;
+    }
     ++n_tsb;
 
     double x[4] = {Ee, Eg, phi_e_disc, phi_g_disc};
@@ -242,7 +255,8 @@ int MakeACCGridPdf(const std::vector<Event>& events,
 
   const std::string meta = BuildMetaString(n_total, n_finite, n_in_window,
                                            n_tsb, n_fill, total_mass,
-                                           norm_check, N_theta);
+                                           norm_check, N_theta,
+                                           kTAllMin, kTAllMax, w_tsb);
   TNamed meta_obj((std::string(key) + "_meta").c_str(), meta.c_str());
   meta_obj.Write();
 

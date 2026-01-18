@@ -57,21 +57,6 @@
 
 # Function list
 
-## Index
-- Math_IsFinite (include/p2meg/MathUtils.h)
-- Math_Clamp (include/p2meg/MathUtils.h)
-- Math_GetNTheta (include/p2meg/MathUtils.h)
-- Angle_ClipPhi0Pi (include/p2meg/AngleUtils.h)
-- Angle_DiscretizePhi (include/p2meg/AngleUtils.h)
-- Angle_ThetaFromPhiStrict (include/p2meg/AngleUtils.h)
-- Angle_ThetaFromPhiClipped (include/p2meg/AngleUtils.h)
-- AnalysisWindow_In4D (include/p2meg/AnalysisWindowUtils.h)
-- AnalysisWindow_In3D (include/p2meg/AnalysisWindowUtils.h)
-- AnalysisWindow_InTime (include/p2meg/AnalysisWindowUtils.h)
-- Hist_AxisBracketUniform (include/p2meg/HistUtils.h)
-- Hist_InterpEeEg4 (include/p2meg/HistUtils.h)
-- Hist_SumAllBins4 (include/p2meg/HistUtils.h)
-
 ### Math_IsFinite
 - Header: `include/p2meg/MathUtils.h`
 - 目的: 数値が有限かどうかを判定します（NaN/inf を除外するガード）。
@@ -214,6 +199,56 @@
 
 - 出力:
   - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### AnalysisWindow_InTimeSideband
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 全時間範囲 [t_all_min, t_all_max] の中で、解析窓の時間範囲 [win.t_min, win.t_max] の外側（TSB: timing sideband）に入っているかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_InTimeSideband(const AnalysisWindow4D& win, double t, double t_all_min, double t_all_max);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`。ここでは `t_min`, `t_max` を使用）。
+  - `t`: 到達時間差 Δt [ns]。
+  - `t_all_min`: 全時間範囲の下限 [ns]。
+  - `t_all_max`: 全時間範囲の上限 [ns]。
+
+- 出力:
+  - 戻り値: 全時間範囲内かつ解析窓の外側（TSB）なら `true`、それ以外（全時間範囲外、解析窓内、不正入力など）は `false` を返します。
+
+### AnalysisWindow_InTSB
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: (Ee, Eg, theta) が解析窓内で、かつ t が全時間範囲内で解析窓外（TSB）であるかを判定します（TSB イベント選別用）。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_InTSB(const AnalysisWindow4D& win, double Ee, double Eg, double theta, double t, double t_all_min, double t_all_max);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `theta`: e-γ 相対角 θ [rad]。
+  - `t`: 到達時間差 Δt [ns]。
+  - `t_all_min`: 全時間範囲の下限 [ns]。
+  - `t_all_max`: 全時間範囲の上限 [ns]。
+
+- 出力:
+  - 戻り値: (Ee,Eg,theta) が窓内かつ t が TSB なら `true`、それ以外は `false` を返します。
+
+### AnalysisWindow_TimeSidebandWidth
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 全時間範囲 [t_all_min, t_all_max] に対する TSB（解析窓外側）の合計幅（左 + 右）を返します（TSB→解析窓へのスケール係数計算などに使用）。
+
+- シグネチャ
+  - `static inline double AnalysisWindow_TimeSidebandWidth(const AnalysisWindow4D& win, double t_all_min, double t_all_max);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`。ここでは `t_min`, `t_max` を使用）。
+  - `t_all_min`: 全時間範囲の下限 [ns]。
+  - `t_all_max`: 全時間範囲の上限 [ns]。
+
+- 出力:
+  - 戻り値: TSB の合計幅 [ns] を返します。不正入力や幅が 0 の場合は 0 を返します。
 
 ### Hist_AxisBracketUniform
 - Header: `include/p2meg/HistUtils.h`
@@ -399,7 +434,7 @@
 
 ### MakeACCGridPdf
 - Header: `include/p2meg/MakeACCGridPdf.h`
-- 目的: ACC (accidental) 成分の TSB（時間が解析窓外）イベントから、解析窓内の 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を作成して ROOT に保存します。phi は N_theta の離散点に丸め、正規化は「Σ_{phi_e,phi_g} ∫ dEe dEg p4 = 1」となるよう Ee/Eg の bin 幅のみを測度に入れます。時間は評価側で解析窓内一様として掛けます。
+- 目的: ACC (accidental) 成分の TSB（時間が全時間範囲内で解析窓外）イベントから、解析窓内の 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を作成して ROOT に保存します。phi は N_theta の離散点に丸め、正規化は「Σ_{phi_e,phi_g} ∫ dEe dEg p4 = 1」となるよう Ee/Eg の bin 幅のみを測度に入れます。時間は評価側で解析窓内一様として掛けます。
 
 - シグネチャ
   - `int MakeACCGridPdf(const std::vector<Event>& events, const char* out_filepath, const char* key);`
