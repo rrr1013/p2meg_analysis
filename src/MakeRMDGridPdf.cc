@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <limits>
 
 #include "TFile.h"
 #include "TNamed.h"
@@ -120,6 +121,10 @@ static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base
 static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
   const double dth = pi / static_cast<double>(N_theta);
 
+  // ROOT のビンは [low, high) なので、phi=pi を in-range に入れるため上端を僅かに広げる
+  const double pi_plus =
+      std::nextafter(pi, std::numeric_limits<double>::infinity());
+
   std::vector<double> edges;
   edges.resize(static_cast<size_t>(N_theta + 2));
 
@@ -127,11 +132,11 @@ static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
   for (int i = 1; i <= N_theta; ++i) {
     edges[i] = (static_cast<double>(i) - 0.5) * dth;
   }
-  edges[N_theta + 1] = pi;
+  edges[N_theta + 1] = pi_plus;
 
   for (int k = 1; k < static_cast<int>(edges.size()); ++k) {
     if (edges[k] < edges[k - 1]) edges[k] = edges[k - 1];
-    edges[k] = Math_Clamp(edges[k], 0.0, pi);
+    edges[k] = Math_Clamp(edges[k], 0.0, pi_plus);
   }
 
   return edges;
@@ -278,11 +283,15 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
   const int N_theta = Math_GetNTheta(detres);
   const double dth = pi / static_cast<double>(N_theta);
 
+  const double pi_plus =
+      std::nextafter(pi, std::numeric_limits<double>::infinity());
+
   // ---- 4Dヒスト（Ee, Eg, phi_e, phi_g） ----
   const int ndim = 4;
   int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_theta + 1, N_theta + 1};
   double xmin[ndim] = {analysis_window.Ee_min, analysis_window.Eg_min, 0.0, 0.0};
-  double xmax[ndim] = {analysis_window.Ee_max, analysis_window.Eg_max, pi, pi};
+  // phi=pi が overflow に落ちないよう、phi 軸の上端だけ僅かに広げる
+  double xmax[ndim] = {analysis_window.Ee_max, analysis_window.Eg_max, pi_plus, pi_plus};
 
   THnD h("rmd_grid_tmp", "RMD grid (phi);Ee;Eg;phi_e;phi_g", ndim, nbins, xmin, xmax);
   h.Sumw2();

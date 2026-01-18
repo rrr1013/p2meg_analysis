@@ -686,21 +686,6 @@ PdfComponent MakeACCComponent();
 - 出力:
   - 戻り値: ACC成分の `PdfComponent`（`name="acc"`, `eval=&ACCGridPdfEval`, `ctx=nullptr`）
 
-### ACC PDF 最小使用例
-- ACC 4D 格子 PDF の生成（TSB 入力から）:
-```cpp
-./build/make_acc_grid_pdf data/mockdata/acc_5000.dat data/pdf_cache/acc_grid.root acc_grid
-```
-
-- ロードして評価・尤度成分に追加:
-```cpp
-ACCGridPdf_Load("data/pdf_cache/acc_grid.root", "acc_grid");
-std::vector<PdfComponent> components;
-components.push_back(MakeSignalComponent(&sig_ctx));
-components.push_back(MakeRMDComponent());
-components.push_back(MakeACCComponent());
-```
-
 ### FitConfig
 - Header: `include/p2meg/NLLFit.h`
 - 目的: `FitNLL` に渡す最小化設定（初期値・反復回数・収束判定）をまとめた構造体を提供します。

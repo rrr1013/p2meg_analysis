@@ -6,8 +6,9 @@
 #include <string>
 
 #include "TFile.h"
-#include "THn.h"
 #include "TAxis.h"
+#include "THn.h"
+#include "TParameter.h"
 
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/AnalysisWindowUtils.h"
@@ -22,7 +23,6 @@
 
 // 4D 格子
 static THnD* gHist = nullptr;
-
 
 //============================================================
 // 公開関数
@@ -53,6 +53,22 @@ bool ACCGridPdf_Load(const char* filepath, const char* key) {
     std::cerr << "[ACCGridPdf_Load] object is not THnD: " << key << "\n";
     f.Close();
     return false;
+  }
+
+  // ---- メタ情報の整合性チェック（警告のみ）----
+  {
+    const std::string kNtheta = std::string(key) + "_N_theta";
+    TObject* par = f.Get(kNtheta.c_str());
+    TParameter<int>* pN = dynamic_cast<TParameter<int>*>(par);
+    if (pN) {
+      const int fileN = pN->GetVal();
+      const int nowN  = Math_GetNTheta(detres);
+      if (fileN != nowN) {
+        std::cerr << "[ACCGridPdf_Load] WARNING: N_theta mismatch (file="
+                  << fileN << ", current detres=" << nowN
+                  << "). ACC pdf may become sparse/zero.\n";
+      }
+    }
   }
 
   if (h->GetNdimensions() != 4) {

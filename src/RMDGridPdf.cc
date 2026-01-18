@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <limits>
 
 #include "TFile.h"
 #include "THn.h"
@@ -119,13 +120,15 @@ double RMDGridPdf(double Ee, double Eg, double t,
   // 解析窓（4D: Ee,Eg,t,theta）でカット
   if (!AnalysisWindow_In4D(analysis_window, Ee, Eg, t, theta_eg)) return 0.0;
 
-  // phi は物理範囲にクリップ
-  const double pe_in = Math_Clamp(phi_detector_e, 0.0, pi);
-  const double pg_in = Math_Clamp(phi_detector_g, 0.0, pi);
-
-  // phi 軸は「最近傍θ格子」になる可変ビンのはずなので FindBin で最近傍に落ちる
+  // phi は軸範囲にクリップ（x==xmax は overflow になり得るので、必ず xmax の内側へ落とす）
   const TAxis* axPe = gHist->GetAxis(2);
   const TAxis* axPg = gHist->GetAxis(3);
+  const double pe_hi = std::nextafter(axPe->GetXmax(), 0.0);
+  const double pg_hi = std::nextafter(axPg->GetXmax(), 0.0);
+  const double pe_in = Math_Clamp(phi_detector_e, 0.0, pe_hi);
+  const double pg_in = Math_Clamp(phi_detector_g, 0.0, pg_hi);
+
+  // phi 軸は可変ビンなので FindBin で最近傍に落ちる
   const int bin_pe = axPe->FindBin(pe_in);
   const int bin_pg = axPg->FindBin(pg_in);
 
