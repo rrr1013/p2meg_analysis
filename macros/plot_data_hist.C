@@ -38,6 +38,7 @@
 #include "TLatex.h"
 
 #include "../include/p2meg/AnalysisWindow.h"
+#include "../include/p2meg/AnalysisWindowUtils.h"
 #include "../include/p2meg/Event.h"
 
 // ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
@@ -71,14 +72,6 @@ static bool ParseEventLine5Doubles(const std::string& line,
     return true;
 }
 
-static bool InAnalysisWindow(double Ee, double Eg, double t, double theta_eg)
-{
-    if (Ee       < analysis_window.Ee_min    || Ee       > analysis_window.Ee_max)    return false;
-    if (Eg       < analysis_window.Eg_min    || Eg       > analysis_window.Eg_max)    return false;
-    if (t        < analysis_window.t_min     || t        > analysis_window.t_max)     return false;
-    if (theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) return false;
-    return true;
-}
 
 static TString MakeOutputPdfPath(const char* infile)
 {
@@ -243,7 +236,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
         double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
 
 #ifndef P2MEG_PLOT_ALLDATA
-        if (!InAnalysisWindow(ev.Ee, ev.Eg, ev.t, theta_eg)) {
+        if (!AnalysisWindow_In4D(analysis_window, ev.Ee, ev.Eg, ev.t, theta_eg)) {
             ++n_outwin;
             continue;
         }

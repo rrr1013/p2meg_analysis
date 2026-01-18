@@ -19,6 +19,8 @@
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/DetectorResolution.h"
 #include "p2meg/Constants.h"
+#include "p2meg/HistUtils.h"
+#include "p2meg/MathUtils.h"
 #include "p2meg/RMDSpectrum.h"
 
 //============================================================
@@ -55,14 +57,6 @@ static constexpr int kProgressIntervalMs = 200;
 // 内部補助
 //============================================================
 
-static bool IsFinite(double x) { return std::isfinite(x); }
-
-static double Clamp(double x, double lo, double hi) {
-  if (x < lo) return lo;
-  if (x > hi) return hi;
-  return x;
-}
-
 static bool IsInsideWindow_EeEg(double Ee, double Eg) {
   if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return false;
   if (Eg < analysis_window.Eg_min || Eg > analysis_window.Eg_max) return false;
@@ -76,8 +70,8 @@ static bool IsInsideWindowTheta(double theta_eg) {
 
 // 真値サンプル窓のチェック（Ee, Eg のみ使用）
 static bool IsValidTruthWindowEeEg(const AnalysisWindow4D& win) {
-  if (!IsFinite(win.Ee_min) || !IsFinite(win.Ee_max)) return false;
-  if (!IsFinite(win.Eg_min) || !IsFinite(win.Eg_max)) return false;
+  if (!Math_IsFinite(win.Ee_min) || !Math_IsFinite(win.Ee_max)) return false;
+  if (!Math_IsFinite(win.Eg_min) || !Math_IsFinite(win.Eg_max)) return false;
   if (!(win.Ee_min < win.Ee_max)) return false;
   if (!(win.Eg_min < win.Eg_max)) return false;
   // soft photon 発散のため Eg_min > 0 を要求
@@ -120,14 +114,6 @@ static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base
 }
 
 // detres.N_theta を int として使う（型が double でもここで丸める）
-static int GetNTheta() {
-  // N_theta >= 1 を想定（0 は不正）
-  const double x = static_cast<double>(detres.N_theta);
-  int N = static_cast<int>(std::lround(x));
-  if (N < 1) N = 1;
-  return N;
-}
-
 // φ= i*pi/N (i=0..N) の格子に対応する phi 軸の可変ビン境界を作る。
 // 「最近傍θ格子」になるように、φ の中点 (i+0.5)*Δθ を境界にする。
 // 出力: edges サイズ = (N+1)+1 = N+2、x は昇順（0..π）
@@ -145,37 +131,10 @@ static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
 
   for (int k = 1; k < static_cast<int>(edges.size()); ++k) {
     if (edges[k] < edges[k - 1]) edges[k] = edges[k - 1];
-    edges[k] = Clamp(edges[k], 0.0, pi);
+    edges[k] = Math_Clamp(edges[k], 0.0, pi);
   }
 
   return edges;
-}
-
-// THnD（4D）の全ビン総和
-static double SumAllBins4(const THnD& h) {
-  const int n0 = h.GetAxis(0)->GetNbins();
-  const int n1 = h.GetAxis(1)->GetNbins();
-  const int n2 = h.GetAxis(2)->GetNbins();
-  const int n3 = h.GetAxis(3)->GetNbins();
-
-  std::vector<int> idx(4, 1);
-  double sum = 0.0;
-
-  for (int i0 = 1; i0 <= n0; ++i0) {
-    idx[0] = i0;
-    for (int i1 = 1; i1 <= n1; ++i1) {
-      idx[1] = i1;
-      for (int i2 = 1; i2 <= n2; ++i2) {
-        idx[2] = i2;
-        for (int i3 = 1; i3 <= n3; ++i3) {
-          idx[3] = i3;
-          const Long64_t bin = h.GetBin(idx.data());
-          sum += h.GetBinContent(bin);
-        }
-      }
-    }
-  }
-  return sum;
 }
 
 static void PrintProgressBar(const char* label, long current, long total) {
@@ -211,7 +170,7 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
   const int n2 = ax2->GetNbins();
   const int n3 = ax3->GetNbins();
 
-  if (!(total_mass > 0.0) || !IsFinite(total_mass)) return 1;
+  if (!(total_mass > 0.0) || !Math_IsFinite(total_mass)) return 1;
 
   std::vector<int> idx(4, 1);
 
@@ -229,13 +188,13 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
           const double w3 = ax3->GetBinWidth(i3);
 
           const double vol = w0 * w1 * w2 * w3; // [MeV^2 * rad^2]
-          if (!(vol > 0.0) || !IsFinite(vol)) continue;
+          if (!(vol > 0.0) || !Math_IsFinite(vol)) continue;
 
           const Long64_t bin = h.GetBin(idx.data());
           const double C = h.GetBinContent(bin);
 
           double density = 0.0;
-          if (C > 0.0 && IsFinite(C)) {
+          if (C > 0.0 && Math_IsFinite(C)) {
             density = (C / total_mass) / vol;
           }
           h.SetBinContent(bin, density);
@@ -249,10 +208,11 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
 static std::string BuildMetaString(long n_theta_ok, long n_wpos,
                                    long n_fill, double total_mass,
                                    const AnalysisWindow4D& truth_win) {
+  const int N_theta = Math_GetNTheta(detres);
   std::ostringstream oss;
   oss << "MakeRMDGridPdf meta (4D grid, phi only)\n";
   oss << "bins: Ee=" << kNBins_Ee << ", Eg=" << kNBins_Eg
-      << ", phi_e=" << (GetNTheta() + 1) << ", phi_g=" << (GetNTheta() + 1) << "\n";
+      << ", phi_e=" << (N_theta + 1) << ", phi_g=" << (N_theta + 1) << "\n";
   oss << "truth_samples=" << kNTruthSamples << "\n";
   oss << "smear_per_truth=" << kNSmearPerTruth << "\n";
   oss << "seed=" << kSeed << "\n";
@@ -270,7 +230,7 @@ static std::string BuildMetaString(long n_theta_ok, long n_wpos,
   oss << "res: energy_response_shape_e/g model in DetectorResolution.h\n";
   oss << "res: sigma_t=" << detres.sigma_t << " ns (used analytically at evaluation)\n";
   oss << "res: t_mean=" << detres.t_mean << " ns (used analytically at evaluation)\n";
-  oss << "res: N_theta=" << GetNTheta() << "\n";
+  oss << "res: N_theta=" << N_theta << "\n";
   oss << "res: P_mu=" << detres.P_mu << "\n";
 
   oss << "theta_window_ok=" << n_theta_ok << "\n";
@@ -315,7 +275,7 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     std::cerr << "[MakeRMDGridPdf] WARNING: smearing-in contributions may be lost.\n";
   }
 
-  const int N_theta = GetNTheta();
+  const int N_theta = Math_GetNTheta(detres);
   const double dth = pi / static_cast<double>(N_theta);
 
   // ---- 4Dヒスト（Ee, Eg, phi_e, phi_g） ----
@@ -367,7 +327,7 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     const double cosThetaE = std::cos(phi_e);
     const double cosThetaG = std::cos(phi_g);
 
-    const double cosThetaEG = Clamp(std::cos(phi_e - phi_g), -1.0, 1.0);
+    const double cosThetaEG = Math_Clamp(std::cos(phi_e - phi_g), -1.0, 1.0);
     const double theta_eg = std::fabs(phi_e - phi_g);
 
     const bool theta_ok = IsInsideWindowTheta(theta_eg);
@@ -377,7 +337,7 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     if (theta_ok) {
       w0 = RMD_d6B_dEe_dEg_dOmegae_dOmegag(
           Ee_true, Eg_true, cosThetaEG, cosThetaE, cosThetaG, Pmu, kDMin);
-      if (w0 > 0.0 && IsFinite(w0)) ++n_wpos;
+      if (w0 > 0.0 && Math_IsFinite(w0)) ++n_wpos;
       else w0 = 0.0;
     }
 
@@ -415,9 +375,9 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
   std::cout << "[MakeRMDGridPdf] filled entries (4D)=" << n_fill << "\n";
 
   // ---- 正規化（∫ pdf dEe dEg dphi_e dphi_g = 1 になるよう密度化）----
-  const double total_mass = SumAllBins4(h);
+  const double total_mass = Hist_SumAllBins4(h);
 
-  if (!(total_mass > 0.0) || !IsFinite(total_mass)) {
+  if (!(total_mass > 0.0) || !Math_IsFinite(total_mass)) {
     std::cerr << "[MakeRMDGridPdf] total mass is not positive (mass=" << total_mass
               << ")\n";
     return 3;
