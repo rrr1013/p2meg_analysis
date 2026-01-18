@@ -4,8 +4,6 @@
 // plot_data_hist と同様の 1D/2D ヒストを PDF に出力する。
 //
 // 使い方:
-//   g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude $(root-config --cflags) -o build/plot_rmd_theory scripts/plot_rmd_theory.cc src/RMDSpectrum.cc $(root-config --libs)
-//
 //   ./build/plot_rmd_theory 10000000 doc/rmd_theory.pdf
 //
 // 出力:

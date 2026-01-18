@@ -28,14 +28,6 @@
 //  - 分解能: detres（N_theta, P_mu など）
 //  - 質量:   kMassesPDG（内部で使う場合）
 //
-// ビルド例（repo直下で）:
-//  g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude \
-  $(root-config --cflags) \
-  -o build/make_acc_mockdata \
-  scripts/make_acc_mockdata.cc \
-  src/*.cc \
-  $(root-config --libs)
-//
 // 実行例:
 //   ./build/make_acc_mockdata 5000
 // ============================================================

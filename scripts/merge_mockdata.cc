@@ -9,8 +9,7 @@
 #include <string>
 #include <vector>
 
-// Compile: g++ -std=c++17 -O2 scripts/merge_mockdata.cc -o build/merge_mockdata
-// Run example: build/merge_mockdata data/mockdata/pdfmix_10_300000.dat data/mockdata/acc_700000.dat -o data/mockdata/testdata1.dat --seed 42
+// build/merge_mockdata data/mockdata/pdfmix_10_300000.dat data/mockdata/acc_700000.dat -o data/mockdata/testdata1.dat --seed 42
 
 namespace {
 

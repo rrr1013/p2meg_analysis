@@ -1,7 +1,6 @@
 // scripts/inspect_rmd_grid.cc
 //
 // 使い方:
-//   g++ -std=c++17 scripts/inspect_rmd_grid.cc $(root-config --cflags --libs) -o build/inspect_rmd_grid
 //   ./build/inspect_rmd_grid data/pdf_cache/rmd_grid.root rmd_grid
 //
 // rmd_grid.root に保存された 4D 格子PDF（key）と

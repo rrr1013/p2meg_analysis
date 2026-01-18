@@ -23,13 +23,6 @@
 //  - 質量:   kMassesPDG
 //  - RMD 格子: data/pdf_cache/rmd_grid_gen.root, key="rmd_grid"
 //
-// g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude \
-    $(root-config --cflags) \
-    -o build/make_pdfmix_mockdata \
-    scripts/make_pdfmix_mockdata.cc \
-    src/*.cc \
-    $(root-config --libs)
-
 // 実行例:
 //   ./build/make_pdfmix_mockdata 3000 0
 // ============================================================

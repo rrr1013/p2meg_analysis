@@ -4,9 +4,6 @@
 //   ./build/run_nll_fit ./data/mockdata/MEGonly_simulation_dataset.dat data/pdf_cache/rmd_grid.root rmd_grid
 //   Ee Egamma t phi_detector_e phi_detector_g
 //
-// コンパイル例:
-//   g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude $(root-config --cflags) -o build/run_nll_fit scripts/run_nll_fit.cc src/RMDGridPdf.cc src/Likelihood.cc src/NLLFit.cc src/PdfWrappers.cc src/SignalPdf.cc src/ConstraintNLL.cc $(root-config --libs)
-//
 // 先頭行のヘッダや # コメント行は自動でスキップします。
 //
 // 注意:

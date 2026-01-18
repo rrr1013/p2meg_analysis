@@ -13,12 +13,6 @@
 //  2) 本ファイル（main）＋格子生成バイナリを再コンパイル
 //  3) `./build/make_rmd_grid_pdf` で新しい `rmd_grid.root` を作成
 //  4) 続けて解析コード実行（例: `./build/run_nll_fit ...`）
-//
-//
-// 参考: 一括ビルド用ワンライナー
-//  - 前提: カレントが repo 直下、`build/` と `data/pdf_cache/` が存在、root-config が使える
-//  - コマンド（make_rmd_grid_pdf と run_nll_fit をまとめてビルド）:
-//      g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude $(root-config --cflags) -o build/make_rmd_grid_pdf macros/make_rmd_grid_pdf_main.cc src/MakeRMDGridPdf.cc src/RMDSpectrum.cc $(root-config --libs) && g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude $(root-config --cflags) -o build/run_nll_fit scripts/run_nll_fit.cc src/RMDGridPdf.cc src/Likelihood.cc src/NLLFit.cc src/PdfWrappers.cc src/SignalPdf.cc src/ConstraintNLL.cc $(root-config --libs)
 // ------------------------------------------------------------
 
 #include <iostream>

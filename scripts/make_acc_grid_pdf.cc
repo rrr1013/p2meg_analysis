@@ -11,17 +11,9 @@
 //  - 4D 格子 PDF (Ee, Eg, phi_e, phi_g) を ROOT に保存
 //  - 時間因子は解析窓内一様として評価側で掛ける
 //
-// ビルド例（repo直下で）:
-//  g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude \
-//    $(root-config --cflags) \
-//    -o build/make_acc_grid_pdf \
-//    scripts/make_acc_grid_pdf.cc \
-//    src/*.cc \
-//    $(root-config --libs)
-//
 // 実行例:
-//  ./build/make_acc_grid_pdf data/mockdata/acc_5000.dat
-//  ./build/make_acc_grid_pdf data/mockdata/acc_5000.dat data/pdf_cache/acc_grid.root acc_grid
+//  ./build/make_acc_grid_pdf data/mockdata/testdata1.dat
+//  ./build/make_acc_grid_pdf data/mockdata/testdata1.dat data/pdf_cache/acc_grid.root acc_grid
 // ============================================================
 
 #include <cerrno>
