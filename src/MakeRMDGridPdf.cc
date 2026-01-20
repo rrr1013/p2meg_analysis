@@ -33,9 +33,14 @@
 //   (Ee, Eg, phi_detector_e, phi_detector_g)
 //
 // ※ phi_detector_e/g は「偏極軸と各検出器方向のなす角 φ（0..π）」で、
-//   離散化は φ を 0..π を N_theta 等分した格子点で行う。
-//   ここでは、phi 軸を「最近傍θ格子」に対応する可変ビンにしておき、
-//   later の評価側は "最近傍θ" に丸めることで整合を取る。
+//   離散化は φ を 0..π を N_theta 等分した格子点 φ_i=iπ/N_theta (i=0..N_theta) で行う。
+//
+// 重要（測度と離散化の整合）:
+//   格子点 i を一様に選ぶだけだと、端点 i=0,N が内部点と同じ頻度で選ばれ、
+//   連続一様の φ 積分に対して端点が過大評価されやすい。
+//   ここでは φ 積分を台形則で近似し、端点 (i=0,N) に 1/2 の重みを掛ける。
+//   これにより、phi 軸を「最近傍格子」可変ビン（端点幅 Δ/2）にした場合の
+//   密度化・正規化と整合する。
 //============================================================
 
 // ---- 4D格子ビニング（Ee, Eg, phi_e, phi_g）----
@@ -85,9 +90,9 @@ static bool IsValidTruthWindowEeEg(const AnalysisWindow4D& win) {
 static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base_win) {
   AnalysisWindow4D out = base_win;
 
-  const double Ee_low = energy_response_offset_low_e(base_win.Ee_min);
+  const double Ee_low  = energy_response_offset_low_e(base_win.Ee_min);
   const double Ee_high = energy_response_offset_high_e(base_win.Ee_max);
-  const double Eg_low = energy_response_offset_low_g(base_win.Eg_min);
+  const double Eg_low  = energy_response_offset_low_g(base_win.Eg_min);
   const double Eg_high = energy_response_offset_high_g(base_win.Eg_max);
 
   out.Ee_min = base_win.Ee_min - Ee_high;
@@ -114,9 +119,9 @@ static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base
   return out;
 }
 
-// detres.N_theta を int として使う（型が double でもここで丸める）
+// detres.N_theta を int として使う
 // φ= i*pi/N (i=0..N) の格子に対応する phi 軸の可変ビン境界を作る。
-// 「最近傍θ格子」になるように、φ の中点 (i+0.5)*Δθ を境界にする。
+// 「最近傍格子」になるように、φ の中点 (i+0.5)*Δθ を境界にする。
 // 出力: edges サイズ = (N+1)+1 = N+2、x は昇順（0..π）
 static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
   const double dth = pi / static_cast<double>(N_theta);
@@ -140,6 +145,13 @@ static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
   }
 
   return edges;
+}
+
+// φ 積分を台形則で近似するための重み（端点 1/2）
+static inline double PhiTrapezoidWeight(int i, int N_theta) {
+  if (i <= 0) return 0.5;
+  if (i >= N_theta) return 0.5;
+  return 1.0;
 }
 
 static void PrintProgressBar(const char* label, long current, long total) {
@@ -222,6 +234,7 @@ static std::string BuildMetaString(long n_theta_ok, long n_wpos,
   oss << "smear_per_truth=" << kNSmearPerTruth << "\n";
   oss << "seed=" << kSeed << "\n";
   oss << "d_min=" << kDMin << "\n";
+  oss << "phi integration: grid points i=0..N, trapezoid weight (endpoints 1/2)\n";
 
   oss << "truth window: Ee=[" << truth_win.Ee_min << "," << truth_win.Ee_max
       << "] MeV (analysis +/-response@0.1peak, physical clip)\n";
@@ -301,7 +314,7 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
   h.GetAxis(2)->SetTitle("phi_detector_e [rad]");
   h.GetAxis(3)->SetTitle("phi_detector_g [rad]");
 
-  // phi 軸を「最近傍θ格子」になる可変ビンに変更
+  // phi 軸を「最近傍格子」になる可変ビンに変更
   const std::vector<double> phi_edges = BuildPhiEdgesFromThetaMidpoints(N_theta);
   h.GetAxis(2)->Set(N_theta + 1, phi_edges.data());
   h.GetAxis(3)->Set(N_theta + 1, phi_edges.data());
@@ -326,7 +339,7 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     const double Ee_true = rng.Uniform(Ee_true_min, Ee_true_max);
     const double Eg_true = rng.Uniform(Eg_true_min, Eg_true_max);
 
-    // 検出器角（離散）：θ = i*pi/N (i=0..N)
+    // 検出器角（離散）：φ = i*pi/N (i=0..N)
     const int ie = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_theta + 1)));
     const int ig = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_theta + 1)));
 
@@ -352,8 +365,16 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
     if (!(w0 > 0.0)) continue;
 
+    // φ 積分の台形則重み（端点 1/2）
+    // ※ 格子点を一様にサンプルしているので、連続積分の近似として端点補正を入れる。
+    const double wphi_e = PhiTrapezoidWeight(ie, N_theta);
+    const double wphi_g = PhiTrapezoidWeight(ig, N_theta);
+
     // 検出器の立体角は不変なため Jacobian 補正は不要
-    const double w = w0;
+    // 最終重み：理論核 × 端点台形則重み
+    const double w = w0 * wphi_e * wphi_g;
+
+    if (!(w > 0.0) || !Math_IsFinite(w)) continue;
 
     // 同じ真値点から複数回（Ee,Eg のみ）スメアして観測分布を埋める
     for (int is = 0; is < kNSmearPerTruth; ++is) {
@@ -364,10 +385,8 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
       double x[4] = {Ee_obs, Eg_obs, phi_e, phi_g};
 
-      if (w > 0.0) {
-        h.Fill(x, w);
-        ++n_fill;
-      }
+      h.Fill(x, w);
+      ++n_fill;
     }
 
     const auto now = std::chrono::steady_clock::now();

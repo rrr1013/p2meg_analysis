@@ -24,9 +24,10 @@
 // 4D 格子
 static THnD* gHist = nullptr;
 
-
+//============================================================
 // 窓内で正規化された時間ガウシアン（密度）
 // pt(t) = N(t_mean, sigma_t) / A_t, ただし A_t = ∫_{tmin}^{tmax} N dt
+//============================================================
 static double PtWindowNormalized(double t) {
   const double sigma_t = detres.sigma_t;
   const double t_mean  = detres.t_mean;

@@ -315,8 +315,6 @@ int main(int argc, char** argv)
   const FitResult res = FitNLL(events_fit, components, cfg);
 
 #ifdef P2MEG_DEBUG_PRINT_ZERO_PI_EVENTS
-    std::cout << "[run_nll_fit][zero-pi] fit failed; scanning events with pi<=0\n";
-    std::cout << "[run_nll_fit][zero-pi] start_yields:";
     for (double y : cfg.start_yields) std::cout << " " << y;
     std::cout << "\n";
 
