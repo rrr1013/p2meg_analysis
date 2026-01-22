@@ -154,6 +154,13 @@ static inline std::vector<double> Detector_PhiEdgesFromGrid(double phi_min,
     return edges;
 }
 
+// ROOT の [low, high) ビンで phi_max を overflow に落とさない上端補正
+// （物理カットではない）
+static inline double Detector_PhiAxisMaxInclusive(double phi_max) {
+    if (!std::isfinite(phi_max)) return phi_max;
+    return std::nextafter(phi_max, std::numeric_limits<double>::infinity());
+}
+
 // 端点補正を入れた phi のビン幅（離散格子の「面積」計算用）
 static inline double Detector_PhiBinWidth(int i, double phi_min, double phi_max, int N_phi) {
     const double step = Detector_PhiStep(phi_min, phi_max, N_phi);
@@ -182,6 +189,47 @@ static inline bool Detector_IsAllowedPhiPairValue(double phi_e, double phi_g,
     idx_g_out = Detector_PhiIndexFromValue(phi_g, res.phi_g_min, res.phi_g_max, res.N_phi_g);
     if (idx_e_out < 0 || idx_g_out < 0) return false;
     return Detector_IsAllowedPhiPairIndex(idx_e_out, idx_g_out, res);
+}
+
+// ------------------------------------------------------------
+// phi 設定から theta_eg の許可範囲を見積もる
+// ------------------------------------------------------------
+static inline bool Detector_ThetaRangeFromAllowedPhi(const DetectorResolutionConst& res,
+                                                     double& theta_min_out,
+                                                     double& theta_max_out) {
+    // phi の離散格子と許可マスクから theta_eg=|phi_e-phi_g| の範囲を求める
+    // 単位: rad
+    // 不正入力や許可ペアなしは false（物理カットではない）
+    theta_min_out = 0.0;
+    theta_max_out = 0.0;
+
+    const int N_phi_e = res.N_phi_e;
+    const int N_phi_g = res.N_phi_g;
+    if (!Detector_IsPhiRangeValid(res.phi_e_min, res.phi_e_max, N_phi_e)) return false;
+    if (!Detector_IsPhiRangeValid(res.phi_g_min, res.phi_g_max, N_phi_g)) return false;
+
+    double tmin = std::numeric_limits<double>::infinity();
+    double tmax = -std::numeric_limits<double>::infinity();
+    bool any = false;
+
+    for (int ie = 0; ie <= N_phi_e; ++ie) {
+        for (int ig = 0; ig <= N_phi_g; ++ig) {
+            if (!Detector_IsAllowedPhiPairIndex(ie, ig, res)) continue;
+            const double phi_e = Detector_PhiGridPoint(ie, res.phi_e_min, res.phi_e_max, N_phi_e);
+            const double phi_g = Detector_PhiGridPoint(ig, res.phi_g_min, res.phi_g_max, N_phi_g);
+            const double theta = std::fabs(phi_e - phi_g);
+            if (!std::isfinite(theta)) continue;
+            if (theta < tmin) tmin = theta;
+            if (theta > tmax) tmax = theta;
+            any = true;
+        }
+    }
+    if (!any) return false;
+    if (!std::isfinite(tmin) || !std::isfinite(tmax) || !(tmin <= tmax)) return false;
+
+    theta_min_out = tmin;
+    theta_max_out = tmax;
+    return true;
 }
 
 

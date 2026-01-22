@@ -2,6 +2,7 @@
 #define P2MEG_MATH_UTILS_H
 
 #include <cmath>
+#include <limits>
 
 #include "p2meg/DetectorResolution.h"
 
@@ -14,6 +15,12 @@
 // 有限値チェック
 static inline bool Math_IsFinite(double x) {
   return std::isfinite(x);
+}
+
+// ROOT の [low, high) ビンで上端値を落とさない補正（物理カットではない）
+static inline double Math_AxisMaxInclusive(double x) {
+  if (!Math_IsFinite(x)) return x;
+  return std::nextafter(x, std::numeric_limits<double>::infinity());
 }
 
 // 範囲クリップ（物理カットではない）

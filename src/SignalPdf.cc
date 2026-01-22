@@ -53,7 +53,11 @@ static double TruncNormalPdf(double x, double mu, double sigma,
 static int ThetaNearestIndex(double theta, int N_theta) {
   if (!(N_theta >= 1)) return -1;
   if (!std::isfinite(theta)) return -1;
-  if (theta < 0.0 || theta > pi) return -1;
+  // 数値丸めで pi をわずかに超えるケースを許容（物理カットではない）
+  const double eps = 1e-12;
+  if (theta < -eps || theta > pi + eps) return -1;
+  if (theta < 0.0) theta = 0.0;
+  if (theta > pi) theta = pi;
 
   const double step = pi / static_cast<double>(N_theta);
   if (!(step > 0.0) || !std::isfinite(step)) return -1;

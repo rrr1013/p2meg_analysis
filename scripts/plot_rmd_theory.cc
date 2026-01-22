@@ -220,35 +220,51 @@ int main(int argc, char** argv)
     const double Eg_max = analysis_window.Eg_max;
     const double t_min  = analysis_window.t_min;
     const double t_max  = analysis_window.t_max;
-    const double th_min = analysis_window.theta_min;
-    const double th_max = analysis_window.theta_max;
+    const double th_win_min = analysis_window.theta_min;
+    const double th_win_max = analysis_window.theta_max;
     const double phi_e_min = detres.phi_e_min;
     const double phi_e_max = detres.phi_e_max;
     const double phi_g_min = detres.phi_g_min;
     const double phi_g_max = detres.phi_g_max;
+    const double phi_e_max_plot = Detector_PhiAxisMaxInclusive(phi_e_max);
+    const double phi_g_max_plot = Detector_PhiAxisMaxInclusive(phi_g_max);
+
+    double th_plot_min = th_win_min;
+    double th_plot_max = th_win_max;
+    double th_det_min = 0.0;
+    double th_det_max = 0.0;
+    if (Detector_ThetaRangeFromAllowedPhi(detres, th_det_min, th_det_max)) {
+        if (th_det_min > th_plot_min) th_plot_min = th_det_min;
+        if (th_det_max < th_plot_max) th_plot_max = th_det_max;
+        if (!(th_plot_min < th_plot_max)) {
+            th_plot_min = th_win_min;
+            th_plot_max = th_win_max;
+        }
+    }
+    const double th_plot_max_axis = Math_AxisMaxInclusive(th_plot_max);
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
     TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
-                           kNBins_phi, phi_e_min, phi_e_max);
+                           kNBins_phi, phi_e_min, phi_e_max_plot);
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
-                           kNBins_phi, phi_g_min, phi_g_max);
+                           kNBins_phi, phi_g_min, phi_g_max_plot);
     TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
-                           kNBins_th, th_min, th_max);
+                           kNBins_th, th_plot_min, th_plot_max_axis);
 
     // ---- 2D ----
     TH2D* h_EeEg = new TH2D("h_EeEg", "(Ee, Eg);Ee [MeV];Eg [MeV]",
                             kNBins2D_E, Ee_min, Ee_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
-                            kNBins2D_th, th_min, th_max, kNBins2D_E, Ee_min, Ee_max);
+                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Ee_min, Ee_max);
 
     TH2D* h_ThEg = new TH2D("h_ThEg", "(theta_{eg}, Eg);theta_{eg} [rad];Eg [MeV]",
-                            kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
+                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                            kNBins2D_phi, phi_e_min, phi_e_max, kNBins2D_phi, phi_g_min, phi_g_max);
+                            kNBins2D_phi, phi_e_min, phi_e_max_plot, kNBins2D_phi, phi_g_min, phi_g_max_plot);
 
     const double V_Ee  = Ee_max - Ee_min;
     const double V_Eg  = Eg_max - Eg_min;
@@ -278,7 +294,7 @@ int main(int argc, char** argv)
         }
 
         const double theta_eg = ThetaFromPhi(phi_e, phi_g);
-        if (theta_eg < th_min || theta_eg > th_max) {
+        if (theta_eg < th_win_min || theta_eg > th_win_max) {
             // 解析窓カット
         } else {
             ++n_theta_ok;

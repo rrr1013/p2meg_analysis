@@ -10,6 +10,7 @@
 #include "TH2.h"
 #include "THn.h"
 #include "TAxis.h"
+#include "TParameter.h"
 
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/AnalysisWindowUtils.h"
