@@ -7,7 +7,7 @@
 //
 // 先頭行のヘッダや # コメント行は自動でスキップします。
 //
-//  - phi_detector_e/g は 0..pi の範囲を想定する（解析側でクランプされる）。
+//  - phi_detector_e/g は DetectorResolution の範囲に従う（解析側で丸め・判定）。
 //  - 5列でない行はスキップし、スキップ数を表示します。
 
 #include <iostream>
@@ -27,6 +27,7 @@
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/DetectorResolution.h"
 #include "p2meg/Constants.h"
+#include "p2meg/MathUtils.h"
 #include "p2meg/RMDGridPdf.h"
 #include "p2meg/ACCGridPdf.h"
 
@@ -47,23 +48,24 @@ static const char* kDefaultAccKey  = "acc_grid";
 
 static bool IsFinite(double x) { return std::isfinite(x); }
 
-static double Clamp(double x, double lo, double hi)
+static bool ThetaFromPhiPair(const Event& ev, double& theta_out)
 {
-  if (x < lo) return lo;
-  if (x > hi) return hi;
-  return x;
-}
-
-static double ThetaFromPhi(double phi_e, double phi_g)
-{
-  if (!IsFinite(phi_e) || !IsFinite(phi_g)) return 0.0;
-  const double pe = Clamp(phi_e, 0.0, pi);
-  const double pg = Clamp(phi_g, 0.0, pi);
-  return std::fabs(pe - pg);
+  int idx_e = -1;
+  int idx_g = -1;
+  if (!Detector_IsAllowedPhiPairValue(ev.phi_detector_e, ev.phi_detector_g,
+                                      detres, idx_e, idx_g)) {
+    return false;
+  }
+  const int N_phi_e = Math_GetNPhiE(detres);
+  const int N_phi_g = Math_GetNPhiG(detres);
+  const double phi_e = Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max, N_phi_e);
+  const double phi_g = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max, N_phi_g);
+  theta_out = std::fabs(phi_e - phi_g);
+  return (theta_out >= 0.0 && std::isfinite(theta_out));
 }
 
 // RMD の q^2/m_mu^2 を評価（参考: RMDSpectrum の定義）
-static double RmdQ2OverM2(double Ee, double Eg, double phi_e, double phi_g)
+static double RmdQ2OverM2(double Ee, double Eg, const Event& ev)
 {
   if (!IsFinite(Ee) || !IsFinite(Eg)) return std::numeric_limits<double>::quiet_NaN();
   if (!(Ee > 0.0) || !(Eg > 0.0)) return std::numeric_limits<double>::quiet_NaN();
@@ -88,8 +90,8 @@ static double RmdQ2OverM2(double Ee, double Eg, double phi_e, double phi_g)
   const double beta = std::sqrt(tt);
 
   // theta_eg = |phi_e - phi_g|（rad）
-  const double theta_eg = ThetaFromPhi(phi_e, phi_g);
-  if (!(theta_eg >= 0.0)) return std::numeric_limits<double>::quiet_NaN();
+  double theta_eg = 0.0;
+  if (!ThetaFromPhiPair(ev, theta_eg)) return std::numeric_limits<double>::quiet_NaN();
 
   // d = 1 - beta * cos(theta_eg)（無次元）
   const double d = 1.0 - beta * std::cos(theta_eg);
@@ -107,7 +109,8 @@ static bool IsInsideAnalysisWindow(const Event& ev, const AnalysisWindow4D& win)
     return false;
   }
 
-  const double theta_eg = ThetaFromPhi(ev.phi_detector_e, ev.phi_detector_g);
+  double theta_eg = 0.0;
+  if (!ThetaFromPhiPair(ev, theta_eg)) return false;
 
   if (ev.Ee < win.Ee_min || ev.Ee > win.Ee_max) return false;
   if (ev.Eg < win.Eg_min || ev.Eg > win.Eg_max) return false;
@@ -198,7 +201,8 @@ static bool LoadEventsFromDat(const char* filepath,
 #ifdef P2MEG_DEBUG_PRINT_WINDOW_EVENTS
     const bool in_window = IsInsideAnalysisWindow(ev, analysis_window);
     if (in_window) {
-      const double theta_eg = ThetaFromPhi(ev.phi_detector_e, ev.phi_detector_g);
+      double theta_eg = 0.0;
+      if (!ThetaFromPhiPair(ev, theta_eg)) continue;
       std::cout << "[run_nll_fit][window] raw: Ee=" << Ee_raw
                 << " Eg=" << Eg_raw
                 << " t=" << t_raw
@@ -344,7 +348,7 @@ int main(int argc, char** argv)
           std::cout << " " << components[k].name << "=" << pks[k];
         }
 #ifdef P2MEG_DEBUG_PRINT_ZERO_PI_Q2
-        const double q2_over_m2 = RmdQ2OverM2(ev.Ee, ev.Eg, ev.phi_detector_e, ev.phi_detector_g);
+    const double q2_over_m2 = RmdQ2OverM2(ev.Ee, ev.Eg, ev);
         const double mmu = kMassesPDG.m_mu; // [MeV]
         const double q2 = (std::isfinite(q2_over_m2) && std::isfinite(mmu)) ? (q2_over_m2 * mmu * mmu)
                                                                             : std::numeric_limits<double>::quiet_NaN();

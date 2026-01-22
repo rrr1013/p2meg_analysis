@@ -16,8 +16,9 @@
 //  - 理論式は RMD_d6B_dEe_dEg_dOmegae_dOmegag を使用。
 //  - エネルギーのスメアは行わない（真値のまま）。
 //  - t は理論式に含まれないため解析窓で積分し、ヒスト表示はしない。
-//  - phi は 0..pi の連続角として扱う（角度離散化はしない）。
+//  - phi は DetectorResolution の範囲で連続角として扱う（角度離散化はしない）。
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <chrono>
@@ -40,6 +41,7 @@
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/Constants.h"
 #include "p2meg/DetectorResolution.h"
+#include "p2meg/MathUtils.h"
 #include "p2meg/RMDSpectrum.h"
 
 // ---- 固定ビン数（plot_data_hist に合わせる）----
@@ -61,13 +63,6 @@ static constexpr int kProgressIntervalMs = 200;
 
 static bool IsFinite(double x) { return std::isfinite(x); }
 
-static double Clamp(double x, double lo, double hi)
-{
-    if (x < lo) return lo;
-    if (x > hi) return hi;
-    return x;
-}
-
 static bool ParseLL(const char* s, long long& out)
 {
     if (!s) return false;
@@ -84,9 +79,30 @@ static bool ParseLL(const char* s, long long& out)
 static double ThetaFromPhi(double phi_e, double phi_g)
 {
     if (!IsFinite(phi_e) || !IsFinite(phi_g)) return 0.0;
-    const double pe = Clamp(phi_e, 0.0, pi);
-    const double pg = Clamp(phi_g, 0.0, pi);
+    const double pe = Detector_PhiClamp(phi_e, detres.phi_e_min, detres.phi_e_max);
+    const double pg = Detector_PhiClamp(phi_g, detres.phi_g_min, detres.phi_g_max);
     return std::fabs(pe - pg);
+}
+
+static double AllowedPhiArea()
+{
+    const int N_phi_e = Math_GetNPhiE(detres);
+    const int N_phi_g = Math_GetNPhiG(detres);
+    if (!Detector_IsPhiRangeValid(detres.phi_e_min, detres.phi_e_max, N_phi_e)) return 0.0;
+    if (!Detector_IsPhiRangeValid(detres.phi_g_min, detres.phi_g_max, N_phi_g)) return 0.0;
+
+    double area = 0.0;
+    for (int ie = 0; ie <= N_phi_e; ++ie) {
+        const double w_e = Detector_PhiBinWidth(ie, detres.phi_e_min, detres.phi_e_max, N_phi_e);
+        if (!(w_e > 0.0)) continue;
+        for (int ig = 0; ig <= N_phi_g; ++ig) {
+            if (!Detector_IsAllowedPhiPairIndex(ie, ig, detres)) continue;
+            const double w_g = Detector_PhiBinWidth(ig, detres.phi_g_min, detres.phi_g_max, N_phi_g);
+            if (!(w_g > 0.0)) continue;
+            area += w_e * w_g;
+        }
+    }
+    return (area > 0.0 && std::isfinite(area)) ? area : 0.0;
 }
 
 // 理論式（d^6B/dEe dEg dOmegae dOmegag）から (Ee,Eg,phi_e,phi_g) への重み
@@ -99,7 +115,7 @@ static double RmdWeightNoSmear(double Ee, double Eg,
 
     const double cosThetaE  = std::cos(phi_e);
     const double cosThetaG  = std::cos(phi_g);
-    const double cosThetaEG = Clamp(std::cos(phi_e - phi_g), -1.0, 1.0);
+    const double cosThetaEG = std::max(-1.0, std::min(1.0, std::cos(phi_e - phi_g)));
 
     const double w0 = RMD_d6B_dEe_dEg_dOmegae_dOmegag(
         Ee, Eg, cosThetaEG, cosThetaE, cosThetaG, Pmu, d_min);
@@ -164,7 +180,7 @@ static void DrawMetaPage(const char* outpdf,
     lat.DrawLatex(0.08, 0.18, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
 
     lat.SetTextSize(0.028);
-    lat.DrawLatex(0.05, 0.12, "t: uniform in window (integrated; not plotted).  phi: continuous [0, pi].");
+    lat.DrawLatex(0.05, 0.12, "t: uniform in window (integrated; not plotted).  phi: continuous in detector range.");
 
     lat.SetTextSize(0.032);
     lat.DrawLatex(0.05, 0.06, "Pages: (1) meta  (2) 1D  (3) 2D");
@@ -206,16 +222,18 @@ int main(int argc, char** argv)
     const double t_max  = analysis_window.t_max;
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
-    const double phi_min = 0.0;
-    const double phi_max = pi;
+    const double phi_e_min = detres.phi_e_min;
+    const double phi_e_max = detres.phi_e_max;
+    const double phi_g_min = detres.phi_g_min;
+    const double phi_g_max = detres.phi_g_max;
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
     TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_e_min, phi_e_max);
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_g_min, phi_g_max);
     TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
                            kNBins_th, th_min, th_max);
 
@@ -230,13 +248,13 @@ int main(int argc, char** argv)
                             kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                            kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
+                            kNBins2D_phi, phi_e_min, phi_e_max, kNBins2D_phi, phi_g_min, phi_g_max);
 
     const double V_Ee  = Ee_max - Ee_min;
     const double V_Eg  = Eg_max - Eg_min;
     const double V_t   = t_max - t_min;
-    const double V_phi = phi_max - phi_min;
-    const double V_total = V_Ee * V_Eg * V_t * V_phi * V_phi;
+    const double V_phi = AllowedPhiArea();
+    const double V_total = (V_phi > 0.0) ? (V_Ee * V_Eg * V_t * V_phi) : 0.0;
     const double scale = V_total / static_cast<double>(n_samples);
 
     TRandom3 rng(kSeed);
@@ -251,8 +269,13 @@ int main(int argc, char** argv)
     for (long long i = 0; i < n_samples; ++i) {
         const double Ee = rng.Uniform(Ee_min, Ee_max);
         const double Eg = rng.Uniform(Eg_min, Eg_max);
-        const double phi_e = rng.Uniform(phi_min, phi_max);
-        const double phi_g = rng.Uniform(phi_min, phi_max);
+        const double phi_e = rng.Uniform(phi_e_min, phi_e_max);
+        const double phi_g = rng.Uniform(phi_g_min, phi_g_max);
+        int idx_e = -1;
+        int idx_g = -1;
+        if (!Detector_IsAllowedPhiPairValue(phi_e, phi_g, detres, idx_e, idx_g)) {
+            continue;
+        }
 
         const double theta_eg = ThetaFromPhi(phi_e, phi_g);
         if (theta_eg < th_min || theta_eg > th_max) {

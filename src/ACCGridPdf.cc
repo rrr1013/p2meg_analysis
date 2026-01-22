@@ -7,6 +7,7 @@
 
 #include "TFile.h"
 #include "TAxis.h"
+#include "TH2.h"
 #include "THn.h"
 #include "TParameter.h"
 
@@ -57,16 +58,74 @@ bool ACCGridPdf_Load(const char* filepath, const char* key) {
 
   // ---- メタ情報の整合性チェック（警告のみ）----
   {
-    const std::string kNtheta = std::string(key) + "_N_theta";
-    TObject* par = f.Get(kNtheta.c_str());
-    TParameter<int>* pN = dynamic_cast<TParameter<int>*>(par);
-    if (pN) {
-      const int fileN = pN->GetVal();
-      const int nowN  = Math_GetNTheta(detres);
+    const std::string kNphiE = std::string(key) + "_N_phi_e";
+    const std::string kNphiG = std::string(key) + "_N_phi_g";
+    TParameter<int>* pNphiE = dynamic_cast<TParameter<int>*>(f.Get(kNphiE.c_str()));
+    TParameter<int>* pNphiG = dynamic_cast<TParameter<int>*>(f.Get(kNphiG.c_str()));
+    if (pNphiE) {
+      const int fileN = pNphiE->GetVal();
+      const int nowN  = Math_GetNPhiE(detres);
       if (fileN != nowN) {
-        std::cerr << "[ACCGridPdf_Load] WARNING: N_theta mismatch (file="
+        std::cerr << "[ACCGridPdf_Load] WARNING: N_phi_e mismatch (file="
                   << fileN << ", current detres=" << nowN
                   << "). ACC pdf may become sparse/zero.\n";
+      }
+    }
+    if (pNphiG) {
+      const int fileN = pNphiG->GetVal();
+      const int nowN  = Math_GetNPhiG(detres);
+      if (fileN != nowN) {
+        std::cerr << "[ACCGridPdf_Load] WARNING: N_phi_g mismatch (file="
+                  << fileN << ", current detres=" << nowN
+                  << "). ACC pdf may become sparse/zero.\n";
+      }
+    }
+
+    const std::string kPhiEMin = std::string(key) + "_phi_e_min";
+    const std::string kPhiEMax = std::string(key) + "_phi_e_max";
+    const std::string kPhiGMin = std::string(key) + "_phi_g_min";
+    const std::string kPhiGMax = std::string(key) + "_phi_g_max";
+    TParameter<double>* pPhiEMin = dynamic_cast<TParameter<double>*>(f.Get(kPhiEMin.c_str()));
+    TParameter<double>* pPhiEMax = dynamic_cast<TParameter<double>*>(f.Get(kPhiEMax.c_str()));
+    TParameter<double>* pPhiGMin = dynamic_cast<TParameter<double>*>(f.Get(kPhiGMin.c_str()));
+    TParameter<double>* pPhiGMax = dynamic_cast<TParameter<double>*>(f.Get(kPhiGMax.c_str()));
+    if (pPhiEMin && pPhiEMax) {
+      if (pPhiEMin->GetVal() != detres.phi_e_min ||
+          pPhiEMax->GetVal() != detres.phi_e_max) {
+        std::cerr << "[ACCGridPdf_Load] WARNING: phi_e range mismatch.\n";
+      }
+    }
+    if (pPhiGMin && pPhiGMax) {
+      if (pPhiGMin->GetVal() != detres.phi_g_min ||
+          pPhiGMax->GetVal() != detres.phi_g_max) {
+        std::cerr << "[ACCGridPdf_Load] WARNING: phi_g range mismatch.\n";
+      }
+    }
+
+    const std::string kMask = std::string(key) + "_phi_mask";
+    TH2I* hmask = dynamic_cast<TH2I*>(f.Get(kMask.c_str()));
+    if (hmask) {
+      bool mismatch = false;
+      const int nxe = hmask->GetXaxis()->GetNbins();
+      const int nxg = hmask->GetYaxis()->GetNbins();
+      const int nowNe = Math_GetNPhiE(detres);
+      const int nowNg = Math_GetNPhiG(detres);
+      if (nxe != nowNe + 1 || nxg != nowNg + 1) {
+        mismatch = true;
+      } else {
+        for (int ie = 0; ie <= nowNe && !mismatch; ++ie) {
+          for (int ig = 0; ig <= nowNg; ++ig) {
+            const int fileAllowed = static_cast<int>(hmask->GetBinContent(ie + 1, ig + 1));
+            const int nowAllowed = Detector_IsAllowedPhiPairIndex(ie, ig, detres) ? 1 : 0;
+            if (fileAllowed != nowAllowed) {
+              mismatch = true;
+              break;
+            }
+          }
+        }
+      }
+      if (mismatch) {
+        std::cerr << "[ACCGridPdf_Load] WARNING: phi mask mismatch with current detres.\n";
       }
     }
   }
@@ -103,12 +162,21 @@ double ACCGridPdf(double Ee, double Eg, double t,
     return 0.0;
   }
 
-  const int N_theta = Math_GetNTheta(detres);
-  const double phi_e_disc = Angle_DiscretizePhi(phi_detector_e, N_theta);
-  const double phi_g_disc = Angle_DiscretizePhi(phi_detector_g, N_theta);
+  int idx_e = -1;
+  int idx_g = -1;
+  if (!Detector_IsAllowedPhiPairValue(phi_detector_e, phi_detector_g, detres, idx_e, idx_g)) {
+    return 0.0;
+  }
+
+  const int N_phi_e = Math_GetNPhiE(detres);
+  const int N_phi_g = Math_GetNPhiG(detres);
+  const double phi_e_disc =
+      Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max, N_phi_e);
+  const double phi_g_disc =
+      Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max, N_phi_g);
 
   // theta_eg = |phi_e - phi_g|
-  const double theta_eg = Angle_ThetaFromPhiClipped(phi_e_disc, phi_g_disc);
+  const double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
   // 解析窓（Ee,Eg,t,theta）でカット
   if (!AnalysisWindow_In3D(analysis_window, Ee, Eg, theta_eg)) return 0.0;

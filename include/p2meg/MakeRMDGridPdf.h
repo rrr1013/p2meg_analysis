@@ -12,8 +12,8 @@
 //
 // 設計方針（重要）
 //  - 角度は「検出器配置の離散化」により扱う（角度スメアなし）。
-//    DetectorResolutionConst::N_theta により 0..pi を N_theta 分割し、
-//      phi_i = i * pi / N_theta  (i = 0..N_theta)
+//    DetectorResolutionConst::phi_e/g_min/max, N_phi_e/g により
+//      phi_i = phi_min + i * (phi_max-phi_min)/N_phi  (i = 0..N_phi)
 //    を許される検出器角度とする。
 //  - phi_detector_e, phi_detector_g はそれぞれ
 //      cosThetaE = cos(phi_e),  cosThetaG = cos(phi_g)
@@ -36,7 +36,7 @@
 //  - key 名で「設定込み」の格子PDFを保存する。
 //    例：4次元 THnD（Ee, Eg, phi_e, phi_g）
 //      Ee, Eg : 連続（ビン）
-//      phi_e, phi_g : 離散（0..pi の格子点）
+//      phi_e, phi_g : 離散（DetectorResolution の格子点）
 //    ※ 実際の格子表現（THnD/TH2D配列など）は実装側で固定する。
 //  - メタ情報（窓・分解能・N_theta・P_mu・ビニング等）も併せて保存する。
 //

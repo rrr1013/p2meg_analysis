@@ -14,10 +14,12 @@
 
 // phi を [0,pi] にクリップする（不正入力は 0 に落とす）
 static inline double Angle_ClipPhi0Pi(double phi) {
-  if (!Math_IsFinite(phi)) return 0.0;
-  if (phi < 0.0) return 0.0;
-  if (phi > pi) return pi;
-  return phi;
+  return Detector_PhiClamp(phi, 0.0, pi);
+}
+
+// phi を [phi_min, phi_max] にクリップする（不正入力は phi_min に落とす）
+static inline double Angle_ClipPhiRange(double phi, double phi_min, double phi_max) {
+  return Detector_PhiClamp(phi, phi_min, phi_max);
 }
 
 // phi を [0,pi] にクリップして N_theta の離散点に丸める
@@ -25,14 +27,7 @@ static inline double Angle_ClipPhi0Pi(double phi) {
 static inline double Angle_DiscretizePhi(double phi, int N_theta) {
   if (!(N_theta >= 1)) return 0.0;
 
-  const double p = Angle_ClipPhi0Pi(phi);
-  const double step = pi / static_cast<double>(N_theta);
-  if (!(step > 0.0) || !Math_IsFinite(step)) return 0.0;
-
-  long long i = std::llround(p / step);
-  if (i < 0LL) i = 0LL;
-  if (i > static_cast<long long>(N_theta)) i = static_cast<long long>(N_theta);
-  return step * static_cast<double>(i);
+  return Detector_PhiSnapToGrid(phi, 0.0, pi, N_theta);
 }
 
 // phi から e-γ の相対角 theta を作る（範囲外は不正扱い）
@@ -51,6 +46,27 @@ static inline double Angle_ThetaFromPhiClipped(double phi_e, double phi_g) {
   if (!Math_IsFinite(phi_e) || !Math_IsFinite(phi_g)) return 0.0;
   const double pe = Angle_ClipPhi0Pi(phi_e);
   const double pg = Angle_ClipPhi0Pi(phi_g);
+  return std::fabs(pe - pg);
+}
+
+// phi から e-γ の相対角 theta を作る（範囲外は不正扱い）
+//  - phi は [phi_min, phi_max] を想定
+//  - 不正なら -1 を返す（物理カットではない）
+static inline double Angle_ThetaFromPhiStrictRange(double phi_e, double phi_g,
+                                                   double phi_min, double phi_max) {
+  if (!Math_IsFinite(phi_e) || !Math_IsFinite(phi_g)) return -1.0;
+  if (phi_e < phi_min || phi_e > phi_max) return -1.0;
+  if (phi_g < phi_min || phi_g > phi_max) return -1.0;
+  return std::fabs(phi_e - phi_g);
+}
+
+// phi から e-γ の相対角 theta を作る（クリップ付き）
+//  - 数値ガードとして [phi_min, phi_max] に収める
+static inline double Angle_ThetaFromPhiClippedRange(double phi_e, double phi_g,
+                                                    double phi_min, double phi_max) {
+  if (!Math_IsFinite(phi_e) || !Math_IsFinite(phi_g)) return 0.0;
+  const double pe = Angle_ClipPhiRange(phi_e, phi_min, phi_max);
+  const double pg = Angle_ClipPhiRange(phi_g, phi_min, phi_max);
   return std::fabs(pe - pg);
 }
 

@@ -42,6 +42,8 @@ R__ADD_INCLUDE_PATH(./include)
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/AnalysisWindowUtils.h"
 #include "p2meg/Event.h"
+#include "p2meg/DetectorResolution.h"
+#include "p2meg/MathUtils.h"
 
 // ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
 // #define P2MEG_PLOT_ALLDATA
@@ -170,17 +172,19 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
 #endif
-    const double phi_min = 0.0;
-    const double phi_max = pi_val;
+    const double phi_e_min = detres.phi_e_min;
+    const double phi_e_max = detres.phi_e_max;
+    const double phi_g_min = detres.phi_g_min;
+    const double phi_g_max = detres.phi_g_max;
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
     TH1D* ht    = new TH1D("ht",    "t;t [ns];Entries",                    kNBins_t,  t_min,  t_max);
     TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_e_min, phi_e_max);
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_g_min, phi_g_max);
     TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
                            kNBins_th, th_min, th_max);
 
@@ -201,7 +205,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
                             kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                            kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
+                            kNBins2D_phi, phi_e_min, phi_e_max, kNBins2D_phi, phi_g_min, phi_g_max);
 
     // 読み込み
     std::ifstream fin(infile);
@@ -235,7 +239,22 @@ void plot_data_hist(const char* infile = "data/data.dat")
         ev.phi_detector_e = phi_pos;
         ev.phi_detector_g = phi_gam;
 
-        double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
+        const int idx_e = Detector_PhiIndexFromValue(ev.phi_detector_e,
+                                                     detres.phi_e_min, detres.phi_e_max,
+                                                     Math_GetNPhiE(detres));
+        const int idx_g = Detector_PhiIndexFromValue(ev.phi_detector_g,
+                                                     detres.phi_g_min, detres.phi_g_max,
+                                                     Math_GetNPhiG(detres));
+        if (idx_e < 0 || idx_g < 0 || !Detector_IsAllowedPhiPairIndex(idx_e, idx_g, detres)) {
+            ++n_phi_out;
+            continue;
+        }
+
+        const double phi_e_disc = Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max,
+                                                        Math_GetNPhiE(detres));
+        const double phi_g_disc = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max,
+                                                        Math_GetNPhiG(detres));
+        double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
 #ifndef P2MEG_PLOT_ALLDATA
         if (!AnalysisWindow_In4D(analysis_window, ev.Ee, ev.Eg, ev.t, theta_eg)) {
@@ -246,11 +265,6 @@ void plot_data_hist(const char* infile = "data/data.dat")
 #else
         ++n_inwin;
 #endif
-
-        if (ev.phi_detector_e < phi_min || ev.phi_detector_e > phi_max ||
-            ev.phi_detector_g < phi_min || ev.phi_detector_g > phi_max) {
-            ++n_phi_out;
-        }
 
         // 1D
         hEe->Fill(ev.Ee);
