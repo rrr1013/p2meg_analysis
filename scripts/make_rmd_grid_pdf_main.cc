@@ -9,7 +9,7 @@
 //
 // 解析条件を変えて格子を作り直すとき
 //  1) `include/p2meg/DetectorResolution.h` や `include/p2meg/AnalysisWindow.h` を編集
-//     - 例: Ee/Eg/t の分解能、t_mean、偏極度 P_mu、角度分割数 N_theta、解析窓
+//     - 例: Ee/Eg/t の分解能、t_mean、偏極度 P_mu、phi 範囲/分割数、解析窓
 //  2) 本ファイル（main）＋格子生成バイナリを再コンパイル
 //  3) `./build/make_rmd_grid_pdf_main` で新しい `rmd_grid.root` を作成
 //  4) 続けて解析コード実行（例: `./build/run_nll_fit ...`）

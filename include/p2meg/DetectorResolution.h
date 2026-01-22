@@ -2,6 +2,8 @@
 #define P2MEG_DETECTOR_RESOLUTION_H
 
 #include <cmath>
+#include <limits>
+#include <vector>
 #include "TRandom3.h"
 
 #include "p2meg/Constants.h"
@@ -19,6 +21,11 @@
 //    すなわち、0 から pi までを N_theta 分割した (N_theta+1) 点のみを許す
 //  - 崩壊後の e, γ の散乱は無視し、離散化後の角度スメアはかけない
 //
+// 角度 phi の扱い:
+//  - phi_detector_e/g は DetectorResolutionConst の phi_*_min/max, N_phi_* で離散化する
+//  - phi==phi_max は overflow に落ちず最後のビンに入るよう丸める
+//  - 許可領域（マスク）は Detector_IsAllowedPhiPairIndex で定義する
+//
 // エネルギー分解能:
 //  - energy_response_shape_e/g(E_res, E_true) は
 //      「真値 E_true に対する再構成 E_res の分布 shape（未正規化）」を返す
@@ -34,14 +41,143 @@ struct DetectorResolutionConst {
     int    N_theta;   // 角度分割数（theta_i = i*pi/N_theta, i=0..N_theta）
     double t_mean;    // [ns]  Δt の平均値
     double P_mu;      // muon polarization (signed, [-1,1])
+    double phi_e_min; // [rad] phi_detector_e の最小値
+    double phi_e_max; // [rad] phi_detector_e の最大値
+    int    N_phi_e;   // phi_detector_e の分割数（i=0..N_phi_e）
+    double phi_g_min; // [rad] phi_detector_g の最小値
+    double phi_g_max; // [rad] phi_detector_g の最大値
+    int    N_phi_g;   // phi_detector_g の分割数（i=0..N_phi_g）
 };
 
 inline constexpr DetectorResolutionConst detres{
     0.1561,  // sigma_t  [ns]
     18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
     -0.1479, // t_mean [ns]
-    -0.8     // P_mu
+    -0.8,    // P_mu
+    0.0,     // phi_e_min [rad]
+    pi,      // phi_e_max [rad]
+    18,      // N_phi_e （デフォルトは N_theta と同じ）
+    0.0,     // phi_g_min [rad]
+    pi,      // phi_g_max [rad]
+    18       // N_phi_g （デフォルトは N_theta と同じ）
 };
+
+// ------------------------------------------------------------
+// phi の離散化・ビン境界の共通ヘルパ
+// ------------------------------------------------------------
+static inline bool Detector_IsPhiRangeValid(double phi_min, double phi_max, int N_phi) {
+    if (!(N_phi >= 1)) return false;
+    if (!std::isfinite(phi_min) || !std::isfinite(phi_max)) return false;
+    if (!(phi_min < phi_max)) return false;
+    return true;
+}
+
+static inline double Detector_PhiStep(double phi_min, double phi_max, int N_phi) {
+    if (!Detector_IsPhiRangeValid(phi_min, phi_max, N_phi)) return 0.0;
+    const double step = (phi_max - phi_min) / static_cast<double>(N_phi);
+    return (step > 0.0 && std::isfinite(step)) ? step : 0.0;
+}
+
+// phi を [phi_min, phi_max] にクリップ（不正入力は phi_min に落とす）
+static inline double Detector_PhiClamp(double phi, double phi_min, double phi_max) {
+    if (!std::isfinite(phi)) return phi_min;
+    if (phi < phi_min) return phi_min;
+    if (phi > phi_max) return phi_max;
+    return phi;
+}
+
+// phi の離散点（格子点）を返す
+//  - phi_i = phi_min + i * step (i=0..N_phi)
+static inline double Detector_PhiGridPoint(int i, double phi_min, double phi_max, int N_phi) {
+    const double step = Detector_PhiStep(phi_min, phi_max, N_phi);
+    if (!(step > 0.0)) return phi_min;
+    long long idx = static_cast<long long>(i);
+    if (idx < 0LL) idx = 0LL;
+    if (idx > static_cast<long long>(N_phi)) idx = static_cast<long long>(N_phi);
+    return phi_min + step * static_cast<double>(idx);
+}
+
+// phi を離散格子に丸め、インデックス i を返す
+//  - phi==phi_max は overflow に落とさず i=N_phi へ入れる
+static inline int Detector_PhiIndexFromValue(double phi,
+                                             double phi_min, double phi_max,
+                                             int N_phi) {
+    const double step = Detector_PhiStep(phi_min, phi_max, N_phi);
+    if (!(step > 0.0)) return -1;
+    const double p = Detector_PhiClamp(phi, phi_min, phi_max);
+    long long idx = std::llround((p - phi_min) / step);
+    if (idx < 0LL) idx = 0LL;
+    if (idx > static_cast<long long>(N_phi)) idx = static_cast<long long>(N_phi);
+    return static_cast<int>(idx);
+}
+
+// phi を離散格子点に丸める（物理カットではない）
+static inline double Detector_PhiSnapToGrid(double phi,
+                                            double phi_min, double phi_max,
+                                            int N_phi) {
+    const int idx = Detector_PhiIndexFromValue(phi, phi_min, phi_max, N_phi);
+    if (idx < 0) return phi_min;
+    return Detector_PhiGridPoint(idx, phi_min, phi_max, N_phi);
+}
+
+// 「最近傍格子」になるように phi 軸の可変ビン境界を作る
+//  - edges サイズ: N_phi+2
+//  - ROOT のビン [low, high) で phi_max を in-range に入れるため上端を僅かに広げる
+static inline std::vector<double> Detector_PhiEdgesFromGrid(double phi_min,
+                                                            double phi_max,
+                                                            int N_phi) {
+    std::vector<double> edges;
+    edges.resize(static_cast<size_t>(N_phi + 2));
+
+    if (!Detector_IsPhiRangeValid(phi_min, phi_max, N_phi)) {
+        for (auto& v : edges) v = phi_min;
+        return edges;
+    }
+
+    const double step = Detector_PhiStep(phi_min, phi_max, N_phi);
+    const double phi_max_plus =
+        std::nextafter(phi_max, std::numeric_limits<double>::infinity());
+
+    edges[0] = phi_min;
+    for (int i = 1; i <= N_phi; ++i) {
+        edges[i] = phi_min + (static_cast<double>(i) - 0.5) * step;
+    }
+    edges[N_phi + 1] = phi_max_plus;
+
+    for (int k = 1; k < static_cast<int>(edges.size()); ++k) {
+        if (edges[k] < edges[k - 1]) edges[k] = edges[k - 1];
+        if (edges[k] < phi_min) edges[k] = phi_min;
+        if (edges[k] > phi_max_plus) edges[k] = phi_max_plus;
+    }
+    return edges;
+}
+
+// 端点補正を入れた phi のビン幅（離散格子の「面積」計算用）
+static inline double Detector_PhiBinWidth(int i, double phi_min, double phi_max, int N_phi) {
+    const double step = Detector_PhiStep(phi_min, phi_max, N_phi);
+    if (!(step > 0.0)) return 0.0;
+    if (i <= 0 || i >= N_phi) return 0.5 * step;
+    return step;
+}
+
+// ------------------------------------------------------------
+// phi_e, phi_g の許可マスク（必要ならユーザがここを書き換える）
+// ------------------------------------------------------------
+static inline bool Detector_IsAllowedPhiPairIndex(int i_e, int i_g,
+                                                  const DetectorResolutionConst& res) {
+    if (i_e < 0 || i_g < 0) return false;
+    if (i_e > res.N_phi_e || i_g > res.N_phi_g) return false;
+    return true;
+}
+
+static inline bool Detector_IsAllowedPhiPairValue(double phi_e, double phi_g,
+                                                  const DetectorResolutionConst& res,
+                                                  int& idx_e_out, int& idx_g_out) {
+    idx_e_out = Detector_PhiIndexFromValue(phi_e, res.phi_e_min, res.phi_e_max, res.N_phi_e);
+    idx_g_out = Detector_PhiIndexFromValue(phi_g, res.phi_g_min, res.phi_g_max, res.N_phi_g);
+    if (idx_e_out < 0 || idx_g_out < 0) return false;
+    return Detector_IsAllowedPhiPairIndex(idx_e_out, idx_g_out, res);
+}
 
 
 // ------------------------------------------------------------

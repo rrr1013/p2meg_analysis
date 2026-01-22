@@ -10,9 +10,9 @@
 //
 // 生成方針:
 //  - (Ee, Eg, phi_e, phi_g) は 4D 空間で一様提案 → PdfComponent.eval を用いた棄却法
-//      phi_detector_e/g は N_theta 格子点（phi_i = i*pi/N_theta）を一様に提案
+//      phi_detector_e/g は DetectorResolution の格子点を一様に提案
 //  - t は棄却後に、窓内トランケート正規（detres.t_mean, detres.sigma_t）で後付け
-//  - 出力時に phi_detector_e/g は N_theta 格子点へ丸める
+//  - 出力時に phi_detector_e/g は DetectorResolution の格子点へ丸める
 //
 // 進捗表示:
 //  - sig / rmd それぞれについて進捗バーを stderr に表示
@@ -48,6 +48,7 @@
 #include "../include/p2meg/AnalysisWindow.h"
 #include "../include/p2meg/DetectorResolution.h"
 #include "../include/p2meg/Constants.h"
+#include "../include/p2meg/MathUtils.h"
 #include "../include/p2meg/PdfWrappers.h"
 #include "../include/p2meg/RMDGridPdf.h"
 
@@ -133,40 +134,35 @@ static Event ProposeUniform4(std::mt19937_64& rng)
 {
     std::uniform_real_distribution<double> uEe(analysis_window.Ee_min, analysis_window.Ee_max);
     std::uniform_real_distribution<double> uEg(analysis_window.Eg_min, analysis_window.Eg_max);
-    int N = detres.N_theta;
-    if (N < 1) N = 1;
-    std::uniform_int_distribution<int> ui(0, N);
-    const double step = pi / static_cast<double>(N);
+    const int N_phi_e = Math_GetNPhiE(detres);
+    const int N_phi_g = Math_GetNPhiG(detres);
+    const double step_e = Detector_PhiStep(detres.phi_e_min, detres.phi_e_max, N_phi_e);
+    const double step_g = Detector_PhiStep(detres.phi_g_min, detres.phi_g_max, N_phi_g);
+    std::uniform_int_distribution<int> ui_e(0, N_phi_e);
+    std::uniform_int_distribution<int> ui_g(0, N_phi_g);
 
-    Event ev;
-    ev.Ee = uEe(rng);
-    ev.Eg = uEg(rng);
-    ev.t  = detres.t_mean; // ダミー（評価時に t0 へ上書き）
-    ev.phi_detector_e = step * static_cast<double>(ui(rng));
-    ev.phi_detector_g = step * static_cast<double>(ui(rng));
-    return ev;
+    while (true) {
+        const int ie = ui_e(rng);
+        const int ig = ui_g(rng);
+        if (!Detector_IsAllowedPhiPairIndex(ie, ig, detres)) continue;
+
+        Event ev;
+        ev.Ee = uEe(rng);
+        ev.Eg = uEg(rng);
+        ev.t  = detres.t_mean; // ダミー（評価時に t0 へ上書き）
+        ev.phi_detector_e = detres.phi_e_min + step_e * static_cast<double>(ie);
+        ev.phi_detector_g = detres.phi_g_min + step_g * static_cast<double>(ig);
+        return ev;
+    }
 }
 
 // ------------------------------------------------------------
-// 出力用: 検出器角を N_theta の格子点 (phi_i = i*pi/N_theta) に丸める
+// 出力用: 検出器角を DetectorResolution の格子点に丸める
 // 物理カットではなく出力整形のための丸め
 // ------------------------------------------------------------
-static double SnapPhiToGrid(double phi)
+static double SnapPhiToGrid(double phi, double phi_min, double phi_max, int N_phi)
 {
-    if (!std::isfinite(phi)) return 0.0;
-    int N = detres.N_theta;
-    if (N < 1) N = 1;
-    const double step = pi / static_cast<double>(N);
-    if (!(step > 0.0) || !std::isfinite(step)) return 0.0;
-
-    if (phi < 0.0) phi = 0.0;
-    if (phi > pi)  phi = pi;
-
-    long long i = std::llround(phi / step);
-    if (i < 0LL) i = 0LL;
-    if (i > static_cast<long long>(N)) i = static_cast<long long>(N);
-
-    return step * static_cast<double>(i);
+    return Detector_PhiSnapToGrid(phi, phi_min, phi_max, N_phi);
 }
 
 // ------------------------------------------------------------
@@ -411,7 +407,7 @@ int main(int argc, char** argv)
     }
 
     fout << "# pdfmix mockdata generated from PdfComponent (AR in 4D + t post attach)\n";
-    fout << "# phi_detector_e/g are snapped to phi_i=i*pi/N_theta at output\n";
+    fout << "# phi_detector_e/g are snapped to detector phi grid at output\n";
     fout << "# nsig=" << nsig << " nrmd=" << nrmd << " seed=" << seed << "\n";
     if (nrmd > 0) {
         fout << "# rmd_grid: file=" << kRmdGridFile << " key=" << kRmdGridKey << "\n";
@@ -420,8 +416,12 @@ int main(int argc, char** argv)
 
     fout << std::setprecision(15);
     for (const auto& ev : all) {
-        const double phi_e_out = SnapPhiToGrid(ev.phi_detector_e);
-        const double phi_g_out = SnapPhiToGrid(ev.phi_detector_g);
+        const double phi_e_out = SnapPhiToGrid(ev.phi_detector_e,
+                                               detres.phi_e_min, detres.phi_e_max,
+                                               Math_GetNPhiE(detres));
+        const double phi_g_out = SnapPhiToGrid(ev.phi_detector_g,
+                                               detres.phi_g_min, detres.phi_g_max,
+                                               Math_GetNPhiG(detres));
         fout << ev.Ee << "\t"
              << ev.Eg << "\t"
              << ev.t  << "\t"

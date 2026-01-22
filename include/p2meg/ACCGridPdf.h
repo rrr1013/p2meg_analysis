@@ -25,7 +25,7 @@ bool ACCGridPdf_IsLoaded();
 // PDF 評価（ロード済みが前提）
 // 解析窓外は 0 を返す
 // 時間因子は一様 (1/(t_max - t_min)) を掛ける
-// phi は [0,pi] にクリップし離散化して評価する
+// phi は DetectorResolution の範囲にクリップし離散化して評価する
 double ACCGridPdf(double Ee, double Eg, double t,
                   double phi_detector_e, double phi_detector_g);
 

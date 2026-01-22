@@ -37,6 +37,8 @@ R__ADD_INCLUDE_PATH(./include)
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/AnalysisWindowUtils.h"
 #include "p2meg/Event.h"
+#include "p2meg/DetectorResolution.h"
+#include "p2meg/MathUtils.h"
 
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
@@ -234,8 +236,6 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
 
     gStyle->SetOptStat(0);
 
-    const double pi_val = 3.14159265358979323846;
-
     // 表示範囲は解析窓（AW）に合わせる
     const double Ee_min = analysis_window.Ee_min;
     const double Ee_max = analysis_window.Ee_max;
@@ -246,17 +246,19 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
 
-    const double phi_min = 0.0;
-    const double phi_max = pi_val;
+    const double phi_e_min = detres.phi_e_min;
+    const double phi_e_max = detres.phi_e_max;
+    const double phi_g_min = detres.phi_g_min;
+    const double phi_g_max = detres.phi_g_max;
 
     // ---- raw (AW, ACC込み) ----
     TH1D* hRawEe   = new TH1D("hRawEe",   "Ee;Ee [MeV];Entries", kNBins_E,  Ee_min, Ee_max);
     TH1D* hRawEg   = new TH1D("hRawEg",   "Eg;Eg [MeV];Entries", kNBins_E,  Eg_min, Eg_max);
     TH1D* hRawt    = new TH1D("hRawt",    "t;t [ns];Entries",    kNBins_t,  t_min,  t_max);
     TH1D* hRawPhiE = new TH1D("hRawPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
-                              kNBins_phi, phi_min, phi_max);
+                              kNBins_phi, phi_e_min, phi_e_max);
     TH1D* hRawPhiG = new TH1D("hRawPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
-                              kNBins_phi, phi_min, phi_max);
+                              kNBins_phi, phi_g_min, phi_g_max);
     TH1D* hRawThEg = new TH1D("hRawThEg", "theta_{eg};theta_{eg} [rad];Entries",
                               kNBins_th, th_min, th_max);
 
@@ -276,15 +278,15 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
                                kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* hRaw_PePg = new TH2D("hRaw_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                               kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
+                               kNBins2D_phi, phi_e_min, phi_e_max, kNBins2D_phi, phi_g_min, phi_g_max);
 
     // ---- TSB (E/thetaは窓内, tはSB) ----
     TH1D* hTSBEe   = new TH1D("hTSBEe",   "Ee(TSB);Ee [MeV];Entries", kNBins_E,  Ee_min, Ee_max);
     TH1D* hTSBEg   = new TH1D("hTSBEg",   "Eg(TSB);Eg [MeV];Entries", kNBins_E,  Eg_min, Eg_max);
     TH1D* hTSBPhiE = new TH1D("hTSBPhiE", "phi_{detector,e}(TSB);phi_{detector,e} [rad];Entries",
-                              kNBins_phi, phi_min, phi_max);
+                              kNBins_phi, phi_e_min, phi_e_max);
     TH1D* hTSBPhiG = new TH1D("hTSBPhiG", "phi_{detector,#gamma}(TSB);phi_{detector,#gamma} [rad];Entries",
-                              kNBins_phi, phi_min, phi_max);
+                              kNBins_phi, phi_g_min, phi_g_max);
     TH1D* hTSBThEg = new TH1D("hTSBThEg", "theta_{eg}(TSB);theta_{eg} [rad];Entries",
                               kNBins_th, th_min, th_max);
 
@@ -298,7 +300,7 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
                                kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* hTSB_PePg = new TH2D("hTSB_PePg", "(phi_{detector,e}, phi_{detector,#gamma}) (TSB);phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                               kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
+                               kNBins2D_phi, phi_e_min, phi_e_max, kNBins2D_phi, phi_g_min, phi_g_max);
 
     // 誤差伝播のため（raw/TSB）
     hRawEe->Sumw2();   hRawEg->Sumw2();   hRawt->Sumw2();    hRawPhiE->Sumw2(); hRawPhiG->Sumw2(); hRawThEg->Sumw2();
@@ -331,7 +333,21 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
         ev.phi_detector_e = phi_pos;
         ev.phi_detector_g = phi_gam;
 
-        const double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
+        const int idx_e = Detector_PhiIndexFromValue(ev.phi_detector_e,
+                                                     detres.phi_e_min, detres.phi_e_max,
+                                                     Math_GetNPhiE(detres));
+        const int idx_g = Detector_PhiIndexFromValue(ev.phi_detector_g,
+                                                     detres.phi_g_min, detres.phi_g_max,
+                                                     Math_GetNPhiG(detres));
+        if (idx_e < 0 || idx_g < 0 || !Detector_IsAllowedPhiPairIndex(idx_e, idx_g, detres)) {
+            continue;
+        }
+
+        const double phi_e_disc = Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max,
+                                                        Math_GetNPhiE(detres));
+        const double phi_g_disc = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max,
+                                                        Math_GetNPhiG(detres));
+        const double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
         // AW (4D window)
         if (AnalysisWindow_In4D(analysis_window, ev.Ee, ev.Eg, ev.t, theta_eg)) {

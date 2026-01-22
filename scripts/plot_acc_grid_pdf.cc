@@ -18,7 +18,7 @@
 // 注意:
 //  - acc_grid は Ee/Eg の密度（MeV^-2）として格納されている。
 //  - 表示用ヒストは dEe dEg を掛けた「確率質量」で作る。
-//  - phi は離散点（N_theta+1）であり、phi の幅は正規化に含めない。
+//  - phi は離散点（N_phi+1）であり、phi の幅は正規化に含めない。
 //  - t は解析窓内一様であり、本図では表示しない。
 
 #include <cmath>
@@ -43,6 +43,8 @@
 
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/Constants.h"
+#include "p2meg/DetectorResolution.h"
+#include "p2meg/MathUtils.h"
 
 // ---- 固定ビン数（plot_data_hist に合わせる）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
@@ -74,8 +76,12 @@ static void DrawMetaPage(const char* infile,
                          double sum_mass,
                          long n_negative,
                          long n_nonfinite,
-                         int n_theta,
-                         double dphi,
+                         int n_phi_e,
+                         int n_phi_g,
+                         double phi_e_min,
+                         double phi_e_max,
+                         double phi_g_min,
+                         double phi_g_max,
                          const std::string& meta_text)
 {
     TLatex lat;
@@ -105,21 +111,23 @@ static void DrawMetaPage(const char* infile,
                                    axG ? axG->GetNbins() : 0,
                                    axPe ? axPe->GetNbins() : 0,
                                    axPg ? axPg->GetNbins() : 0));
-    lat.DrawLatex(0.05, 0.43, Form("phi grid: N_theta=%d  dphi=%.6g rad", n_theta, dphi));
+    lat.DrawLatex(0.05, 0.43, Form("phi grid: N_phi_e=%d  N_phi_g=%d", n_phi_e, n_phi_g));
+    lat.DrawLatex(0.05, 0.39, Form("phi_e range: [%.6g, %.6g] rad", phi_e_min, phi_e_max));
+    lat.DrawLatex(0.05, 0.35, Form("phi_g range: [%.6g, %.6g] rad", phi_g_min, phi_g_max));
 
     lat.SetTextSize(0.030);
-    lat.DrawLatex(0.05, 0.36, "Analysis window (Ee, Eg, t, theta):");
+    lat.DrawLatex(0.05, 0.30, "Analysis window (Ee, Eg, t, theta):");
     lat.SetTextSize(0.028);
-    lat.DrawLatex(0.08, 0.31, Form("Ee [MeV]    : [%.6g, %.6g]", analysis_window.Ee_min, analysis_window.Ee_max));
-    lat.DrawLatex(0.08, 0.27, Form("Eg [MeV]    : [%.6g, %.6g]", analysis_window.Eg_min, analysis_window.Eg_max));
-    lat.DrawLatex(0.08, 0.23, Form("t  [ns]     : [%.6g, %.6g]", analysis_window.t_min,  analysis_window.t_max));
-    lat.DrawLatex(0.08, 0.19, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
+    lat.DrawLatex(0.08, 0.25, Form("Ee [MeV]    : [%.6g, %.6g]", analysis_window.Ee_min, analysis_window.Ee_max));
+    lat.DrawLatex(0.08, 0.21, Form("Eg [MeV]    : [%.6g, %.6g]", analysis_window.Eg_min, analysis_window.Eg_max));
+    lat.DrawLatex(0.08, 0.17, Form("t  [ns]     : [%.6g, %.6g]", analysis_window.t_min,  analysis_window.t_max));
+    lat.DrawLatex(0.08, 0.13, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
 
     lat.SetTextSize(0.026);
-    lat.DrawLatex(0.05, 0.13, "t: uniform in window (not plotted).  phi: discrete (N_theta+1 points).");
+    lat.DrawLatex(0.05, 0.08, "t: uniform in window (not plotted).  phi: discrete (N_phi+1 points).");
 
     lat.SetTextSize(0.024);
-    lat.DrawLatex(0.05, 0.08, "Pages: (1) meta  (2) 1D  (3) 2D");
+    lat.DrawLatex(0.05, 0.04, "Pages: (1) meta  (2) 1D  (3) 2D");
 
     if (!meta_text.empty()) {
         const std::vector<std::string> lines = SplitLines(meta_text);
@@ -189,16 +197,36 @@ int main(int argc, char** argv)
     f.GetObject(meta_name.c_str(), meta);
     if (meta) meta_text = meta->GetTitle();
 
-    int n_theta = 0;
-    double dphi = 0.0;
-    const std::string ntheta_name = std::string(key) + "_N_theta";
-    const std::string dphi_name = std::string(key) + "_dphi";
-    TParameter<int>* par_ntheta = nullptr;
-    TParameter<double>* par_dphi = nullptr;
-    f.GetObject(ntheta_name.c_str(), par_ntheta);
-    f.GetObject(dphi_name.c_str(), par_dphi);
-    if (par_ntheta) n_theta = par_ntheta->GetVal();
-    if (par_dphi) dphi = par_dphi->GetVal();
+    int n_phi_e = 0;
+    int n_phi_g = 0;
+    double phi_e_min = detres.phi_e_min;
+    double phi_e_max = detres.phi_e_max;
+    double phi_g_min = detres.phi_g_min;
+    double phi_g_max = detres.phi_g_max;
+    const std::string nphi_e_name = std::string(key) + "_N_phi_e";
+    const std::string nphi_g_name = std::string(key) + "_N_phi_g";
+    const std::string phi_e_min_name = std::string(key) + "_phi_e_min";
+    const std::string phi_e_max_name = std::string(key) + "_phi_e_max";
+    const std::string phi_g_min_name = std::string(key) + "_phi_g_min";
+    const std::string phi_g_max_name = std::string(key) + "_phi_g_max";
+    TParameter<int>* par_nphi_e = nullptr;
+    TParameter<int>* par_nphi_g = nullptr;
+    TParameter<double>* par_phi_e_min = nullptr;
+    TParameter<double>* par_phi_e_max = nullptr;
+    TParameter<double>* par_phi_g_min = nullptr;
+    TParameter<double>* par_phi_g_max = nullptr;
+    f.GetObject(nphi_e_name.c_str(), par_nphi_e);
+    f.GetObject(nphi_g_name.c_str(), par_nphi_g);
+    f.GetObject(phi_e_min_name.c_str(), par_phi_e_min);
+    f.GetObject(phi_e_max_name.c_str(), par_phi_e_max);
+    f.GetObject(phi_g_min_name.c_str(), par_phi_g_min);
+    f.GetObject(phi_g_max_name.c_str(), par_phi_g_max);
+    if (par_nphi_e) n_phi_e = par_nphi_e->GetVal();
+    if (par_nphi_g) n_phi_g = par_nphi_g->GetVal();
+    if (par_phi_e_min) phi_e_min = par_phi_e_min->GetVal();
+    if (par_phi_e_max) phi_e_max = par_phi_e_max->GetVal();
+    if (par_phi_g_min) phi_g_min = par_phi_g_min->GetVal();
+    if (par_phi_g_max) phi_g_max = par_phi_g_max->GetVal();
     f.Close();
 
     gStyle->SetOptStat(0);
@@ -210,16 +238,16 @@ int main(int argc, char** argv)
     const double Eg_max = analysis_window.Eg_max;
     const double th_min = analysis_window.theta_min;
     const double th_max = analysis_window.theta_max;
-    const double phi_min = 0.0;
-    const double phi_max = pi;
+    if (n_phi_e <= 0) n_phi_e = Math_GetNPhiE(detres);
+    if (n_phi_g <= 0) n_phi_g = Math_GetNPhiG(detres);
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
     TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_e_min, phi_e_max);
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_g_min, phi_g_max);
     TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
                            kNBins_th, th_min, th_max);
 
@@ -234,7 +262,7 @@ int main(int argc, char** argv)
                             kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                            kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
+                            kNBins2D_phi, phi_e_min, phi_e_max, kNBins2D_phi, phi_g_min, phi_g_max);
 
     const TAxis* axE = grid->GetAxis(0);
     const TAxis* axG = grid->GetAxis(1);
@@ -317,7 +345,8 @@ int main(int argc, char** argv)
     TCanvas c0("c0", "meta", 1200, 800);
     c0.cd();
     DrawMetaPage(infile, key, outpdf, *grid, sum_mass,
-                 n_negative, n_nonfinite, n_theta, dphi, meta_text);
+                 n_negative, n_nonfinite, n_phi_e, n_phi_g,
+                 phi_e_min, phi_e_max, phi_g_min, phi_g_max, meta_text);
 
     // ---- ページ2：1D ----
     TCanvas c1("c1", "1D acc grid", 1200, 800);

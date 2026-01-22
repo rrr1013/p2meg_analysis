@@ -4,7 +4,9 @@
 //   ./build/inspect_rmd_grid data/pdf_cache/rmd_grid.root rmd_grid
 //
 // rmd_grid.root に保存された 4D 格子PDF（key）と
-// メタ情報（key+"_meta", key+"_d_min", key+"_seed", key+"_N_theta", key+"_P_mu"）を表示する。
+// メタ情報（key+"_meta", key+"_d_min", key+"_seed", key+"_N_theta",
+//           key+"_N_phi_e", key+"_N_phi_g", key+"_phi_e_min/max", key+"_phi_g_min/max",
+//           key+"_P_mu"）を表示する。
 // 格子の軸は (Ee, Eg, phi_detector_e, phi_detector_g) を想定。
 
 #include <cmath>
@@ -146,6 +148,12 @@ int main(int argc, char** argv)
   const std::string dmin_name = std::string(key) + "_d_min";
   const std::string seed_name = std::string(key) + "_seed";
   const std::string ntheta_name = std::string(key) + "_N_theta";
+  const std::string nphi_e_name = std::string(key) + "_N_phi_e";
+  const std::string nphi_g_name = std::string(key) + "_N_phi_g";
+  const std::string phi_e_min_name = std::string(key) + "_phi_e_min";
+  const std::string phi_e_max_name = std::string(key) + "_phi_e_max";
+  const std::string phi_g_min_name = std::string(key) + "_phi_g_min";
+  const std::string phi_g_max_name = std::string(key) + "_phi_g_max";
   const std::string pmu_name = std::string(key) + "_P_mu";
 
   TParameter<double>* par_dmin = nullptr;
@@ -170,6 +178,46 @@ int main(int argc, char** argv)
     std::cout << "[inspect_rmd_grid] N_theta=" << par_ntheta->GetVal() << "\n";
   } else {
     std::cout << "[inspect_rmd_grid] N_theta not found: " << ntheta_name << "\n";
+  }
+
+  TParameter<int>* par_nphi_e = nullptr;
+  f.GetObject(nphi_e_name.c_str(), par_nphi_e);
+  if (par_nphi_e) {
+    std::cout << "[inspect_rmd_grid] N_phi_e=" << par_nphi_e->GetVal() << "\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] N_phi_e not found: " << nphi_e_name << "\n";
+  }
+
+  TParameter<int>* par_nphi_g = nullptr;
+  f.GetObject(nphi_g_name.c_str(), par_nphi_g);
+  if (par_nphi_g) {
+    std::cout << "[inspect_rmd_grid] N_phi_g=" << par_nphi_g->GetVal() << "\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] N_phi_g not found: " << nphi_g_name << "\n";
+  }
+
+  TParameter<double>* par_phi_e_min = nullptr;
+  TParameter<double>* par_phi_e_max = nullptr;
+  f.GetObject(phi_e_min_name.c_str(), par_phi_e_min);
+  f.GetObject(phi_e_max_name.c_str(), par_phi_e_max);
+  if (par_phi_e_min && par_phi_e_max) {
+    std::cout << "[inspect_rmd_grid] phi_e range=[" << par_phi_e_min->GetVal()
+              << "," << par_phi_e_max->GetVal() << "]\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] phi_e range not found: " << phi_e_min_name
+              << ", " << phi_e_max_name << "\n";
+  }
+
+  TParameter<double>* par_phi_g_min = nullptr;
+  TParameter<double>* par_phi_g_max = nullptr;
+  f.GetObject(phi_g_min_name.c_str(), par_phi_g_min);
+  f.GetObject(phi_g_max_name.c_str(), par_phi_g_max);
+  if (par_phi_g_min && par_phi_g_max) {
+    std::cout << "[inspect_rmd_grid] phi_g range=[" << par_phi_g_min->GetVal()
+              << "," << par_phi_g_max->GetVal() << "]\n";
+  } else {
+    std::cout << "[inspect_rmd_grid] phi_g range not found: " << phi_g_min_name
+              << ", " << phi_g_max_name << "\n";
   }
 
   TParameter<double>* par_pmu = nullptr;

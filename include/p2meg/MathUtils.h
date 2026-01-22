@@ -32,4 +32,20 @@ static inline int Math_GetNTheta(const DetectorResolutionConst& res) {
   return N;
 }
 
+// detres.N_phi_e を int として安全に使う
+static inline int Math_GetNPhiE(const DetectorResolutionConst& res) {
+  const double x = static_cast<double>(res.N_phi_e);
+  int N = static_cast<int>(std::lround(x));
+  if (N < 1) N = 1;
+  return N;
+}
+
+// detres.N_phi_g を int として安全に使う
+static inline int Math_GetNPhiG(const DetectorResolutionConst& res) {
+  const double x = static_cast<double>(res.N_phi_g);
+  int N = static_cast<int>(std::lround(x));
+  if (N < 1) N = 1;
+  return N;
+}
+
 #endif // P2MEG_MATH_UTILS_H

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <limits>
 
 #include "TFile.h"
 #include "TNamed.h"
@@ -242,10 +243,11 @@ static double CheckNormalizationEeEg(const THnD& h) {
 static std::string BuildMetaString(long n_total, long n_finite,
                                    long n_in_window, long n_tsb,
                                    long n_fill, double total_mass,
-                                   double norm_check, int N_theta,
+                                   double norm_check, int N_phi_e, int N_phi_g,
                                    double t_all_min, double t_all_max,
                                    double w_tsb) {
-  const double dphi = pi / static_cast<double>(N_theta);
+  const double dphi_e = Detector_PhiStep(detres.phi_e_min, detres.phi_e_max, N_phi_e);
+  const double dphi_g = Detector_PhiStep(detres.phi_g_min, detres.phi_g_max, N_phi_g);
 
   std::ostringstream oss;
   oss << "MakeACCGridPdf meta (4D grid, time sideband)\n";
@@ -253,9 +255,11 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "smoothing: along E only (radius_bins=" << kSmoothRadiusBins
       << ", sigma_bins=" << kSmoothSigmaBins << ")\n";
   oss << "bins: Ee=" << kNBins_Ee << ", Eg=" << kNBins_Eg
-      << ", phi_e=" << (N_theta + 1) << ", phi_g=" << (N_theta + 1) << "\n";
-  oss << "phi axis: discrete phi_i=i*pi/N_theta (i=0..N_theta)\n";
-  oss << "phi axis: stored as uniform bins [-dphi/2, pi+dphi/2], dphi=" << dphi << " rad\n";
+      << ", phi_e=" << (N_phi_e + 1) << ", phi_g=" << (N_phi_g + 1) << "\n";
+  oss << "phi_e range: [" << detres.phi_e_min << "," << detres.phi_e_max
+      << "] rad, dphi_e=" << dphi_e << " rad\n";
+  oss << "phi_g range: [" << detres.phi_g_min << "," << detres.phi_g_max
+      << "] rad, dphi_g=" << dphi_g << " rad\n";
   oss << "window: Ee=[" << analysis_window.Ee_min << "," << analysis_window.Ee_max << "] MeV\n";
   oss << "window: Eg=[" << analysis_window.Eg_min << "," << analysis_window.Eg_max << "] MeV\n";
   oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns\n";
@@ -287,16 +291,25 @@ int MakeACCGridPdf(const std::vector<Event>& events,
     return 1;
   }
 
-  const int N_theta = Math_GetNTheta(detres);
-  const double dphi = pi / static_cast<double>(N_theta);
+  const int N_phi_e = Math_GetNPhiE(detres);
+  const int N_phi_g = Math_GetNPhiG(detres);
+  if (!Detector_IsPhiRangeValid(detres.phi_e_min, detres.phi_e_max, N_phi_e) ||
+      !Detector_IsPhiRangeValid(detres.phi_g_min, detres.phi_g_max, N_phi_g)) {
+    std::cerr << "[MakeACCGridPdf] phi range is invalid.\n";
+    return 2;
+  }
+  const double phi_e_max_plus =
+      std::nextafter(detres.phi_e_max, std::numeric_limits<double>::infinity());
+  const double phi_g_max_plus =
+      std::nextafter(detres.phi_g_max, std::numeric_limits<double>::infinity());
 
   // ---- 4Dヒスト（Ee, Eg, phi_e, phi_g） ※最終出力 ----
   const int ndim = 4;
-  int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_theta + 1, N_theta + 1};
+  int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_phi_e + 1, N_phi_g + 1};
   double xmin[ndim] = {analysis_window.Ee_min, analysis_window.Eg_min,
-                       -0.5 * dphi, -0.5 * dphi};
+                       detres.phi_e_min, detres.phi_g_min};
   double xmax[ndim] = {analysis_window.Ee_max, analysis_window.Eg_max,
-                       pi + 0.5 * dphi, pi + 0.5 * dphi};
+                       phi_e_max_plus, phi_g_max_plus};
 
   THnD h("acc_grid_tmp", "ACC grid (phi);Ee;Eg;phi_e;phi_g", ndim, nbins, xmin, xmax);
   h.Sumw2();
@@ -306,14 +319,21 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   h.GetAxis(2)->SetTitle("phi_detector_e [rad]");
   h.GetAxis(3)->SetTitle("phi_detector_g [rad]");
 
+  const std::vector<double> phi_edges_e =
+      Detector_PhiEdgesFromGrid(detres.phi_e_min, detres.phi_e_max, N_phi_e);
+  const std::vector<double> phi_edges_g =
+      Detector_PhiEdgesFromGrid(detres.phi_g_min, detres.phi_g_max, N_phi_g);
+  h.GetAxis(2)->Set(N_phi_e + 1, phi_edges_e.data());
+  h.GetAxis(3)->Set(N_phi_g + 1, phi_edges_g.data());
+
   // ---- 因子化用 2D ヒスト（Ee,phi_e）と（Eg,phi_g） ----
   // phi の軸定義は 4D と揃える（離散点が FindBin で一致するように）。
   TH2D hE("acc_e_tmp", "ACC factor pE;Ee [MeV];phi_detector_e [rad]",
           kNBins_Ee, analysis_window.Ee_min, analysis_window.Ee_max,
-          N_theta + 1, -0.5 * dphi, pi + 0.5 * dphi);
+          N_phi_e + 1, phi_edges_e.data());
   TH2D hG("acc_g_tmp", "ACC factor pG;Eg [MeV];phi_detector_g [rad]",
           kNBins_Eg, analysis_window.Eg_min, analysis_window.Eg_max,
-          N_theta + 1, -0.5 * dphi, pi + 0.5 * dphi);
+          N_phi_g + 1, phi_edges_g.data());
   hE.Sumw2();
   hG.Sumw2();
 
@@ -339,9 +359,14 @@ int MakeACCGridPdf(const std::vector<Event>& events,
     }
     ++n_finite;
 
-    const double phi_e_disc = Angle_DiscretizePhi(phi_e, N_theta);
-    const double phi_g_disc = Angle_DiscretizePhi(phi_g, N_theta);
-    const double theta_eg = Angle_ThetaFromPhiClipped(phi_e_disc, phi_g_disc);
+    int idx_e = Detector_PhiIndexFromValue(phi_e, detres.phi_e_min, detres.phi_e_max, N_phi_e);
+    int idx_g = Detector_PhiIndexFromValue(phi_g, detres.phi_g_min, detres.phi_g_max, N_phi_g);
+    if (idx_e < 0 || idx_g < 0) continue;
+    if (!Detector_IsAllowedPhiPairIndex(idx_e, idx_g, detres)) continue;
+
+    const double phi_e_disc = Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max, N_phi_e);
+    const double phi_g_disc = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max, N_phi_g);
+    const double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
     if (!AnalysisWindow_In3D(analysis_window, Ee, Eg, theta_eg)) continue;
     ++n_in_window;
@@ -404,8 +429,11 @@ int MakeACCGridPdf(const std::vector<Event>& events,
 
   std::vector<int> idx(4, 1);
   for (int iPe = 1; iPe <= nPe; ++iPe) {
+    const int idx_e = iPe - 1;
     idx[2] = iPe;
     for (int iPg = 1; iPg <= nPg; ++iPg) {
+      const int idx_g = iPg - 1;
+      if (!Detector_IsAllowedPhiPairIndex(idx_e, idx_g, detres)) continue;
       idx[3] = iPg;
       for (int iEe = 1; iEe <= nEe; ++iEe) {
         idx[0] = iEe;
@@ -456,16 +484,28 @@ int MakeACCGridPdf(const std::vector<Event>& events,
 
   const std::string meta = BuildMetaString(n_total, n_finite, n_in_window,
                                            n_tsb, n_fill, total_mass,
-                                           norm_check, N_theta,
+                                           norm_check, N_phi_e, N_phi_g,
                                            kTAllMin, kTAllMax, w_tsb);
   TNamed meta_obj((std::string(key) + "_meta").c_str(), meta.c_str());
   meta_obj.Write();
 
-  TParameter<int> par_Ntheta((std::string(key) + "_N_theta").c_str(), N_theta);
-  par_Ntheta.Write();
+  TParameter<int> par_NphiE((std::string(key) + "_N_phi_e").c_str(), N_phi_e);
+  par_NphiE.Write();
 
-  TParameter<double> par_dphi((std::string(key) + "_dphi").c_str(), dphi);
-  par_dphi.Write();
+  TParameter<int> par_NphiG((std::string(key) + "_N_phi_g").c_str(), N_phi_g);
+  par_NphiG.Write();
+
+  TParameter<double> par_phi_e_min((std::string(key) + "_phi_e_min").c_str(), detres.phi_e_min);
+  par_phi_e_min.Write();
+
+  TParameter<double> par_phi_e_max((std::string(key) + "_phi_e_max").c_str(), detres.phi_e_max);
+  par_phi_e_max.Write();
+
+  TParameter<double> par_phi_g_min((std::string(key) + "_phi_g_min").c_str(), detres.phi_g_min);
+  par_phi_g_min.Write();
+
+  TParameter<double> par_phi_g_max((std::string(key) + "_phi_g_max").c_str(), detres.phi_g_max);
+  par_phi_g_max.Write();
 
   TParameter<int> par_bins_Ee((std::string(key) + "_bins_Ee").c_str(), kNBins_Ee);
   par_bins_Ee.Write();
@@ -484,6 +524,18 @@ int MakeACCGridPdf(const std::vector<Event>& events,
 
   TParameter<double> par_Eg_max((std::string(key) + "_Eg_max").c_str(), analysis_window.Eg_max);
   par_Eg_max.Write();
+
+  TH2I hmask((std::string(key) + "_phi_mask").c_str(),
+             "phi mask;phi_e index;phi_g index",
+             N_phi_e + 1, -0.5, N_phi_e + 0.5,
+             N_phi_g + 1, -0.5, N_phi_g + 0.5);
+  for (int ie = 0; ie <= N_phi_e; ++ie) {
+    for (int ig = 0; ig <= N_phi_g; ++ig) {
+      const int allowed = Detector_IsAllowedPhiPairIndex(ie, ig, detres) ? 1 : 0;
+      hmask.SetBinContent(ie + 1, ig + 1, allowed);
+    }
+  }
+  hmask.Write();
 
   fout.Close();
 

@@ -19,8 +19,8 @@
 //  - TSB（タイミングサイドバンド）は
 //      「t が全時間範囲内で、解析窓外」にあること。
 //    Ee/Eg/角度は解析窓内にあるものだけを採用する。
-//  - phi は [0,pi] にクリップしてから N_theta の離散点に丸める。
-//    phi_i = i * pi / N_theta (i=0..N_theta)
+//  - phi は DetectorResolution の範囲にクリップして離散点に丸める。
+//    phi_i = phi_min + i * (phi_max-phi_min)/N_phi (i=0..N_phi)
 //  - theta_eg は離散化後の phi から |phi_e - phi_g| として作る。
 //  - 正規化は
 //      Σ_{phi_e,phi_g} ∫ dEe dEg p4(Ee,Eg,phi_e,phi_g) = 1
@@ -28,7 +28,7 @@
 //
 // 出力（ROOT）
 //  - key 名の 4D THnD（Ee, Eg, phi_e, phi_g）
-//  - メタ情報（N_theta、ビニング、phi 軸定義、正規化条件）
+//  - メタ情報（N_phi_e/g、ビニング、phi 軸定義、正規化条件）
 // ============================================================
 
 // 成功: 0、失敗: 非0
