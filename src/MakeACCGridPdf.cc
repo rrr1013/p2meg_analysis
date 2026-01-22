@@ -3,7 +3,6 @@
 
 #include <cmath>
 #include <iostream>
-#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -45,47 +44,10 @@ static constexpr double kSmoothSigmaBins  = 1.0; // ガウス重みの幅（ビ�
 // 内部補助
 //============================================================
 
-// φ= i*pi/N (i=0..N) の格子に対応する phi 軸の可変ビン境界を作る。
-// 「最近傍格子」になるように、φ の中点 (i+0.5)*Δθ を境界にする。
-// 出力: edges サイズ = (N+1)+1 = N+2、x は昇順（0..π）
-static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
-  const double dth = pi / static_cast<double>(N_theta);
-
-  // ROOT のビンは [low, high) なので、phi=pi を in-range に入れるため上端を僅かに広げる
-  const double pi_plus =
-      std::nextafter(pi, std::numeric_limits<double>::infinity());
-
-  std::vector<double> edges;
-  edges.resize(static_cast<size_t>(N_theta + 2));
-
-  edges[0] = 0.0;
-  for (int i = 1; i <= N_theta; ++i) {
-    edges[i] = (static_cast<double>(i) - 0.5) * dth;
-  }
-  edges[N_theta + 1] = pi_plus;
-
-  for (int k = 1; k < static_cast<int>(edges.size()); ++k) {
-    if (edges[k] < edges[k - 1]) edges[k] = edges[k - 1];
-    edges[k] = Math_Clamp(edges[k], 0.0, pi_plus);
-  }
-
-  return edges;
-}
-
-// φ の離散値から格子インデックスを作る
-static inline int PhiIndexFromPhi(double phi_disc, double dphi, int N_theta) {
-  if (!(N_theta >= 1)) return 0;
-  if (!(dphi > 0.0) || !Math_IsFinite(dphi)) return 0;
-  long long i = std::llround(phi_disc / dphi);
-  if (i < 0LL) i = 0LL;
-  if (i > static_cast<long long>(N_theta)) i = static_cast<long long>(N_theta);
-  return static_cast<int>(i);
-}
-
 // φ 積分を台形則で近似するための重み（端点 1/2）
-static inline double PhiTrapezoidWeight(int i, int N_theta) {
+static inline double PhiTrapezoidWeight(int i, int N_phi) {
   if (i <= 0) return 0.5;
-  if (i >= N_theta) return 0.5;
+  if (i >= N_phi) return 0.5;
   return 1.0;
 }
 
@@ -300,9 +262,13 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "smoothing: along E only (radius_bins=" << kSmoothRadiusBins
       << ", sigma_bins=" << kSmoothSigmaBins << ")\n";
   oss << "bins: Ee=" << kNBins_Ee << ", Eg=" << kNBins_Eg
-      << ", phi_e=" << (N_theta + 1) << ", phi_g=" << (N_theta + 1) << "\n";
-  oss << "phi axis: discrete phi_i=i*pi/N_theta (i=0..N_theta)\n";
-  oss << "phi axis: stored as uniform bins [-dphi/2, pi+dphi/2], dphi=" << dphi << " rad\n";
+      << ", phi_e=" << (N_phi_e + 1) << ", phi_g=" << (N_phi_g + 1) << "\n";
+  oss << "phi axis: grid points i=0..N_phi (phi_i=phi_min + i*dphi)\n";
+  oss << "phi integration: trapezoid weight (endpoints 1/2)\n";
+  oss << "phi_e: range=[" << detres.phi_e_min << "," << detres.phi_e_max
+      << "], dphi=" << dphi_e << " rad (upper edge phi_max+eps)\n";
+  oss << "phi_g: range=[" << detres.phi_g_min << "," << detres.phi_g_max
+      << "], dphi=" << dphi_g << " rad (upper edge phi_max+eps)\n";
   oss << "window: Ee=[" << analysis_window.Ee_min << "," << analysis_window.Ee_max << "] MeV\n";
   oss << "window: Eg=[" << analysis_window.Eg_min << "," << analysis_window.Eg_max << "] MeV\n";
   oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns\n";
@@ -334,16 +300,26 @@ int MakeACCGridPdf(const std::vector<Event>& events,
     return 1;
   }
 
-  const int N_theta = Math_GetNTheta(detres);
-  const double dphi = pi / static_cast<double>(N_theta);
+  const int N_phi_e = detres.N_phi_e;
+  const int N_phi_g = detres.N_phi_g;
+  const double phi_e_min = detres.phi_e_min;
+  const double phi_e_max = detres.phi_e_max;
+  const double phi_g_min = detres.phi_g_min;
+  const double phi_g_max = detres.phi_g_max;
+
+  const std::vector<double> phi_edges_e =
+      Detector_PhiEdgesFromGrid(phi_e_min, phi_e_max, N_phi_e);
+  const std::vector<double> phi_edges_g =
+      Detector_PhiEdgesFromGrid(phi_g_min, phi_g_max, N_phi_g);
 
   // ---- 4Dヒスト（Ee, Eg, phi_e, phi_g） ※最終出力 ----
   const int ndim = 4;
-  int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_theta + 1, N_theta + 1};
+  int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_phi_e + 1, N_phi_g + 1};
   double xmin[ndim] = {analysis_window.Ee_min, analysis_window.Eg_min,
-                       -0.5 * dphi, -0.5 * dphi};
+                       phi_e_min, phi_g_min};
+  // ROOT のビンは [low, high) なので、phi=phi_max を in-range に入れるため上端を僅かに広げる
   double xmax[ndim] = {analysis_window.Ee_max, analysis_window.Eg_max,
-                       pi + 0.5 * dphi, pi + 0.5 * dphi};
+                       phi_edges_e.back(), phi_edges_g.back()};
 
   THnD h("acc_grid_tmp", "ACC grid (phi);Ee;Eg;phi_e;phi_g", ndim, nbins, xmin, xmax);
   h.Sumw2();
@@ -353,18 +329,22 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   h.GetAxis(2)->SetTitle("phi_detector_e [rad]");
   h.GetAxis(3)->SetTitle("phi_detector_g [rad]");
 
+  // phi 軸は「最近傍格子」になる可変ビンを設定
+  h.GetAxis(2)->Set(N_phi_e + 1, phi_edges_e.data());
+  h.GetAxis(3)->Set(N_phi_g + 1, phi_edges_g.data());
+
   // ---- 因子化用 2D ヒスト（Ee,phi_e）と（Eg,phi_g） ----
   // phi の軸定義は 4D と揃える（離散点が FindBin で一致するように）。
   TH2D hE("acc_e_tmp", "ACC factor pE;Ee [MeV];phi_detector_e [rad]",
           kNBins_Ee, analysis_window.Ee_min, analysis_window.Ee_max,
-          N_theta + 1, -0.5 * dphi, pi + 0.5 * dphi);
+          N_phi_e + 1, phi_e_min, phi_edges_e.back());
   TH2D hG("acc_g_tmp", "ACC factor pG;Eg [MeV];phi_detector_g [rad]",
           kNBins_Eg, analysis_window.Eg_min, analysis_window.Eg_max,
-          N_theta + 1, -0.5 * dphi, pi + 0.5 * dphi);
+          N_phi_g + 1, phi_g_min, phi_edges_g.back());
   hE.Sumw2();
   hG.Sumw2();
-  hE.GetYaxis()->Set(N_theta + 1, phi_edges.data());
-  hG.GetYaxis()->Set(N_theta + 1, phi_edges.data());
+  hE.GetYaxis()->Set(N_phi_e + 1, phi_edges_e.data());
+  hG.GetYaxis()->Set(N_phi_g + 1, phi_edges_g.data());
 
   long n_total = 0;
   long n_finite = 0;
@@ -407,10 +387,8 @@ int MakeACCGridPdf(const std::vector<Event>& events,
 
     // 因子化：TSB から (Ee,phi_e) と (Eg,phi_g) を別々に詰める
     // φ 積分は台形則近似のため、端点は 1/2 の重みを掛ける
-    const int ie = PhiIndexFromPhi(phi_e_disc, dphi, N_theta);
-    const int ig = PhiIndexFromPhi(phi_g_disc, dphi, N_theta);
-    const double wphi_e = PhiTrapezoidWeight(ie, N_theta);
-    const double wphi_g = PhiTrapezoidWeight(ig, N_theta);
+    const double wphi_e = PhiTrapezoidWeight(idx_e, N_phi_e);
+    const double wphi_g = PhiTrapezoidWeight(idx_g, N_phi_g);
     hE.Fill(Ee, phi_e_disc, wphi_e);
     hG.Fill(Eg, phi_g_disc, wphi_g);
     ++n_fill;
