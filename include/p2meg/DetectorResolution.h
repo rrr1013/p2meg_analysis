@@ -54,13 +54,14 @@ inline constexpr DetectorResolutionConst detres{
     18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
     -0.1479, // t_mean [ns]
     -0.8,    // P_mu
-    0.0,     // phi_e_min [rad]
-    pi,      // phi_e_max [rad]
-    18,      // N_phi_e （デフォルトは N_theta と同じ）
-    0.0,     // phi_g_min [rad]
-    pi,      // phi_g_max [rad]
-    18       // N_phi_g （デフォルトは N_theta と同じ）
-};
+
+    pi * (10/180),     // phi_e_min [rad]
+    pi * (190/180),      // phi_e_max [rad]
+    18,      // N_phi_e
+
+    pi * (10/180),     // phi_g_min [rad]
+    pi * (190/180),      // phi_g_max [rad]
+    18       // N_phi_g
 
 // ------------------------------------------------------------
 // phi の離散化・ビン境界の共通ヘルパ
@@ -165,9 +166,12 @@ static inline double Detector_PhiBinWidth(int i, double phi_min, double phi_max,
 // ------------------------------------------------------------
 static inline bool Detector_IsAllowedPhiPairIndex(int i_e, int i_g,
                                                   const DetectorResolutionConst& res) {
+    // まず範囲外は拒否
     if (i_e < 0 || i_g < 0) return false;
     if (i_e > res.N_phi_e || i_g > res.N_phi_g) return false;
-    return true;
+
+    // マスク条件: どちらかが phi_max に対応する端点インデックス
+    return (i_e == res.N_phi_e) || (i_g == res.N_phi_g);
 }
 
 static inline bool Detector_IsAllowedPhiPairValue(double phi_e, double phi_g,
