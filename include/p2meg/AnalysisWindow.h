@@ -24,9 +24,9 @@ struct AnalysisWindow4D {
 };
 
 inline constexpr AnalysisWindow4D analysis_window{
-    5.0, 70.0,    // Ee [MeV]
-    10.0, 70.0,    // Eg [MeV]
-    -10.0, 10.0,     // t  [ns]
+    30.0, 70.0,    // Ee [MeV]
+    30.0, 70.0,    // Eg [MeV]
+    -2.0, 2.0,     // t  [ns]
     2, 3.1415926536 // theta [rad]
 };
 

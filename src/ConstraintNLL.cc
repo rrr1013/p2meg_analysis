@@ -39,8 +39,8 @@ double ConstraintNLL(const std::vector<double>& yields) {
     // --- N_acc constraint ---
     const double N_acc = yields[2];
     if (std::isfinite(N_acc)) {
-        const double N_acc_pred = 4536.25;
-        const double sigma_N_acc_pred = 33.6758;
+        const double N_acc_pred = 1332.75;
+        const double sigma_N_acc_pred = 18.2534;
         if (sigma_N_acc_pred > 0.0 && std::isfinite(sigma_N_acc_pred)) {
             const double z = (N_acc - N_acc_pred) / sigma_N_acc_pred;
             constraint += 0.5 * z * z;

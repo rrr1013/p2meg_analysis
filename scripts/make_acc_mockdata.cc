@@ -374,6 +374,13 @@ int main(int argc, char** argv)
             continue;
         }
 
+        // 解析窓 theta カット（theta_eg = |phi_e - phi_g|）
+        const double theta_eg = std::fabs(phi_e - phi_g);
+        if (!std::isfinite(theta_eg) ||
+            theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) {
+            continue;
+        }
+
         // t 一様
         const double t = rng.Uniform(tmin, tmax);
 

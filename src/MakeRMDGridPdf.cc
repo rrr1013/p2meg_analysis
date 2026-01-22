@@ -49,8 +49,8 @@ static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
 
 // ---- 生成統計 ----
-static constexpr long kNTruthSamples  = 1000000L; // 真値サンプル数（Ee,Eg を一様）
-static constexpr int  kNSmearPerTruth = 100;       // 1真値あたりのエネルギースメア回数
+static constexpr long kNTruthSamples  = 2000000L; // 真値サンプル数（Ee,Eg を一様）
+static constexpr int  kNSmearPerTruth = 200;       // 1真値あたりのエネルギースメア回数
 static constexpr unsigned long kSeed  = 20260109UL;
 
 // ---- RMD 理論関数の d_min ----

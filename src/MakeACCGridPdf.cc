@@ -44,13 +44,6 @@ static constexpr double kSmoothSigmaBins  = 1.0; // ガウス重みの幅（ビ�
 // 内部補助
 //============================================================
 
-// φ 積分を台形則で近似するための重み（端点 1/2）
-static inline double PhiTrapezoidWeight(int i, int N_phi) {
-  if (i <= 0) return 0.5;
-  if (i >= N_phi) return 0.5;
-  return 1.0;
-}
-
 // 2D( E, phi ) の全ビン総和（カウントの総和）
 static double SumAllBins2(const TH2D& h) {
   const int nx = h.GetXaxis()->GetNbins();
@@ -264,7 +257,7 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "bins: Ee=" << kNBins_Ee << ", Eg=" << kNBins_Eg
       << ", phi_e=" << (N_phi_e + 1) << ", phi_g=" << (N_phi_g + 1) << "\n";
   oss << "phi axis: grid points i=0..N_phi (phi_i=phi_min + i*dphi)\n";
-  oss << "phi integration: trapezoid weight (endpoints 1/2)\n";
+  oss << "phi integration: discrete grid (equal weight)\n";
   oss << "phi_e: range=[" << detres.phi_e_min << "," << detres.phi_e_max
       << "], dphi=" << dphi_e << " rad (upper edge phi_max+eps)\n";
   oss << "phi_g: range=[" << detres.phi_g_min << "," << detres.phi_g_max
@@ -386,11 +379,9 @@ int MakeACCGridPdf(const std::vector<Event>& events,
     ++n_tsb;
 
     // 因子化：TSB から (Ee,phi_e) と (Eg,phi_g) を別々に詰める
-    // φ 積分は台形則近似のため、端点は 1/2 の重みを掛ける
-    const double wphi_e = PhiTrapezoidWeight(idx_e, N_phi_e);
-    const double wphi_g = PhiTrapezoidWeight(idx_g, N_phi_g);
-    hE.Fill(Ee, phi_e_disc, wphi_e);
-    hG.Fill(Eg, phi_g_disc, wphi_g);
+    // phi は離散点として等重みで扱う
+    hE.Fill(Ee, phi_e_disc);
+    hG.Fill(Eg, phi_g_disc);
     ++n_fill;
   }
 

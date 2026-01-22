@@ -180,6 +180,9 @@ static inline bool Detector_IsAllowedPhiPairIndex(int i_e, int i_g,
 
     // マスク条件: どちらかが phi_max に対応する端点インデックス
     return (i_e == res.N_phi_e) || (i_g == res.N_phi_g);
+
+    // 全角度取るならここだけ
+    //return true;
 }
 
 static inline bool Detector_IsAllowedPhiPairValue(double phi_e, double phi_g,

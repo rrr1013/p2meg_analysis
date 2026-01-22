@@ -318,10 +318,16 @@ int main(int argc, char** argv)
             const double Eg = axG->GetBinCenter(i1);
             for (int i2 = 1; i2 <= n2; ++i2) {
                 idx[2] = i2;
-                const double phi_e = axPe->GetBinCenter(i2);
+                const double phi_e = Detector_PhiGridPoint(i2 - 1,
+                                                          detres_phi.phi_e_min,
+                                                          detres_phi.phi_e_max,
+                                                          detres_phi.N_phi_e);
                 for (int i3 = 1; i3 <= n3; ++i3) {
                     idx[3] = i3;
-                    const double phi_g = axPg->GetBinCenter(i3);
+                    const double phi_g = Detector_PhiGridPoint(i3 - 1,
+                                                              detres_phi.phi_g_min,
+                                                              detres_phi.phi_g_max,
+                                                              detres_phi.N_phi_g);
 
                     const Long64_t bin = grid->GetBin(idx.data());
                     const double v = grid->GetBinContent(bin);
