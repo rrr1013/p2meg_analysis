@@ -55,13 +55,14 @@ inline constexpr DetectorResolutionConst detres{
     -0.1479, // t_mean [ns]
     -0.8,    // P_mu
 
-    pi * (10/180),     // phi_e_min [rad]
-    pi * (190/180),      // phi_e_max [rad]
+    pi * (10.0/180.0),     // phi_e_min [rad]
+    pi * (190.0/180.0),      // phi_e_max [rad]
     18,      // N_phi_e
 
-    pi * (10/180),     // phi_g_min [rad]
-    pi * (190/180),      // phi_g_max [rad]
+    pi * (10.0/180.0),     // phi_g_min [rad]
+    pi * (190.0/180.0),      // phi_g_max [rad]
     18       // N_phi_g
+};
 
 // ------------------------------------------------------------
 // phi の離散化・ビン境界の共通ヘルパ
