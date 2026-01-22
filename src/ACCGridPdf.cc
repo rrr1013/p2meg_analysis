@@ -1,15 +1,14 @@
-// src/RMDGridPdf.cc
-#include "p2meg/RMDGridPdf.h"
+// src/ACCGridPdf.cc
+#include "p2meg/ACCGridPdf.h"
 
 #include <cmath>
 #include <iostream>
 #include <string>
-#include <limits>
 
 #include "TFile.h"
+#include "TAxis.h"
 #include "TH2.h"
 #include "THn.h"
-#include "TAxis.h"
 #include "TParameter.h"
 
 #include "p2meg/AnalysisWindow.h"
@@ -27,52 +26,24 @@
 static THnD* gHist = nullptr;
 
 //============================================================
-// 窓内で正規化された時間ガウシアン（密度）
-// pt(t) = N(t_mean, sigma_t) / A_t, ただし A_t = ∫_{tmin}^{tmax} N dt
-//============================================================
-static double PtWindowNormalized(double t) {
-  const double sigma_t = detres.sigma_t;
-  const double t_mean  = detres.t_mean;
-
-  const double tmin = analysis_window.t_min;
-  const double tmax = analysis_window.t_max;
-
-  if (!(sigma_t > 0.0) || !Math_IsFinite(sigma_t)) return 0.0;
-
-  const double inv_s = 1.0 / sigma_t;
-  const double z = (t - t_mean) * inv_s;
-
-  const double norm = 1.0 / (std::sqrt(2.0 * pi) * sigma_t);
-  const double g = norm * std::exp(-0.5 * z * z);
-
-  const double s2 = std::sqrt(2.0) * sigma_t;
-  const double u1 = (tmax - t_mean) / s2;
-  const double u0 = (tmin - t_mean) / s2;
-  const double At = 0.5 * (std::erf(u1) - std::erf(u0));
-
-  if (!(At > 0.0) || !Math_IsFinite(At)) return 0.0;
-  return g / At;
-}
-
-//============================================================
 // 公開関数
 //============================================================
 
-bool RMDGridPdf_Load(const char* filepath, const char* key) {
+bool ACCGridPdf_Load(const char* filepath, const char* key) {
   if (!filepath || !key) return false;
 
   if (gHist) { delete gHist; gHist = nullptr; }
 
   TFile f(filepath, "READ");
   if (f.IsZombie()) {
-    std::cerr << "[RMDGridPdf_Load] cannot open: " << filepath << "\n";
+    std::cerr << "[ACCGridPdf_Load] cannot open: " << filepath << "\n";
     return false;
   }
 
   TObject* obj = f.Get(key);
 
   if (!obj) {
-    std::cerr << "[RMDGridPdf_Load] key not found: " << key << "\n";
+    std::cerr << "[ACCGridPdf_Load] key not found: " << key << "\n";
     f.Close();
     return false;
   }
@@ -80,14 +51,7 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
   THnD* h = dynamic_cast<THnD*>(obj);
 
   if (!h) {
-    std::cerr << "[RMDGridPdf_Load] object is not THnD: " << key << "\n";
-    f.Close();
-    return false;
-  }
-
-  if (h->GetNdimensions() != 4) {
-    std::cerr << "[RMDGridPdf_Load] THnD dimension is not 4: "
-              << "N=" << h->GetNdimensions() << "\n";
+    std::cerr << "[ACCGridPdf_Load] object is not THnD: " << key << "\n";
     f.Close();
     return false;
   }
@@ -102,18 +66,18 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
       const int fileN = pNphiE->GetVal();
       const int nowN  = Math_GetNPhiE(detres);
       if (fileN != nowN) {
-        std::cerr << "[RMDGridPdf_Load] WARNING: N_phi_e mismatch (file="
+        std::cerr << "[ACCGridPdf_Load] WARNING: N_phi_e mismatch (file="
                   << fileN << ", current detres=" << nowN
-                  << ").\n";
+                  << "). ACC pdf may become sparse/zero.\n";
       }
     }
     if (pNphiG) {
       const int fileN = pNphiG->GetVal();
       const int nowN  = Math_GetNPhiG(detres);
       if (fileN != nowN) {
-        std::cerr << "[RMDGridPdf_Load] WARNING: N_phi_g mismatch (file="
+        std::cerr << "[ACCGridPdf_Load] WARNING: N_phi_g mismatch (file="
                   << fileN << ", current detres=" << nowN
-                  << ").\n";
+                  << "). ACC pdf may become sparse/zero.\n";
       }
     }
 
@@ -128,13 +92,13 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
     if (pPhiEMin && pPhiEMax) {
       if (pPhiEMin->GetVal() != detres.phi_e_min ||
           pPhiEMax->GetVal() != detres.phi_e_max) {
-        std::cerr << "[RMDGridPdf_Load] WARNING: phi_e range mismatch.\n";
+        std::cerr << "[ACCGridPdf_Load] WARNING: phi_e range mismatch.\n";
       }
     }
     if (pPhiGMin && pPhiGMax) {
       if (pPhiGMin->GetVal() != detres.phi_g_min ||
           pPhiGMax->GetVal() != detres.phi_g_max) {
-        std::cerr << "[RMDGridPdf_Load] WARNING: phi_g range mismatch.\n";
+        std::cerr << "[ACCGridPdf_Load] WARNING: phi_g range mismatch.\n";
       }
     }
 
@@ -161,16 +125,23 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
         }
       }
       if (mismatch) {
-        std::cerr << "[RMDGridPdf_Load] WARNING: phi mask mismatch with current detres.\n";
+        std::cerr << "[ACCGridPdf_Load] WARNING: phi mask mismatch with current detres.\n";
       }
     }
+  }
+
+  if (h->GetNdimensions() != 4) {
+    std::cerr << "[ACCGridPdf_Load] THnD dimension is not 4: "
+              << "N=" << h->GetNdimensions() << "\n";
+    f.Close();
+    return false;
   }
 
   gHist = dynamic_cast<THnD*>(h->Clone());
   f.Close();
 
   if (!gHist) {
-    std::cerr << "[RMDGridPdf_Load] clone failed\n";
+    std::cerr << "[ACCGridPdf_Load] clone failed\n";
     if (gHist) { delete gHist; gHist = nullptr; }
     return false;
   }
@@ -178,11 +149,11 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
   return true;
 }
 
-bool RMDGridPdf_IsLoaded() {
+bool ACCGridPdf_IsLoaded() {
   return (gHist != nullptr);
 }
 
-double RMDGridPdf(double Ee, double Eg, double t,
+double ACCGridPdf(double Ee, double Eg, double t,
                   double phi_detector_e, double phi_detector_g) {
   if (!gHist) return 0.0;
 
@@ -207,22 +178,24 @@ double RMDGridPdf(double Ee, double Eg, double t,
   // theta_eg = |phi_e - phi_g|
   const double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
-  // 解析窓（4D: Ee,Eg,t,theta）でカット
-  if (!AnalysisWindow_In4D(analysis_window, Ee, Eg, t, theta_eg)) return 0.0;
+  // 解析窓（Ee,Eg,t,theta）でカット
+  if (!AnalysisWindow_In3D(analysis_window, Ee, Eg, theta_eg)) return 0.0;
+  if (!AnalysisWindow_InTime(analysis_window, t)) return 0.0;
 
-  // phi 軸は可変ビンなので FindBin で最近傍に落ちる
+  // phi 軸は離散点のため FindBin で対応ビンに落とす
   const TAxis* axPe = gHist->GetAxis(2);
   const TAxis* axPg = gHist->GetAxis(3);
   const int bin_pe = axPe->FindBin(phi_e_disc);
   const int bin_pg = axPg->FindBin(phi_g_disc);
 
-  // 4D格子から p4(Ee,Eg,phi_e,phi_g) を評価（Ee,Eg は補間、phi は固定ビン）
+  // 4D格子から p4(Ee,Eg,phi_e,phi_g) を評価（Ee,Eg は補間）
   const double p4 = Hist_InterpEeEg4(*gHist, Ee, Eg, bin_pe, bin_pg);
   if (!(p4 > 0.0) || !Math_IsFinite(p4)) return 0.0;
 
-  // 時間因子を解析的に掛ける（窓内正規化）
-  const double pt = PtWindowNormalized(t);
-  if (!(pt > 0.0) || !Math_IsFinite(pt)) return 0.0;
+  // 時間因子（解析窓内一様）
+  const double dt = analysis_window.t_max - analysis_window.t_min;
+  if (!(dt > 0.0) || !Math_IsFinite(dt)) return 0.0;
+  const double pt = 1.0 / dt;
 
   const double pdf = p4 * pt;
   if (!(pdf > 0.0) || !Math_IsFinite(pdf)) return 0.0;

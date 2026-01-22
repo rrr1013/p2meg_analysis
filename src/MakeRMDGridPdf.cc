@@ -8,10 +8,12 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <limits>
 
 #include "TFile.h"
 #include "TNamed.h"
 #include "TParameter.h"
+#include "TH2.h"
 #include "TRandom3.h"
 #include "THn.h"
 #include "TAxis.h"
@@ -19,6 +21,8 @@
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/DetectorResolution.h"
 #include "p2meg/Constants.h"
+#include "p2meg/HistUtils.h"
+#include "p2meg/MathUtils.h"
 #include "p2meg/RMDSpectrum.h"
 
 //============================================================
@@ -29,10 +33,15 @@
 // 出力格子（4D）:
 //   (Ee, Eg, phi_detector_e, phi_detector_g)
 //
-// ※ phi_detector_e/g は「偏極軸と各検出器方向のなす角 φ（0..π）」で、
-//   離散化は φ を 0..π を N_theta 等分した格子点で行う。
-//   ここでは、phi 軸を「最近傍θ格子」に対応する可変ビンにしておき、
-//   later の評価側は "最近傍θ" に丸めることで整合を取る。
+// ※ phi_detector_e/g は「偏極軸と各検出器方向のなす角 φ」で、
+//   離散化は DetectorResolution の phi_min/max, N_phi に従う格子点で行う。
+//
+// 重要（測度と離散化の整合）:
+//   格子点 i を一様に選ぶだけだと、端点 i=0,N が内部点と同じ頻度で選ばれ、
+//   連続一様の φ 積分に対して端点が過大評価されやすい。
+//   ここでは φ 積分を台形則で近似し、端点 (i=0,N) に 1/2 の重みを掛ける。
+//   これにより、phi 軸を「最近傍格子」可変ビン（端点幅 Δ/2）にした場合の
+//   密度化・正規化と整合する。
 //============================================================
 
 // ---- 4D格子ビニング（Ee, Eg, phi_e, phi_g）----
@@ -40,8 +49,8 @@ static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
 
 // ---- 生成統計 ----
-static constexpr long kNTruthSamples  = 1000000L; // 真値サンプル数（Ee,Eg を一様）
-static constexpr int  kNSmearPerTruth = 100;       // 1真値あたりのエネルギースメア回数
+static constexpr long kNTruthSamples  = 2000000L; // 真値サンプル数（Ee,Eg を一様）
+static constexpr int  kNSmearPerTruth = 200;       // 1真値あたりのエネルギースメア回数
 static constexpr unsigned long kSeed  = 20260109UL;
 
 // ---- RMD 理論関数の d_min ----
@@ -54,14 +63,6 @@ static constexpr int kProgressIntervalMs = 200;
 //============================================================
 // 内部補助
 //============================================================
-
-static bool IsFinite(double x) { return std::isfinite(x); }
-
-static double Clamp(double x, double lo, double hi) {
-  if (x < lo) return lo;
-  if (x > hi) return hi;
-  return x;
-}
 
 static bool IsInsideWindow_EeEg(double Ee, double Eg) {
   if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return false;
@@ -76,8 +77,8 @@ static bool IsInsideWindowTheta(double theta_eg) {
 
 // 真値サンプル窓のチェック（Ee, Eg のみ使用）
 static bool IsValidTruthWindowEeEg(const AnalysisWindow4D& win) {
-  if (!IsFinite(win.Ee_min) || !IsFinite(win.Ee_max)) return false;
-  if (!IsFinite(win.Eg_min) || !IsFinite(win.Eg_max)) return false;
+  if (!Math_IsFinite(win.Ee_min) || !Math_IsFinite(win.Ee_max)) return false;
+  if (!Math_IsFinite(win.Eg_min) || !Math_IsFinite(win.Eg_max)) return false;
   if (!(win.Ee_min < win.Ee_max)) return false;
   if (!(win.Eg_min < win.Eg_max)) return false;
   // soft photon 発散のため Eg_min > 0 を要求
@@ -90,9 +91,9 @@ static bool IsValidTruthWindowEeEg(const AnalysisWindow4D& win) {
 static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base_win) {
   AnalysisWindow4D out = base_win;
 
-  const double Ee_low = energy_response_offset_low_e(base_win.Ee_min);
+  const double Ee_low  = energy_response_offset_low_e(base_win.Ee_min);
   const double Ee_high = energy_response_offset_high_e(base_win.Ee_max);
-  const double Eg_low = energy_response_offset_low_g(base_win.Eg_min);
+  const double Eg_low  = energy_response_offset_low_g(base_win.Eg_min);
   const double Eg_high = energy_response_offset_high_g(base_win.Eg_max);
 
   out.Ee_min = base_win.Ee_min - Ee_high;
@@ -119,63 +120,11 @@ static AnalysisWindow4D ExpandTruthWindowByResponse(const AnalysisWindow4D& base
   return out;
 }
 
-// detres.N_theta を int として使う（型が double でもここで丸める）
-static int GetNTheta() {
-  // N_theta >= 1 を想定（0 は不正）
-  const double x = static_cast<double>(detres.N_theta);
-  int N = static_cast<int>(std::lround(x));
-  if (N < 1) N = 1;
-  return N;
-}
-
-// φ= i*pi/N (i=0..N) の格子に対応する phi 軸の可変ビン境界を作る。
-// 「最近傍θ格子」になるように、φ の中点 (i+0.5)*Δθ を境界にする。
-// 出力: edges サイズ = (N+1)+1 = N+2、x は昇順（0..π）
-static std::vector<double> BuildPhiEdgesFromThetaMidpoints(int N_theta) {
-  const double dth = pi / static_cast<double>(N_theta);
-
-  std::vector<double> edges;
-  edges.resize(static_cast<size_t>(N_theta + 2));
-
-  edges[0] = 0.0;
-  for (int i = 1; i <= N_theta; ++i) {
-    edges[i] = (static_cast<double>(i) - 0.5) * dth;
-  }
-  edges[N_theta + 1] = pi;
-
-  for (int k = 1; k < static_cast<int>(edges.size()); ++k) {
-    if (edges[k] < edges[k - 1]) edges[k] = edges[k - 1];
-    edges[k] = Clamp(edges[k], 0.0, pi);
-  }
-
-  return edges;
-}
-
-// THnD（4D）の全ビン総和
-static double SumAllBins4(const THnD& h) {
-  const int n0 = h.GetAxis(0)->GetNbins();
-  const int n1 = h.GetAxis(1)->GetNbins();
-  const int n2 = h.GetAxis(2)->GetNbins();
-  const int n3 = h.GetAxis(3)->GetNbins();
-
-  std::vector<int> idx(4, 1);
-  double sum = 0.0;
-
-  for (int i0 = 1; i0 <= n0; ++i0) {
-    idx[0] = i0;
-    for (int i1 = 1; i1 <= n1; ++i1) {
-      idx[1] = i1;
-      for (int i2 = 1; i2 <= n2; ++i2) {
-        idx[2] = i2;
-        for (int i3 = 1; i3 <= n3; ++i3) {
-          idx[3] = i3;
-          const Long64_t bin = h.GetBin(idx.data());
-          sum += h.GetBinContent(bin);
-        }
-      }
-    }
-  }
-  return sum;
+// φ 積分を台形則で近似するための重み（端点 1/2）
+static inline double PhiTrapezoidWeight(int i, int N_phi) {
+  if (i <= 0) return 0.5;
+  if (i >= N_phi) return 0.5;
+  return 1.0;
 }
 
 static void PrintProgressBar(const char* label, long current, long total) {
@@ -211,7 +160,7 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
   const int n2 = ax2->GetNbins();
   const int n3 = ax3->GetNbins();
 
-  if (!(total_mass > 0.0) || !IsFinite(total_mass)) return 1;
+  if (!(total_mass > 0.0) || !Math_IsFinite(total_mass)) return 1;
 
   std::vector<int> idx(4, 1);
 
@@ -229,13 +178,13 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
           const double w3 = ax3->GetBinWidth(i3);
 
           const double vol = w0 * w1 * w2 * w3; // [MeV^2 * rad^2]
-          if (!(vol > 0.0) || !IsFinite(vol)) continue;
+          if (!(vol > 0.0) || !Math_IsFinite(vol)) continue;
 
           const Long64_t bin = h.GetBin(idx.data());
           const double C = h.GetBinContent(bin);
 
           double density = 0.0;
-          if (C > 0.0 && IsFinite(C)) {
+          if (C > 0.0 && Math_IsFinite(C)) {
             density = (C / total_mass) / vol;
           }
           h.SetBinContent(bin, density);
@@ -249,14 +198,22 @@ static int ConvertToDensityAndNormalize4(THnD& h, double total_mass) {
 static std::string BuildMetaString(long n_theta_ok, long n_wpos,
                                    long n_fill, double total_mass,
                                    const AnalysisWindow4D& truth_win) {
+  const int N_theta = Math_GetNTheta(detres);
+  const int N_phi_e = Math_GetNPhiE(detres);
+  const int N_phi_g = Math_GetNPhiG(detres);
   std::ostringstream oss;
   oss << "MakeRMDGridPdf meta (4D grid, phi only)\n";
   oss << "bins: Ee=" << kNBins_Ee << ", Eg=" << kNBins_Eg
-      << ", phi_e=" << (GetNTheta() + 1) << ", phi_g=" << (GetNTheta() + 1) << "\n";
+      << ", phi_e=" << (N_phi_e + 1) << ", phi_g=" << (N_phi_g + 1) << "\n";
   oss << "truth_samples=" << kNTruthSamples << "\n";
   oss << "smear_per_truth=" << kNSmearPerTruth << "\n";
   oss << "seed=" << kSeed << "\n";
   oss << "d_min=" << kDMin << "\n";
+  oss << "phi integration: grid points i=0..N, trapezoid weight (endpoints 1/2)\n";
+  oss << "phi_e range: [" << detres.phi_e_min << "," << detres.phi_e_max
+      << "] rad, N_phi_e=" << N_phi_e << "\n";
+  oss << "phi_g range: [" << detres.phi_g_min << "," << detres.phi_g_max
+      << "] rad, N_phi_g=" << N_phi_g << "\n";
 
   oss << "truth window: Ee=[" << truth_win.Ee_min << "," << truth_win.Ee_max
       << "] MeV (analysis +/-response@0.1peak, physical clip)\n";
@@ -270,7 +227,7 @@ static std::string BuildMetaString(long n_theta_ok, long n_wpos,
   oss << "res: energy_response_shape_e/g model in DetectorResolution.h\n";
   oss << "res: sigma_t=" << detres.sigma_t << " ns (used analytically at evaluation)\n";
   oss << "res: t_mean=" << detres.t_mean << " ns (used analytically at evaluation)\n";
-  oss << "res: N_theta=" << GetNTheta() << "\n";
+  oss << "res: N_theta=" << N_theta << "\n";
   oss << "res: P_mu=" << detres.P_mu << "\n";
 
   oss << "theta_window_ok=" << n_theta_ok << "\n";
@@ -315,14 +272,29 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     std::cerr << "[MakeRMDGridPdf] WARNING: smearing-in contributions may be lost.\n";
   }
 
-  const int N_theta = GetNTheta();
-  const double dth = pi / static_cast<double>(N_theta);
+  const int N_theta = Math_GetNTheta(detres);
+  const int N_phi_e = Math_GetNPhiE(detres);
+  const int N_phi_g = Math_GetNPhiG(detres);
+  const double step_e = Detector_PhiStep(detres.phi_e_min, detres.phi_e_max, N_phi_e);
+  const double step_g = Detector_PhiStep(detres.phi_g_min, detres.phi_g_max, N_phi_g);
+  if (!(step_e > 0.0) || !(step_g > 0.0)) {
+    std::cerr << "[MakeRMDGridPdf] phi range is invalid.\n";
+    return 2;
+  }
+
+  const double phi_e_max_plus =
+      std::nextafter(detres.phi_e_max, std::numeric_limits<double>::infinity());
+  const double phi_g_max_plus =
+      std::nextafter(detres.phi_g_max, std::numeric_limits<double>::infinity());
 
   // ---- 4Dヒスト（Ee, Eg, phi_e, phi_g） ----
   const int ndim = 4;
-  int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_theta + 1, N_theta + 1};
-  double xmin[ndim] = {analysis_window.Ee_min, analysis_window.Eg_min, 0.0, 0.0};
-  double xmax[ndim] = {analysis_window.Ee_max, analysis_window.Eg_max, pi, pi};
+  int nbins[ndim] = {kNBins_Ee, kNBins_Eg, N_phi_e + 1, N_phi_g + 1};
+  double xmin[ndim] = {analysis_window.Ee_min, analysis_window.Eg_min,
+                       detres.phi_e_min, detres.phi_g_min};
+  // phi=pi が overflow に落ちないよう、phi 軸の上端だけ僅かに広げる
+  double xmax[ndim] = {analysis_window.Ee_max, analysis_window.Eg_max,
+                       phi_e_max_plus, phi_g_max_plus};
 
   THnD h("rmd_grid_tmp", "RMD grid (phi);Ee;Eg;phi_e;phi_g", ndim, nbins, xmin, xmax);
   h.Sumw2();
@@ -332,10 +304,13 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
   h.GetAxis(2)->SetTitle("phi_detector_e [rad]");
   h.GetAxis(3)->SetTitle("phi_detector_g [rad]");
 
-  // phi 軸を「最近傍θ格子」になる可変ビンに変更
-  const std::vector<double> phi_edges = BuildPhiEdgesFromThetaMidpoints(N_theta);
-  h.GetAxis(2)->Set(N_theta + 1, phi_edges.data());
-  h.GetAxis(3)->Set(N_theta + 1, phi_edges.data());
+  // phi 軸を「最近傍格子」になる可変ビンに変更
+  const std::vector<double> phi_edges_e =
+      Detector_PhiEdgesFromGrid(detres.phi_e_min, detres.phi_e_max, N_phi_e);
+  const std::vector<double> phi_edges_g =
+      Detector_PhiEdgesFromGrid(detres.phi_g_min, detres.phi_g_max, N_phi_g);
+  h.GetAxis(2)->Set(N_phi_e + 1, phi_edges_e.data());
+  h.GetAxis(3)->Set(N_phi_g + 1, phi_edges_g.data());
 
   TRandom3 rng(kSeed);
 
@@ -349,6 +324,7 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
   long n_theta_ok = 0;
   long n_wpos = 0;
   long n_fill = 0;
+  long n_masked = 0;
 
   auto last_progress = std::chrono::steady_clock::now();
   PrintProgressBar("rmd-grid", 0, kNTruthSamples);
@@ -357,17 +333,22 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     const double Ee_true = rng.Uniform(Ee_true_min, Ee_true_max);
     const double Eg_true = rng.Uniform(Eg_true_min, Eg_true_max);
 
-    // 検出器角（離散）：θ = i*pi/N (i=0..N)
-    const int ie = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_theta + 1)));
-    const int ig = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_theta + 1)));
+    // 検出器角（離散）：φ = i*pi/N (i=0..N)
+    const int ie = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_phi_e + 1)));
+    const int ig = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_phi_g + 1)));
 
-    const double phi_e = static_cast<double>(ie) * dth;
-    const double phi_g = static_cast<double>(ig) * dth;
+    if (!Detector_IsAllowedPhiPairIndex(ie, ig, detres)) {
+      ++n_masked;
+      continue;
+    }
+
+    const double phi_e = Detector_PhiGridPoint(ie, detres.phi_e_min, detres.phi_e_max, N_phi_e);
+    const double phi_g = Detector_PhiGridPoint(ig, detres.phi_g_min, detres.phi_g_max, N_phi_g);
 
     const double cosThetaE = std::cos(phi_e);
     const double cosThetaG = std::cos(phi_g);
 
-    const double cosThetaEG = Clamp(std::cos(phi_e - phi_g), -1.0, 1.0);
+    const double cosThetaEG = Math_Clamp(std::cos(phi_e - phi_g), -1.0, 1.0);
     const double theta_eg = std::fabs(phi_e - phi_g);
 
     const bool theta_ok = IsInsideWindowTheta(theta_eg);
@@ -377,14 +358,22 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
     if (theta_ok) {
       w0 = RMD_d6B_dEe_dEg_dOmegae_dOmegag(
           Ee_true, Eg_true, cosThetaEG, cosThetaE, cosThetaG, Pmu, kDMin);
-      if (w0 > 0.0 && IsFinite(w0)) ++n_wpos;
+      if (w0 > 0.0 && Math_IsFinite(w0)) ++n_wpos;
       else w0 = 0.0;
     }
 
     if (!(w0 > 0.0)) continue;
 
+    // φ 積分の台形則重み（端点 1/2）
+    // ※ 格子点を一様にサンプルしているので、連続積分の近似として端点補正を入れる。
+    const double wphi_e = PhiTrapezoidWeight(ie, N_phi_e);
+    const double wphi_g = PhiTrapezoidWeight(ig, N_phi_g);
+
     // 検出器の立体角は不変なため Jacobian 補正は不要
-    const double w = w0;
+    // 最終重み：理論核 × 端点台形則重み
+    const double w = w0 * wphi_e * wphi_g;
+
+    if (!(w > 0.0) || !Math_IsFinite(w)) continue;
 
     // 同じ真値点から複数回（Ee,Eg のみ）スメアして観測分布を埋める
     for (int is = 0; is < kNSmearPerTruth; ++is) {
@@ -395,10 +384,8 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
       double x[4] = {Ee_obs, Eg_obs, phi_e, phi_g};
 
-      if (w > 0.0) {
-        h.Fill(x, w);
-        ++n_fill;
-      }
+      h.Fill(x, w);
+      ++n_fill;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -413,11 +400,12 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
             << " / " << kNTruthSamples << "\n";
   std::cout << "[MakeRMDGridPdf] w>0 ok=" << n_wpos << "\n";
   std::cout << "[MakeRMDGridPdf] filled entries (4D)=" << n_fill << "\n";
+  std::cout << "[MakeRMDGridPdf] masked pairs skipped=" << n_masked << "\n";
 
   // ---- 正規化（∫ pdf dEe dEg dphi_e dphi_g = 1 になるよう密度化）----
-  const double total_mass = SumAllBins4(h);
+  const double total_mass = Hist_SumAllBins4(h);
 
-  if (!(total_mass > 0.0) || !IsFinite(total_mass)) {
+  if (!(total_mass > 0.0) || !Math_IsFinite(total_mass)) {
     std::cerr << "[MakeRMDGridPdf] total mass is not positive (mass=" << total_mass
               << ")\n";
     return 3;
@@ -451,6 +439,36 @@ int MakeRMDGridPdfWithTruthWindow(const char* out_filepath, const char* key,
 
   TParameter<int> par_Ntheta((std::string(key) + "_N_theta").c_str(), N_theta);
   par_Ntheta.Write();
+
+  TParameter<int> par_NphiE((std::string(key) + "_N_phi_e").c_str(), N_phi_e);
+  par_NphiE.Write();
+
+  TParameter<int> par_NphiG((std::string(key) + "_N_phi_g").c_str(), N_phi_g);
+  par_NphiG.Write();
+
+  TParameter<double> par_phi_e_min((std::string(key) + "_phi_e_min").c_str(), detres.phi_e_min);
+  par_phi_e_min.Write();
+
+  TParameter<double> par_phi_e_max((std::string(key) + "_phi_e_max").c_str(), detres.phi_e_max);
+  par_phi_e_max.Write();
+
+  TParameter<double> par_phi_g_min((std::string(key) + "_phi_g_min").c_str(), detres.phi_g_min);
+  par_phi_g_min.Write();
+
+  TParameter<double> par_phi_g_max((std::string(key) + "_phi_g_max").c_str(), detres.phi_g_max);
+  par_phi_g_max.Write();
+
+  TH2I hmask((std::string(key) + "_phi_mask").c_str(),
+             "phi mask;phi_e index;phi_g index",
+             N_phi_e + 1, -0.5, N_phi_e + 0.5,
+             N_phi_g + 1, -0.5, N_phi_g + 0.5);
+  for (int ie = 0; ie <= N_phi_e; ++ie) {
+    for (int ig = 0; ig <= N_phi_g; ++ig) {
+      const int allowed = Detector_IsAllowedPhiPairIndex(ie, ig, detres) ? 1 : 0;
+      hmask.SetBinContent(ie + 1, ig + 1, allowed);
+    }
+  }
+  hmask.Write();
 
   TParameter<double> par_Pmu((std::string(key) + "_P_mu").c_str(), Pmu);
   par_Pmu.Write();

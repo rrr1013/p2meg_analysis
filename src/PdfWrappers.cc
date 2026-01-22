@@ -54,3 +54,27 @@ PdfComponent MakeRMDComponent()
     comp.ctx  = nullptr;
     return comp;
 }
+
+// ============================================================
+// ACC ラッパ
+// ============================================================
+
+double ACCGridPdfEval(const Event& ev, const void* /*ctx*/)
+{
+    // ACCGridPdf は未ロード・窓外・不正入力で 0 を返す仕様
+    const double p = ACCGridPdf(
+        ev.Ee, ev.Eg, ev.t,
+        ev.phi_detector_e, ev.phi_detector_g
+    );
+    if (!std::isfinite(p) || p < 0.0) return 0.0;
+    return p;
+}
+
+PdfComponent MakeACCComponent()
+{
+    PdfComponent comp;
+    comp.name = "acc";
+    comp.eval = &ACCGridPdfEval;
+    comp.ctx  = nullptr;
+    return comp;
+}

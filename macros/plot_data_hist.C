@@ -23,6 +23,8 @@
 //   root -l -q 'macros/plot_data_hist.C("data/mockdata/testdata1.dat")'
 //
 
+R__ADD_INCLUDE_PATH(./include)
+
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -37,11 +39,14 @@
 #include "TString.h"
 #include "TLatex.h"
 
-#include "../include/p2meg/AnalysisWindow.h"
-#include "../include/p2meg/Event.h"
+#include "p2meg/AnalysisWindow.h"
+#include "p2meg/AnalysisWindowUtils.h"
+#include "p2meg/Event.h"
+#include "p2meg/DetectorResolution.h"
+#include "p2meg/MathUtils.h"
 
 // ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
- #define P2MEG_PLOT_ALLDATA
+// #define P2MEG_PLOT_ALLDATA
 
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
@@ -71,14 +76,6 @@ static bool ParseEventLine5Doubles(const std::string& line,
     return true;
 }
 
-static bool InAnalysisWindow(double Ee, double Eg, double t, double theta_eg)
-{
-    if (Ee       < analysis_window.Ee_min    || Ee       > analysis_window.Ee_max)    return false;
-    if (Eg       < analysis_window.Eg_min    || Eg       > analysis_window.Eg_max)    return false;
-    if (t        < analysis_window.t_min     || t        > analysis_window.t_max)     return false;
-    if (theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) return false;
-    return true;
-}
 
 static TString MakeOutputPdfPath(const char* infile)
 {
@@ -98,7 +95,9 @@ static void DrawMetaPage(const char* infile,
                          const char* outpdf,
                          long long n_lines,
                          long long n_parsed,
-                         long long n_inwin)
+                         long long n_inwin,
+                         double th_plot_min,
+                         double th_plot_max)
 {
     TLatex lat;
     lat.SetNDC(true);
@@ -126,7 +125,7 @@ static void DrawMetaPage(const char* infile,
     lat.DrawLatex(0.08, 0.47, "Ee [MeV]    : [0, 70]");
     lat.DrawLatex(0.08, 0.42, "Eg [MeV]    : [0, 70]");
     lat.DrawLatex(0.08, 0.37, "t  [ns]     : [-10, 10]");
-    lat.DrawLatex(0.08, 0.32, "theta_eg [rad] : [0, pi]");
+    lat.DrawLatex(0.08, 0.32, Form("theta_eg [rad] : [%.6g, %.6g]", th_plot_min, th_plot_max));
 #else
     lat.DrawLatex(0.05, 0.52, "Analysis window:");
     lat.SetTextSize(0.030);
@@ -163,8 +162,6 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double Eg_max = 70.0;
     const double t_min  = -10.0;
     const double t_max  = 10.0;
-    const double th_min = 0.0;
-    const double th_max = pi_val;
 #else
     const double Ee_min = analysis_window.Ee_min;
     const double Ee_max = analysis_window.Ee_max;
@@ -172,41 +169,68 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double Eg_max = analysis_window.Eg_max;
     const double t_min  = analysis_window.t_min;
     const double t_max  = analysis_window.t_max;
-    const double th_min = analysis_window.theta_min;
-    const double th_max = analysis_window.theta_max;
+    const double th_win_min = analysis_window.theta_min;
+    const double th_win_max = analysis_window.theta_max;
 #endif
-    const double phi_min = 0.0;
-    const double phi_max = pi_val;
+    double th_plot_min = 0.0;
+    double th_plot_max = pi_val;
+#ifndef P2MEG_PLOT_ALLDATA
+    th_plot_min = th_win_min;
+    th_plot_max = th_win_max;
+#endif
+    const double phi_e_min = detres.phi_e_min;
+    const double phi_e_max = detres.phi_e_max;
+    const double phi_g_min = detres.phi_g_min;
+    const double phi_g_max = detres.phi_g_max;
+    const double phi_e_max_plot = Detector_PhiAxisMaxInclusive(phi_e_max);
+    const double phi_g_max_plot = Detector_PhiAxisMaxInclusive(phi_g_max);
+
+    double th_det_min = 0.0;
+    double th_det_max = 0.0;
+    if (Detector_ThetaRangeFromAllowedPhi(detres, th_det_min, th_det_max)) {
+#ifdef P2MEG_PLOT_ALLDATA
+        th_plot_min = th_det_min;
+        th_plot_max = th_det_max;
+#else
+        if (th_det_min > th_plot_min) th_plot_min = th_det_min;
+        if (th_det_max < th_plot_max) th_plot_max = th_det_max;
+        if (!(th_plot_min < th_plot_max)) {
+            th_plot_min = th_win_min;
+            th_plot_max = th_win_max;
+        }
+#endif
+    }
+    const double th_plot_max_axis = Math_AxisMaxInclusive(th_plot_max);
 
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
     TH1D* ht    = new TH1D("ht",    "t;t [ns];Entries",                    kNBins_t,  t_min,  t_max);
     TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_e_min, phi_e_max_plot);
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
-                           kNBins_phi, phi_min, phi_max);
+                           kNBins_phi, phi_g_min, phi_g_max_plot);
     TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
-                           kNBins_th, th_min, th_max);
+                           kNBins_th, th_plot_min, th_plot_max_axis);
 
     // ---- 2D ----
     TH2D* h_EeEg = new TH2D("h_EeEg", "(Ee, Eg);Ee [MeV];Eg [MeV]",
                             kNBins2D_E, Ee_min, Ee_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_ThT  = new TH2D("h_ThT", "(theta_{eg}, t);theta_{eg} [rad];t [ns]",
-                            kNBins2D_th, th_min, th_max, kNBins2D_t,  t_min,  t_max);
+                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_t,  t_min,  t_max);
 
     TH2D* h_TEe  = new TH2D("h_TEe", "(t, Ee);t [ns];Ee [MeV]",
                             kNBins2D_t,  t_min,  t_max, kNBins2D_E, Ee_min, Ee_max);
 
     TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
-                            kNBins2D_th, th_min, th_max, kNBins2D_E, Ee_min, Ee_max);
+                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Ee_min, Ee_max);
 
     TH2D* h_ThEg = new TH2D("h_ThEg", "(theta_{eg}, Eg);theta_{eg} [rad];Eg [MeV]",
-                            kNBins2D_th, th_min, th_max, kNBins2D_E, Eg_min, Eg_max);
+                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
-                            kNBins2D_phi, phi_min, phi_max, kNBins2D_phi, phi_min, phi_max);
+                            kNBins2D_phi, phi_e_min, phi_e_max_plot, kNBins2D_phi, phi_g_min, phi_g_max_plot);
 
     // 読み込み
     std::ifstream fin(infile);
@@ -240,10 +264,27 @@ void plot_data_hist(const char* infile = "data/data.dat")
         ev.phi_detector_e = phi_pos;
         ev.phi_detector_g = phi_gam;
 
-        double theta_eg = std::fabs(ev.phi_detector_e - ev.phi_detector_g);
+        const int idx_e = Detector_PhiIndexFromValue(ev.phi_detector_e,
+                                                     detres.phi_e_min, detres.phi_e_max,
+                                                     Math_GetNPhiE(detres));
+        const int idx_g = Detector_PhiIndexFromValue(ev.phi_detector_g,
+                                                     detres.phi_g_min, detres.phi_g_max,
+                                                     Math_GetNPhiG(detres));
+        if (idx_e < 0 || idx_g < 0 || !Detector_IsAllowedPhiPairIndex(idx_e, idx_g, detres)) {
+            ++n_phi_out;
+            continue;
+        }
+
+        const double phi_e_disc = Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max,
+                                                        Math_GetNPhiE(detres));
+        const double phi_g_disc = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max,
+                                                        Math_GetNPhiG(detres));
+        const double phi_e_plot = phi_e_disc;
+        const double phi_g_plot = phi_g_disc;
+        double theta_eg = std::fabs(phi_e_plot - phi_g_plot);
 
 #ifndef P2MEG_PLOT_ALLDATA
-        if (!InAnalysisWindow(ev.Ee, ev.Eg, ev.t, theta_eg)) {
+        if (!AnalysisWindow_In4D(analysis_window, ev.Ee, ev.Eg, ev.t, theta_eg)) {
             ++n_outwin;
             continue;
         }
@@ -252,17 +293,12 @@ void plot_data_hist(const char* infile = "data/data.dat")
         ++n_inwin;
 #endif
 
-        if (ev.phi_detector_e < phi_min || ev.phi_detector_e > phi_max ||
-            ev.phi_detector_g < phi_min || ev.phi_detector_g > phi_max) {
-            ++n_phi_out;
-        }
-
         // 1D
         hEe->Fill(ev.Ee);
         hEg->Fill(ev.Eg);
         ht->Fill(ev.t);
-        hPhiE->Fill(ev.phi_detector_e);
-        hPhiG->Fill(ev.phi_detector_g);
+        hPhiE->Fill(phi_e_plot);
+        hPhiG->Fill(phi_g_plot);
         hThEg->Fill(theta_eg);
 
         // 2D
@@ -271,7 +307,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
         h_TEe->Fill(ev.t, ev.Ee);
         h_ThEe->Fill(theta_eg, ev.Ee);
         h_ThEg->Fill(theta_eg, ev.Eg);
-        h_PePg->Fill(ev.phi_detector_e, ev.phi_detector_g);
+        h_PePg->Fill(phi_e_plot, phi_g_plot);
     }
 
     if (n_inwin == 0) {
@@ -282,7 +318,7 @@ void plot_data_hist(const char* infile = "data/data.dat")
     // ---- ページ1：メタ ----
     TCanvas c0("c0", "meta", 1200, 800);
     c0.cd();
-    DrawMetaPage(infile, outpdf.Data(), n_lines, n_parsed, n_inwin);
+    DrawMetaPage(infile, outpdf.Data(), n_lines, n_parsed, n_inwin, th_plot_min, th_plot_max);
 
     // ---- ページ2：1D ----
     TCanvas c1("c1", "1D sanity", 1200, 800);

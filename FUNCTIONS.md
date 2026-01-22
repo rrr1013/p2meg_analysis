@@ -57,6 +57,246 @@
 
 # Function list
 
+### Math_IsFinite
+- Header: `include/p2meg/MathUtils.h`
+- 目的: 数値が有限かどうかを判定します（NaN/inf を除外するガード）。
+
+- シグネチャ
+  - `static inline bool Math_IsFinite(double x);`
+
+- 入力:
+  - `x`: 判定対象の実数。
+
+- 出力:
+  - 戻り値: 有限なら `true`、NaN または ±inf なら `false` を返します。
+
+### Math_Clamp
+- Header: `include/p2meg/MathUtils.h`
+- 目的: 値を指定範囲 [lo, hi] にクリップします（物理カットではない数値ガード）。
+
+- シグネチャ
+  - `static inline double Math_Clamp(double x, double lo, double hi);`
+
+- 入力:
+  - `x`: 入力値。
+  - `lo`: 下限。
+  - `hi`: 上限。
+
+- 出力:
+  - 戻り値: `x` を [lo, hi] に収めた値を返します。
+
+### Math_GetNTheta
+- Header: `include/p2meg/MathUtils.h`
+- 目的: 分解能設定 `N_theta` を安全に int として取得し、最小値 1 を保証します。
+
+- シグネチャ
+  - `static inline int Math_GetNTheta(const DetectorResolutionConst& res);`
+
+- 入力:
+  - `res`: 検出器分解能設定（`DetectorResolutionConst`）。
+
+- 出力:
+  - 戻り値: `res.N_theta` を丸めた整数値（下限 1）。不正値でも 1 を返します。
+
+### Angle_ClipPhi0Pi
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: 角度 φ を [0, π] にクリップします（不正入力は 0 に落とす）。
+
+- シグネチャ
+  - `static inline double Angle_ClipPhi0Pi(double phi);`
+
+- 入力:
+  - `phi`: 角度 φ [rad]。
+
+- 出力:
+  - 戻り値: φ を [0, π] に収めた値を返します。
+
+### Angle_DiscretizePhi
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: 角度 φ を [0, π] にクリップしたうえで、離散格子点 φ_i=iπ/N_theta に丸めます。
+
+- シグネチャ
+  - `static inline double Angle_DiscretizePhi(double phi, int N_theta);`
+
+- 入力:
+  - `phi`: 角度 φ [rad]。
+  - `N_theta`: 角度分割数（`N_theta>=1` を想定）。
+
+- 出力:
+  - 戻り値: 離散格子点に丸めた φ を返します。不正値の場合は 0 を返します。
+
+### Angle_ThetaFromPhiStrict
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: φ_e, φ_g から e-γ の相対角 θ=|φ_e-φ_g| を求めます（範囲外は不正扱い）。
+
+- シグネチャ
+  - `static inline double Angle_ThetaFromPhiStrict(double phi_e, double phi_g);`
+
+- 入力:
+  - `phi_e`: e 側検出器の角度 φ_e [rad]（0..π を想定）。
+  - `phi_g`: γ 側検出器の角度 φ_g [rad]（0..π を想定）。
+
+- 出力:
+  - 戻り値: 有効なら θ=|φ_e-φ_g| を返します。不正入力では -1 を返します。
+
+### Angle_ThetaFromPhiClipped
+- Header: `include/p2meg/AngleUtils.h`
+- 目的: φ_e, φ_g を [0, π] に収めてから相対角 θ=|φ_e-φ_g| を求めます。
+
+- シグネチャ
+  - `static inline double Angle_ThetaFromPhiClipped(double phi_e, double phi_g);`
+
+- 入力:
+  - `phi_e`: e 側検出器の角度 φ_e [rad]。
+  - `phi_g`: γ 側検出器の角度 φ_g [rad]。
+
+- 出力:
+  - 戻り値: クリップ後の θ を返します。不正入力では 0 を返します。
+
+### AnalysisWindow_In4D
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 解析窓 (Ee, Eg, t, theta) の範囲内かどうかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_In4D(const AnalysisWindow4D& win, double Ee, double Eg, double t, double theta);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `t`: 到達時間差 Δt [ns]。
+  - `theta`: e-γ 相対角 θ [rad]。
+
+- 出力:
+  - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### AnalysisWindow_In3D
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 解析窓 (Ee, Eg, theta) の範囲内かどうかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_In3D(const AnalysisWindow4D& win, double Ee, double Eg, double theta);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `theta`: e-γ 相対角 θ [rad]。
+
+- 出力:
+  - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### AnalysisWindow_InTime
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 解析窓の時間範囲に入っているかどうかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_InTime(const AnalysisWindow4D& win, double t);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `t`: 到達時間差 Δt [ns]。
+
+- 出力:
+  - 戻り値: 解析窓内なら `true`、外なら `false`。
+
+### AnalysisWindow_InTimeSideband
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 全時間範囲 [t_all_min, t_all_max] の中で、解析窓の時間範囲 [win.t_min, win.t_max] の外側（TSB: timing sideband）に入っているかを判定します。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_InTimeSideband(const AnalysisWindow4D& win, double t, double t_all_min, double t_all_max);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`。ここでは `t_min`, `t_max` を使用）。
+  - `t`: 到達時間差 Δt [ns]。
+  - `t_all_min`: 全時間範囲の下限 [ns]。
+  - `t_all_max`: 全時間範囲の上限 [ns]。
+
+- 出力:
+  - 戻り値: 全時間範囲内かつ解析窓の外側（TSB）なら `true`、それ以外（全時間範囲外、解析窓内、不正入力など）は `false` を返します。
+
+### AnalysisWindow_InTSB
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: (Ee, Eg, theta) が解析窓内で、かつ t が全時間範囲内で解析窓外（TSB）であるかを判定します（TSB イベント選別用）。
+
+- シグネチャ
+  - `static inline bool AnalysisWindow_InTSB(const AnalysisWindow4D& win, double Ee, double Eg, double theta, double t, double t_all_min, double t_all_max);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `theta`: e-γ 相対角 θ [rad]。
+  - `t`: 到達時間差 Δt [ns]。
+  - `t_all_min`: 全時間範囲の下限 [ns]。
+  - `t_all_max`: 全時間範囲の上限 [ns]。
+
+- 出力:
+  - 戻り値: (Ee,Eg,theta) が窓内かつ t が TSB なら `true`、それ以外は `false` を返します。
+
+### AnalysisWindow_TimeSidebandWidth
+- Header: `include/p2meg/AnalysisWindowUtils.h`
+- 目的: 全時間範囲 [t_all_min, t_all_max] に対する TSB（解析窓外側）の合計幅（左 + 右）を返します（TSB→解析窓へのスケール係数計算などに使用）。
+
+- シグネチャ
+  - `static inline double AnalysisWindow_TimeSidebandWidth(const AnalysisWindow4D& win, double t_all_min, double t_all_max);`
+
+- 入力:
+  - `win`: 解析窓設定（`AnalysisWindow4D`。ここでは `t_min`, `t_max` を使用）。
+  - `t_all_min`: 全時間範囲の下限 [ns]。
+  - `t_all_max`: 全時間範囲の上限 [ns]。
+
+- 出力:
+  - 戻り値: TSB の合計幅 [ns] を返します。不正入力や幅が 0 の場合は 0 を返します。
+
+### Hist_AxisBracketUniform
+- Header: `include/p2meg/HistUtils.h`
+- 目的: 等間隔ビン軸に対して、補間用の隣接ビンと係数 (i0, i1, f) を求めます。
+
+- シグネチャ
+  - `int Hist_AxisBracketUniform(const TAxis& ax, double x, int& i0, int& i1, double& f);`
+
+- 入力:
+  - `ax`: ROOT の軸（等間隔ビン前提）。
+  - `x`: 対象の座標。
+  - `i0`: 出力（下側のビン番号 1..n-1）。
+  - `i1`: 出力（上側のビン番号 i0+1）。
+  - `f`: 出力（補間係数、0..1）。
+
+- 出力:
+  - 戻り値: 成功時 0、失敗時は非0 を返します。
+
+### Hist_InterpEeEg4
+- Header: `include/p2meg/HistUtils.h`
+- 目的: 4D THnD の Ee/Eg を 2D（4点）補間し、phi は固定ビンで評価します。
+
+- シグネチャ
+  - `double Hist_InterpEeEg4(const THnD& h, double Ee, double Eg, int bin_phi_e, int bin_phi_g);`
+
+- 入力:
+  - `h`: 4D ヒストグラム（Ee, Eg, phi_e, phi_g）。
+  - `Ee`: 陽電子エネルギー Ee [MeV]。
+  - `Eg`: ガンマ線エネルギー Eg [MeV]。
+  - `bin_phi_e`: phi_e のビン番号。
+  - `bin_phi_g`: phi_g のビン番号。
+
+- 出力:
+  - 戻り値: 補間値（不正/負値は 0 を返します）。
+
+### Hist_SumAllBins4
+- Header: `include/p2meg/HistUtils.h`
+- 目的: 4D THnD の全ビン内容の総和を返します。
+
+- シグネチャ
+  - `double Hist_SumAllBins4(const THnD& h);`
+
+- 入力:
+  - `h`: 4D ヒストグラム。
+
+- 出力:
+  - 戻り値: 全ビンの総和を返します。
+
 
 ### Michel_d2Shape_dE_dCosTheta
 - Header: `include/p2meg/MichelSpectrum.h`
@@ -188,6 +428,65 @@
   - `t`: 到達時間差 Δt [ns]（解析窓 `analysis_window.t_min..t_max` を想定）
   - `phi_detector_e`: 偏極軸と e 側検出器代表方向の角度 φ_e [rad]（0..π を想定。評価時は 0..π にクリップ）
   - `phi_detector_g`: 偏極軸と γ 側検出器代表方向の角度 φ_g [rad]（0..π を想定。評価時は 0..π にクリップ）
+
+- 出力:
+  - 戻り値: 解析窓内なら PDF 密度 p(Ee,Eg,t,phi_e,phi_g) を返します。窓外、未ロード、不正入力、格子評価が不正な場合は 0 を返します。
+
+### MakeACCGridPdf
+- Header: `include/p2meg/MakeACCGridPdf.h`
+- 目的: ACC (accidental) 成分の TSB（時間が全時間範囲内で解析窓外）イベントから、解析窓内の 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を作成して ROOT に保存します。phi は N_theta の離散点に丸め、正規化は「Σ_{phi_e,phi_g} ∫ dEe dEg p4 = 1」となるよう Ee/Eg の bin 幅のみを測度に入れます。時間は評価側で解析窓内一様として掛けます。
+
+- シグネチャ
+  - `int MakeACCGridPdf(const std::vector<Event>& events, const char* out_filepath, const char* key);`
+
+- 入力:
+  - `events`: 入力イベント配列（各 `Event` に `Ee, Eg, t, phi_detector_e, phi_detector_g` を格納）
+  - `out_filepath`: 出力先 ROOT ファイルパス（例：`"data/pdf_cache/acc_grid.root"`）
+  - `key`: ROOT ファイル中に保存する格子 PDF のキー名（例：`"acc_grid"`）
+
+- 出力:
+  - 戻り値: 成功時 0、失敗時は非0を返す。成功時、指定ファイルに 4D 格子 PDF（`key`）とメタ情報（`<key>_meta`, `<key>_N_theta` など）を保存する。
+
+### ACCGridPdf_Load
+- Header: `include/p2meg/ACCGridPdf.h`
+- 目的: オフラインで生成した ACC 4D 格子 PDF（Ee, Eg, phi_detector_e, phi_detector_g）を ROOT ファイルから読み込み、`ACCGridPdf(...)` で評価できる状態に初期化します。
+
+- シグネチャ
+  - `bool ACCGridPdf_Load(const char* filepath, const char* key);`
+
+- 入力:
+  - `filepath`: 入力 ROOT ファイルパス（例：`"data/pdf_cache/acc_grid.root"`）
+  - `key`: 格子 PDF のキー名（例：`"acc_grid"`）。
+
+- 出力:
+  - 戻り値: ロードと内部クローン生成に成功したら `true`、失敗したら `false` を返します。
+
+### ACCGridPdf_IsLoaded
+- Header: `include/p2meg/ACCGridPdf.h`
+- 目的: ACC 格子 PDF がロード済みかどうかを返します。解析コード側の安全チェック用です。
+
+- シグネチャ
+  - `bool ACCGridPdf_IsLoaded();`
+
+- 入力:
+  - （なし）
+
+- 出力:
+  - 戻り値: ロード済みなら `true`、未ロードなら `false` を返します。
+
+### ACCGridPdf
+- Header: `include/p2meg/ACCGridPdf.h`
+- 目的: 観測値 (Ee, Eg, t, phi_detector_e, phi_detector_g) に対して ACC の PDF 値を返します。ROOT からロードした 4D 格子（Ee,Eg,phi_e,phi_g）を用いて評価し、時間因子は解析窓内一様として解析的に掛けます。`theta_eg=|phi_e-phi_g|` を作って解析窓カットを行います。
+
+- シグネチャ
+  - `double ACCGridPdf(double Ee, double Eg, double t, double phi_detector_e, double phi_detector_g);`
+
+- 入力:
+  - `Ee`: 陽電子エネルギー Ee [MeV]（解析窓 `analysis_window.Ee_min..Ee_max` を想定）
+  - `Eg`: ガンマ線エネルギー Eg [MeV]（解析窓 `analysis_window.Eg_min..Eg_max` を想定）
+  - `t`: 到達時間差 Δt [ns]（解析窓 `analysis_window.t_min..t_max` を想定）
+  - `phi_detector_e`: 偏極軸と e 側検出器代表方向の角度 φ_e [rad]（0..π を想定。評価時は 0..π にクリップして離散化）
+  - `phi_detector_g`: 偏極軸と γ 側検出器代表方向の角度 φ_g [rad]（0..π を想定。評価時は 0..π にクリップして離散化）
 
 - 出力:
   - 戻り値: 解析窓内なら PDF 密度 p(Ee,Eg,t,phi_e,phi_g) を返します。窓外、未ロード、不正入力、格子評価が不正な場合は 0 を返します。
@@ -355,6 +654,37 @@ PdfComponent MakeRMDComponent();
 
 - 出力:
   - 戻り値: RMD成分の `PdfComponent`（`name="rmd"`, `eval=&RMDGridPdfEval`, `ctx=nullptr`）
+
+### ACCGridPdfEval
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: `Event` を入力として `ACCGridPdf` を評価し、ACC成分の PDF 密度を返します（`PdfEval` 互換）。`Event` の `(Ee, Eg, t, phi_detector_e, phi_detector_g)` を渡して評価します。
+
+- シグネチャ
+```cpp
+double ACCGridPdfEval(const Event& ev, const void* ctx);
+```
+
+- 入力:
+  - `ev`: 観測イベント（`Event`）。`ev.Ee`, `ev.Eg`, `ev.t`, `ev.phi_detector_e`, `ev.phi_detector_g` を使用します。
+  - `ctx`: 未使用（`nullptr` を想定）。
+
+- 出力:
+  - 戻り値: ACC PDF 密度 $p_{\mathrm{acc}}(x)$（解析窓内で正規化済み）。窓外・未ロード・不正入力などは 0 を返します。
+
+### MakeACCComponent
+- Header: `include/p2meg/PdfWrappers.h`
+- 目的: ACC PDF を尤度計算で扱える `PdfComponent` として生成します。
+
+- シグネチャ
+```cpp
+PdfComponent MakeACCComponent();
+```
+
+- 入力:
+  - （なし）
+
+- 出力:
+  - 戻り値: ACC成分の `PdfComponent`（`name="acc"`, `eval=&ACCGridPdfEval`, `ctx=nullptr`）
 
 ### FitConfig
 - Header: `include/p2meg/NLLFit.h`

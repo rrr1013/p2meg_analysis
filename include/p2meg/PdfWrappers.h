@@ -9,9 +9,10 @@
 #include "p2meg/DetectorResolution.h"
 #include "p2meg/Constants.h"
 
-// SignalPdf / RMDGridPdf の本体ヘッダ
+// SignalPdf / RMDGridPdf / ACCGridPdf の本体ヘッダ
 #include "p2meg/SignalPdf.h"
 #include "p2meg/RMDGridPdf.h"
+#include "p2meg/ACCGridPdf.h"
 
 // ============================================================
 // p2MEG PDF ラッパ
@@ -46,5 +47,13 @@ double RMDGridPdfEval(const Event& ev, const void* ctx);
 
 // RMD 成分の PdfComponent を作る（ctx は NULL でよい）
 PdfComponent MakeRMDComponent();
+
+// ---- ACC 用 ----
+// ACCGridPdf は内部でロード済み格子を参照するため、通常 ctx は不要。
+// 角度情報は Event の (phi_detector_e, phi_detector_g) をそのまま渡す。
+double ACCGridPdfEval(const Event& ev, const void* ctx);
+
+// ACC 成分の PdfComponent を作る（ctx は NULL でよい）
+PdfComponent MakeACCComponent();
 
 #endif // P2MEG_PDF_WRAPPERS_H

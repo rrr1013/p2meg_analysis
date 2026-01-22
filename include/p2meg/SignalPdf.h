@@ -17,13 +17,14 @@
 //      theta_i = i * pi / N_theta   (i = 0..N_theta)
 //    入力は (phi_detector_e, phi_detector_g) とし、phi ベースでの角度評価を行う。
 //      theta_eg = |phi_detector_e - phi_detector_g|
-//    を [0,pi] で扱い、最も近い格子点に丸めて評価する。
+//    を扱い、最も近い格子点に丸めて評価する。
 //    信号は理想化（散乱なし）により theta=pi のみに重みを持つ。
 //    したがって角度因子は
 //      P(theta=pi)=1/Area_pi, それ以外=0
-//    とし、phi 空間での正規化（∫dphi_e dphi_g = 1）を満たす。
+//    とし、phi 空間での正規化（許可領域の ∫dphi_e dphi_g = 1）を満たす。
 //    Δtheta = pi/N_theta は角度離散化ビン幅で、
-//    theta=pi に丸め込まれる領域の面積は Area_pi = (Δtheta/2)^2 となる。
+//    theta=pi に丸め込まれる領域の面積 Area_pi は
+//    phi 範囲と許可マスクを考慮して数値的に計算する。
 //    （丸め後の theta_i が解析窓外なら 0）
 //
 // 戻り値:

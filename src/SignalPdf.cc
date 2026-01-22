@@ -3,6 +3,9 @@
 
 #include <cmath>   // exp, sqrt, erf, isfinite, llround, fmod, fabs
 
+#include "p2meg/AngleUtils.h"
+#include "p2meg/MathUtils.h"
+
 // ------------------------------------------------------------
 // 内部: 標準正規PDF/CDFとトランケート正規
 // ------------------------------------------------------------
@@ -50,7 +53,11 @@ static double TruncNormalPdf(double x, double mu, double sigma,
 static int ThetaNearestIndex(double theta, int N_theta) {
   if (!(N_theta >= 1)) return -1;
   if (!std::isfinite(theta)) return -1;
-  if (theta < 0.0 || theta > pi) return -1;
+  // 数値丸めで pi をわずかに超えるケースを許容（物理カットではない）
+  const double eps = 1e-12;
+  if (theta < -eps || theta > pi + eps) return -1;
+  if (theta < 0.0) theta = 0.0;
+  if (theta > pi) theta = pi;
 
   const double step = pi / static_cast<double>(N_theta);
   if (!(step > 0.0) || !std::isfinite(step)) return -1;
@@ -65,17 +72,34 @@ static int ThetaNearestIndex(double theta, int N_theta) {
 }
 
 // ------------------------------------------------------------
-// 内部: phi から e-γ の相対角 theta を作る
-//   theta_eg = |phi_e - phi_g| を [0,pi] に折り畳む。
-//   phi は [0,pi] を想定（範囲外は不正入力扱い）
+// 内部: theta=pi に丸め込まれる領域の面積を数値的に評価
+//  - phi_e, phi_g の離散格子と許可マスクに従う
 // ------------------------------------------------------------
-static double ThetaFromPhi(double phi_e, double phi_g) {
-  if (!std::isfinite(phi_e) || !std::isfinite(phi_g)) return -1.0;
+static double ComputeAreaPi(const DetectorResolutionConst& res) {
+  const int N_phi_e = Math_GetNPhiE(res);
+  const int N_phi_g = Math_GetNPhiG(res);
+  if (!(N_phi_e >= 1) || !(N_phi_g >= 1)) return 0.0;
 
-  if (phi_e < 0.0 || phi_e > pi) return -1.0;
-  if (phi_g < 0.0 || phi_g > pi) return -1.0;
+  if (!Detector_IsPhiRangeValid(res.phi_e_min, res.phi_e_max, N_phi_e)) return 0.0;
+  if (!Detector_IsPhiRangeValid(res.phi_g_min, res.phi_g_max, N_phi_g)) return 0.0;
 
-  return std::fabs(phi_e - phi_g);
+  double area = 0.0;
+  for (int ie = 0; ie <= N_phi_e; ++ie) {
+    const double phi_e = Detector_PhiGridPoint(ie, res.phi_e_min, res.phi_e_max, N_phi_e);
+    const double w_e = Detector_PhiBinWidth(ie, res.phi_e_min, res.phi_e_max, N_phi_e);
+    if (!(w_e > 0.0)) continue;
+    for (int ig = 0; ig <= N_phi_g; ++ig) {
+      if (!Detector_IsAllowedPhiPairIndex(ie, ig, res)) continue;
+      const double phi_g = Detector_PhiGridPoint(ig, res.phi_g_min, res.phi_g_max, N_phi_g);
+      const double w_g = Detector_PhiBinWidth(ig, res.phi_g_min, res.phi_g_max, N_phi_g);
+      if (!(w_g > 0.0)) continue;
+
+      const double theta_eg = std::fabs(phi_e - phi_g);
+      const int ith = ThetaNearestIndex(theta_eg, res.N_theta);
+      if (ith == res.N_theta) area += w_e * w_g;
+    }
+  }
+  return (area > 0.0 && std::isfinite(area)) ? area : 0.0;
 }
 
 // ------------------------------------------------------------
@@ -93,8 +117,20 @@ double SignalPdf(double Ee, double Eg, double t,
   if (!(res.sigma_t  > 0.0)) return 0.0;
   if (!(res.N_theta  >= 1))  return 0.0;
 
+  // phi の許可領域チェック（範囲 + マスク）
+  int idx_e = -1;
+  int idx_g = -1;
+  if (!Detector_IsAllowedPhiPairValue(phi_detector_e, phi_detector_g, res, idx_e, idx_g)) {
+    return 0.0;
+  }
+
+  const int N_phi_e = Math_GetNPhiE(res);
+  const int N_phi_g = Math_GetNPhiG(res);
+  const double phi_e_snap = Detector_PhiGridPoint(idx_e, res.phi_e_min, res.phi_e_max, N_phi_e);
+  const double phi_g_snap = Detector_PhiGridPoint(idx_g, res.phi_g_min, res.phi_g_max, N_phi_g);
+
   // phi から相対角 theta_eg を作る（phi ベースで角度評価）
-  const double theta_eg = ThetaFromPhi(phi_detector_e, phi_detector_g);
+  const double theta_eg = std::fabs(phi_e_snap - phi_g_snap);
   if (!(theta_eg >= 0.0)) return 0.0;
 
   // theta を最も近い格子点に丸めてから以後の判定・評価に使う
@@ -128,9 +164,7 @@ double SignalPdf(double Ee, double Eg, double t,
   // 角度: 離散（散乱なし）→ 信号の角度デルタ条件として theta=pi のみに重み
   // theta_i = i*pi/N_theta なので、pi は i=N_theta に対応
   // phi 空間での正規化を満たすよう、theta=pi に丸め込まれる領域面積を使う。
-  // |phi_e-phi_g| >= pi - Δtheta/2 の領域は 2 つの直角三角形になり、
-  // 面積は Area_pi = (Δtheta/2)^2。
-  const double area_pi = 0.25 * step * step;
+  const double area_pi = ComputeAreaPi(res);
   if (!(area_pi > 0.0) || !std::isfinite(area_pi)) return 0.0;
   const double pth = (ith == res.N_theta) ? (1.0 / area_pi) : 0.0;
   if (!(pth > 0.0)) return 0.0;

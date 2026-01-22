@@ -10,7 +10,7 @@
 //
 // 生成方針（簡略ACCモデル）:
 //  - e 側（Ee, phi_e）: Michel の 2D shape（Ee, cosθe）から棄却法で生成
-//      * 観測角 phi_detector_e は N_theta 格子点（phi_i=i*pi/N_theta）で提案
+//      * 観測角 phi_detector_e は DetectorResolution の格子点で提案
 //      * cosθe は cos(phi_detector_e) と同一視（同一平面近似）
 //  - γ 側（Eg, phi_g）: RMD の完全式（偏極込み）を用い、(Ee_dummy,Eg,phi_e_dummy,phi_g) を棄却法で生成し、
 //                      受理されたら (Eg, phi_g) のみ採用（Ee_dummy,phi_e_dummy は捨てる）
@@ -25,16 +25,8 @@
 //
 // 自動設定:
 //  - 解析窓: analysis_window
-//  - 分解能: detres（N_theta, P_mu など）
+//  - 分解能: detres（N_phi_e/g, P_mu など）
 //  - 質量:   kMassesPDG（内部で使う場合）
-//
-// ビルド例（repo直下で）:
-//  g++ -O2 -std=c++17 -Wall -Wextra -pedantic -Iinclude \
-  $(root-config --cflags) \
-  -o build/make_acc_mockdata \
-  scripts/make_acc_mockdata.cc \
-  src/*.cc \
-  $(root-config --libs)
 //
 // 実行例:
 //   ./build/make_acc_mockdata 5000
@@ -62,6 +54,7 @@
 #include "../include/p2meg/AnalysisWindow.h"
 #include "../include/p2meg/DetectorResolution.h"
 #include "../include/p2meg/Constants.h"
+#include "../include/p2meg/MathUtils.h"
 #include "../include/p2meg/MichelSpectrum.h"
 #include "../include/p2meg/RMDSpectrum.h"
 
@@ -101,25 +94,12 @@ static bool ParseLL(const char* s, long long& out)
 }
 
 // ------------------------------------------------------------
-// 出力用: 検出器角を N_theta の格子点 (phi_i = i*pi/N_theta) に丸める
+// 出力用: 検出器角を DetectorResolution の格子点に丸める
 // 物理カットではなく出力整形のための丸め
 // ------------------------------------------------------------
-static double SnapPhiToGrid(double phi)
+static double SnapPhiToGrid(double phi, double phi_min, double phi_max, int N_phi)
 {
-    if (!std::isfinite(phi)) return 0.0;
-    int N = detres.N_theta;
-    if (N < 1) N = 1;
-    const double step = pi / static_cast<double>(N);
-    if (!(step > 0.0) || !std::isfinite(step)) return 0.0;
-
-    if (phi < 0.0) phi = 0.0;
-    if (phi > pi)  phi = pi;
-
-    long long i = std::llround(phi / step);
-    if (i < 0LL) i = 0LL;
-    if (i > static_cast<long long>(N)) i = static_cast<long long>(N);
-
-    return step * static_cast<double>(i);
+    return Detector_PhiSnapToGrid(phi, phi_min, phi_max, N_phi);
 }
 
 // ------------------------------------------------------------
@@ -165,13 +145,12 @@ struct MichelCand {
 
 static MichelCand ProposeMichel2D(TRandom3& rng, double Pmu)
 {
-    int N = detres.N_theta;
-    if (N < 1) N = 1;
-    const double step = pi / static_cast<double>(N);
+    const int N_phi = Math_GetNPhiE(detres);
+    const double step = Detector_PhiStep(detres.phi_e_min, detres.phi_e_max, N_phi);
 
     const double Ee = rng.Uniform(analysis_window.Ee_min, analysis_window.Ee_max);
-    const int ui = static_cast<int>(rng.Integer(static_cast<ULong_t>(N + 1)));
-    const double phi = step * static_cast<double>(ui);
+    const int ui = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_phi + 1)));
+    const double phi = detres.phi_e_min + step * static_cast<double>(ui);
     const double costh = std::cos(phi);
 
     MichelCand c;
@@ -233,16 +212,17 @@ struct Rmd6Cand {
 
 static Rmd6Cand ProposeRmd6_4D(TRandom3& rng, double Pmu)
 {
-    int N = detres.N_theta;
-    if (N < 1) N = 1;
-    const double step = pi / static_cast<double>(N);
+    const int N_phi_e = Math_GetNPhiE(detres);
+    const int N_phi_g = Math_GetNPhiG(detres);
+    const double step_e = Detector_PhiStep(detres.phi_e_min, detres.phi_e_max, N_phi_e);
+    const double step_g = Detector_PhiStep(detres.phi_g_min, detres.phi_g_max, N_phi_g);
 
     const double Ee = rng.Uniform(analysis_window.Ee_min, analysis_window.Ee_max);
     const double Eg = rng.Uniform(analysis_window.Eg_min, analysis_window.Eg_max);
-    const int ui_e = static_cast<int>(rng.Integer(static_cast<ULong_t>(N + 1)));
-    const int ui_g = static_cast<int>(rng.Integer(static_cast<ULong_t>(N + 1)));
-    const double phie = step * static_cast<double>(ui_e);
-    const double phig = step * static_cast<double>(ui_g);
+    const int ui_e = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_phi_e + 1)));
+    const int ui_g = static_cast<int>(rng.Integer(static_cast<ULong_t>(N_phi_g + 1)));
+    const double phie = detres.phi_e_min + step_e * static_cast<double>(ui_e);
+    const double phig = detres.phi_g_min + step_g * static_cast<double>(ui_g);
 
     const double cosE  = std::cos(phie);
     const double cosG  = std::cos(phig);
@@ -386,6 +366,21 @@ int main(int argc, char** argv)
             }
         }
 
+        int idx_e = Detector_PhiIndexFromValue(phi_e, detres.phi_e_min, detres.phi_e_max,
+                                               Math_GetNPhiE(detres));
+        int idx_g = Detector_PhiIndexFromValue(phi_g, detres.phi_g_min, detres.phi_g_max,
+                                               Math_GetNPhiG(detres));
+        if (idx_e < 0 || idx_g < 0 || !Detector_IsAllowedPhiPairIndex(idx_e, idx_g, detres)) {
+            continue;
+        }
+
+        // 解析窓 theta カット（theta_eg = |phi_e - phi_g|）
+        const double theta_eg = std::fabs(phi_e - phi_g);
+        if (!std::isfinite(theta_eg) ||
+            theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) {
+            continue;
+        }
+
         // t 一様
         const double t = rng.Uniform(tmin, tmax);
 
@@ -421,14 +416,18 @@ int main(int argc, char** argv)
     fout << "# acc mockdata generated from Michel(2D AR) + RMD_d6(4D AR -> gamma singles)\n";
     fout << "# t is uniform in analysis window\n";
     fout << "# energies are smeared by energy_response_shape_e/g(E_res,E_true)\n";
-    fout << "# phi_detector_e/g are snapped to phi_i=i*pi/N_theta at output\n";
+    fout << "# phi_detector_e/g are snapped to detector phi grid at output\n";
     fout << "# n_acc=" << nacc << " seed=" << seed << " P_mu=" << detres.P_mu << "\n";
     fout << "Ee\tEg\tt\tphi_detector_e\tphi_detector_g\n";
 
     fout << std::setprecision(15);
     for (const auto& ev : out) {
-        const double phi_e_out = SnapPhiToGrid(ev.phi_detector_e);
-        const double phi_g_out = SnapPhiToGrid(ev.phi_detector_g);
+        const double phi_e_out = SnapPhiToGrid(ev.phi_detector_e,
+                                               detres.phi_e_min, detres.phi_e_max,
+                                               Math_GetNPhiE(detres));
+        const double phi_g_out = SnapPhiToGrid(ev.phi_detector_g,
+                                               detres.phi_g_min, detres.phi_g_max,
+                                               Math_GetNPhiG(detres));
         fout << ev.Ee << "\t"
              << ev.Eg << "\t"
              << ev.t  << "\t"
