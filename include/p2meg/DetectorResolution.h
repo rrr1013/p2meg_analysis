@@ -51,17 +51,17 @@ struct DetectorResolutionConst {
 
 inline constexpr DetectorResolutionConst detres{
     0.1561,  // sigma_t  [ns]
-    18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
+    9,      // N_theta  （例：0..pi を 18 分割 → 19 点）
     -0.1479, // t_mean [ns]
     -0.8,    // P_mu
 
-    pi * (10.0/180.0),     // phi_e_min [rad]
-    pi * (190.0/180.0),      // phi_e_max [rad]
-    18,      // N_phi_e
+    pi * (0/180.0),     // phi_e_min [rad]
+    pi * (180.0/180.0),      // phi_e_max [rad]
+    9,      // N_phi_e
 
-    pi * (10.0/180.0),     // phi_g_min [rad]
-    pi * (190.0/180.0),      // phi_g_max [rad]
-    18       // N_phi_g
+    pi * (0/180.0),     // phi_g_min [rad]
+    pi * (180.0/180.0),      // phi_g_max [rad]
+    9       // N_phi_g
 };
 
 // ------------------------------------------------------------
@@ -179,8 +179,11 @@ static inline bool Detector_IsAllowedPhiPairIndex(int i_e, int i_g,
     if (i_e > res.N_phi_e || i_g > res.N_phi_g) return false;
 
     // マスク条件: どちらかが phi_max に対応する端点インデックス
-    return (i_e == res.N_phi_e) || (i_g == res.N_phi_g);
+    //return (i_e == res.N_phi_e) || (i_g == res.N_phi_g);
 
+    // どちらかが 0
+    return (i_e == 0) || (i_g == 0);
+                                                
     // 全角度取るならここだけ
     //return true;
 }

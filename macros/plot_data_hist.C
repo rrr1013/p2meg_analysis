@@ -46,7 +46,7 @@ R__ADD_INCLUDE_PATH(./include)
 #include "p2meg/MathUtils.h"
 
 // ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
-// #define P2MEG_PLOT_ALLDATA
+ #define P2MEG_PLOT_ALLDATA
 
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
