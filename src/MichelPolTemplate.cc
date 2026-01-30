@@ -21,9 +21,8 @@
 //
 // 近似:
 //  - 数値積分（中点則）で畳み込みを評価
-//  - 応答は energy_response_shape_e(Eobs, Etrue) を使用し、
-//    Ee_min..Ee_max の範囲で各 Etrue ごとに正規化する
-//    （この範囲外の tail を捨てるのは「物理カット」ではなく数値都合）
+//  - 応答は energy_response_shape_e を用い、auto-range で正規化して使う
+//    （smear_energy_trandom3_e と同じ正規化レンジ）
 // ============================================================
 
 // 外部公開しない想定だが、別 .cc から呼ぶために非staticで定義する。
@@ -101,23 +100,31 @@ std::vector<double> BuildMichelPolKi(const MichelPolConfig& cfg) {
         const double u_true = MichelUTrue(E_true);
         const double v_true = MichelVTrue(E_true);
 
-        // 応答のビン積分 Ibin[j] と正規化 Z を同時に作る
-        double Z = 0.0;
-        std::vector<double> Ibin(nb, 0.0);
+        // 応答の正規化（auto-range）
+        double Eres_min = 0.0;
+        double Eres_max = 0.0;
+        if (!energy_response_autorange_e(E_true, Eres_min, Eres_max)) continue;
+        const double A = energy_response_integral_e(Eres_min, Eres_max, E_true);
+        if (!(A > 0.0) || !IsFinite(A)) continue;
 
+        // 応答のビン積分 Ibin[j]
+        std::vector<double> Ibin(nb, 0.0);
         for (int j = 0; j < nb; ++j) {
             const double Elow  = cfg.Ee_min + j * binw;
             const double Ehigh = Elow + binw;
-            const double I = IntegrateResponseShapeOverInterval(E_true, Elow, Ehigh, N_obs_in_bin);
+            const double lo = (Elow  > Eres_min ? Elow  : Eres_min);
+            const double hi = (Ehigh < Eres_max ? Ehigh : Eres_max);
+            if (!(hi > lo)) {
+                Ibin[j] = 0.0;
+                continue;
+            }
+            const double I = IntegrateResponseShapeOverInterval(E_true, lo, hi, N_obs_in_bin);
             Ibin[j] = I;
-            Z += I;
         }
 
-        if (!(Z > 0.0) || !IsFinite(Z)) continue;
-
-        // p_bin = Ibin/Z を使って U_i, V_i を更新
+        // p_bin = Ibin / A を使って U_i, V_i を更新
         for (int j = 0; j < nb; ++j) {
-            const double p = Ibin[j] / Z;
+            const double p = Ibin[j] / A;
             if (!(p > 0.0) || !IsFinite(p)) continue;
 
             U[j] += u_true * p * dE;
