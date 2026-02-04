@@ -187,10 +187,13 @@ static Features compute_features(const std::vector<double>& wf,
 // Scan input directory and find required files.
 // Returns: run_number, and map ch->filepath
 static std::pair<int, std::unordered_map<std::string, std::string>>
-discover_files_and_run(const std::string& input_dir) {
-    // Match: wave_<CH>_run<M>.txt
+discover_files_and_run(const std::string& input_dir, bool michel_mode) {
+    // Match:
+    //  - default : wave_<CH>_run<M>.txt
+    //  - michel  : Michel_<CH>_run<M>.txt (例: Michel_NaI_A1_run12.txt)
     // CH could contain letters/numbers; we only accept the required CH list.
-    std::regex re(R"(wave_([A-Za-z0-9_]+)_run([0-9]+)\.txt$)");
+    const std::string prefix = michel_mode ? "Michel_" : "wave_";
+    std::regex re(("^" + prefix + "([A-Za-z0-9_]+)_run([0-9]+)\\.txt$"));
 
     std::unordered_map<std::string, std::string> ch_to_path;
     ch_to_path.reserve(CH_ORDER.size());
@@ -232,7 +235,7 @@ discover_files_and_run(const std::string& input_dir) {
     if (!run_set) {
         throw std::runtime_error(
             "No matching files found in input-dir. Expected files like wave_PS_A_run12.txt, "
-            "wave_NaI_A1_run12.txt, etc."
+            "wave_NaI_A1_run12.txt (or Michel_NaI_A1_run12.txt in Michel mode), etc."
         );
     }
 
@@ -284,7 +287,7 @@ int main(int argc, char** argv) {
         Config cfg = parse_args(argc, argv);
 
         // 1) Discover run number and required files from filenames
-        auto [run, ch_to_path] = discover_files_and_run(cfg.input_dir);
+        auto [run, ch_to_path] = discover_files_and_run(cfg.input_dir, cfg.michel_mode);
 
         // 2) Load and split per channel
         std::unordered_map<std::string, std::vector<std::vector<double>>> ch_events;
@@ -368,3 +371,4 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+
