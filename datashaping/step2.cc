@@ -32,13 +32,16 @@ namespace fs = std::filesystem;
 // Config
 // =====================
 struct Config {
-    double nai1_coeff = 1.0;   // coefficient for first NaI
-    double nai2_coeff = 1.0;   // coefficient for second NaI
+    double nai_a1_coeff = 1.0; // coefficient for NaI_A1
+    double nai_a2_coeff = 1.0; // coefficient for NaI_A2
+    double nai_b1_coeff = 1.0; // coefficient for NaI_B1
+    double nai_b2_coeff = 1.0; // coefficient for NaI_B2
     double time_bin   = 4e-9;  // [s]
     std::string input_dir = "../data/shapeddata";
     std::string output_dir = "../data/shapeddata";
     std::string input_file;
     std::string output_file;
+    bool michel_mode = false;
 };
 
 // =====================
@@ -68,9 +71,47 @@ static void usage(const char* prog) {
         << "  --output-dir DIR        output directory (default: ../data/shapeddata)\n"
         << "  --out FILE              output file (default: step2_runM.txt in --output-dir)\n\n"
         << "Options:\n"
-        << "  --nai1-coeff C   coefficient for first NaI (default: 1.0)\n"
-        << "  --nai2-coeff C   coefficient for second NaI (default: 1.0)\n"
-        << "  --time-bin T     time per bin [s] (default: 4e-9)\n";
+        << "  --nai-a1-coeff C  coefficient for NaI_A1 (default: 1.0)\n"
+        << "  --nai-a2-coeff C  coefficient for NaI_A2 (default: 1.0)\n"
+        << "  --nai-b1-coeff C  coefficient for NaI_B1 (default: 1.0)\n"
+        << "  --nai-b2-coeff C  coefficient for NaI_B2 (default: 1.0)\n"
+        << "  --time-bin T     time per bin [s] (default: 4e-9)\n"
+        << "  --michel         Michel mode (read step1_michel_runM.txt and output energy-only)\n";
+}
+
+static std::pair<int, std::string> discover_step1_michel_file(const std::string& input_dir) {
+    std::regex re(R"(step1_michel_run([0-9]+)\.txt$)");
+    int run_detected = -1;
+    bool run_set = false;
+    std::string found_path;
+
+    for (const auto& entry : fs::directory_iterator(input_dir)) {
+        if (!entry.is_regular_file()) continue;
+        const std::string fname = entry.path().filename().string();
+        std::smatch m;
+        if (!std::regex_match(fname, m, re)) continue;
+
+        const int run = std::stoi(m[1].str());
+        if (!run_set) {
+            run_detected = run;
+            run_set = true;
+            found_path = entry.path().string();
+        } else if (run != run_detected) {
+            throw std::runtime_error(
+                "Multiple step1_michel_runM.txt files found in input-dir. Found run" +
+                std::to_string(run_detected) + " and run" + std::to_string(run) +
+                ". Please keep one run per directory or specify --input."
+            );
+        }
+    }
+
+    if (!run_set) {
+        throw std::runtime_error(
+            "No step1_michel_runM.txt found in input-dir. Use --input or check --input-dir."
+        );
+    }
+
+    return {run_detected, found_path};
 }
 
 static std::pair<int, std::string> discover_step1_file(const std::string& input_dir) {
@@ -122,9 +163,12 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--input-dir") cfg.input_dir = need(a);
         else if (a == "--output-dir") cfg.output_dir = need(a);
         else if (a == "--out") cfg.output_file = need(a);
-        else if (a == "--nai1-coeff") cfg.nai1_coeff = std::stod(need(a));
-        else if (a == "--nai2-coeff") cfg.nai2_coeff = std::stod(need(a));
+        else if (a == "--nai-a1-coeff") cfg.nai_a1_coeff = std::stod(need(a));
+        else if (a == "--nai-a2-coeff") cfg.nai_a2_coeff = std::stod(need(a));
+        else if (a == "--nai-b1-coeff") cfg.nai_b1_coeff = std::stod(need(a));
+        else if (a == "--nai-b2-coeff") cfg.nai_b2_coeff = std::stod(need(a));
         else if (a == "--time-bin") cfg.time_bin = std::stod(need(a));
+        else if (a == "--michel") cfg.michel_mode = true;
         else if (a == "-h" || a == "--help") { usage(argv[0]); std::exit(0); }
         else if (!a.empty() && a[0] != '-') {
             if (cfg.input_file.empty()) cfg.input_file = a;
@@ -146,12 +190,16 @@ int main(int argc, char** argv) {
         Config cfg = parse_args(argc, argv);
 
         int run = -1;
-        if (cfg.input_file.empty()) {
+        if (cfg.input_file.empty() && cfg.michel_mode) {
+            auto [detected_run, path] = discover_step1_michel_file(cfg.input_dir);
+            run = detected_run;
+            cfg.input_file = path;
+        } else if (cfg.input_file.empty()) {
             auto [detected_run, path] = discover_step1_file(cfg.input_dir);
             run = detected_run;
             cfg.input_file = path;
         }
-        if (cfg.output_file.empty()) {
+        if (cfg.output_file.empty() && !cfg.michel_mode) {
             std::regex re(R"(step1_run([0-9]+)\.txt$)");
             std::smatch m;
             if (std::regex_search(cfg.input_file, m, re)) {
@@ -182,15 +230,66 @@ int main(int argc, char** argv) {
             std::string ch;
             double integral;
 
-            if (!(iss >> run >> event >> ch >> integral >> peak)) {
-                // skip header or malformed line
-                continue;
+            if (cfg.michel_mode) {
+                if (!(iss >> run >> event >> ch >> integral)) {
+                    continue;
+                }
+                peak = -1;
+            } else {
+                if (!(iss >> run >> event >> ch >> integral >> peak)) {
+                    // skip header or malformed line
+                    continue;
+                }
             }
 
             auto& ev = events[{run, event}];
             ev.run = run;
             ev.event = event;
             ev.ch[ch] = {integral, peak};
+        }
+
+        if (cfg.michel_mode) {
+            if (run < 0) {
+                std::regex re(R"(step1_michel_run([0-9]+)\.txt$)");
+                std::smatch m;
+                if (std::regex_search(cfg.input_file, m, re)) {
+                    run = std::stoi(m[1].str());
+                }
+            }
+            if (run < 0) {
+                throw std::runtime_error("Cannot infer run number from input file. Specify --input with run in name.");
+            }
+            std::string out1 = (fs::path(cfg.output_dir) /
+                                ("Michel_module1_run" + std::to_string(run) + ".txt")).string();
+            std::string out2 = (fs::path(cfg.output_dir) /
+                                ("Michel_module2_run" + std::to_string(run) + ".txt")).string();
+            std::ofstream ofs1(out1);
+            std::ofstream ofs2(out2);
+            if (!ofs1 || !ofs2) {
+                throw std::runtime_error("Cannot open output files for Michel mode.");
+            }
+
+            for (const auto& [key, ev] : events) {
+                const auto& nai1 = ev.ch.at("NaI_A1");
+                const auto& nai2 = ev.ch.at("NaI_A2");
+                const auto& nai3 = ev.ch.at("NaI_B1");
+                const auto& nai4 = ev.ch.at("NaI_B2");
+
+                double energy1 =
+                    cfg.nai_a1_coeff * nai1.integral +
+                    cfg.nai_a2_coeff * nai2.integral;
+                double energy2 =
+                    cfg.nai_b1_coeff * nai3.integral +
+                    cfg.nai_b2_coeff * nai4.integral;
+
+                ofs1 << std::fixed << std::setprecision(6) << energy1 << "\n";
+                ofs2 << std::fixed << std::setprecision(6) << energy2 << "\n";
+            }
+
+            std::cout << "Processed events: " << events.size() << "\n";
+            std::cout << "Output written to: " << out1 << "\n";
+            std::cout << "Output written to: " << out2 << "\n";
+            return 0;
         }
 
         std::ofstream ofs(cfg.output_file);
@@ -207,8 +306,8 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_A2");
 
                 double energy =
-                    cfg.nai1_coeff * nai1.integral +
-                    cfg.nai2_coeff * nai2.integral;
+                    cfg.nai_a1_coeff * nai1.integral +
+                    cfg.nai_a2_coeff * nai2.integral;
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;
@@ -231,8 +330,8 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_B2");
 
                 double energy =
-                    cfg.nai1_coeff * nai1.integral +
-                    cfg.nai2_coeff * nai2.integral;
+                    cfg.nai_b1_coeff * nai1.integral +
+                    cfg.nai_b2_coeff * nai2.integral;
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;

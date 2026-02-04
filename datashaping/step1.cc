@@ -55,6 +55,7 @@ struct Config {
     double ps_integ_threshold = 100.0;   // <= threshold => zero integral, peak_time=bins_per_event
     double nai_integ_threshold = 2000.0; // <= threshold => zero integral, peak_time=bins_per_event
     bool one_based_peak = false;
+    bool michel_mode = false;
 };
 
 static void usage(const char* prog) {
@@ -74,6 +75,7 @@ static void usage(const char* prog) {
         << "  --ps-integ-threshold T  PS: if integral <= T, set integral=0 and peak_time=bins_per_event (default: 100)\n"
         << "  --nai-integ-threshold T NaI: if integral <= T, set integral=0 and peak_time=bins_per_event (default: 2000)\n"
         << "  --one-based-peak        output peak_time as 1-based (default: 0-based)\n"
+        << "  --michel               Michel mode (omit peak_time column)\n"
         << "  -h, --help              show this help\n";
 }
 
@@ -266,6 +268,7 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--ps-integ-threshold") cfg.ps_integ_threshold = std::stod(need(a));
         else if (a == "--nai-integ-threshold") cfg.nai_integ_threshold = std::stod(need(a));
         else if (a == "--one-based-peak") cfg.one_based_peak = true;
+        else if (a == "--michel") cfg.michel_mode = true;
         else if (a == "-h" || a == "--help") { usage(argv[0]); std::exit(0); }
         else throw std::runtime_error("Unknown argument: " + a);
     }
@@ -312,6 +315,8 @@ int main(int argc, char** argv) {
         std::string out_path;
         if (!cfg.out_file.empty()) {
             out_path = cfg.out_file;
+        } else if (cfg.michel_mode) {
+            out_path = (fs::path(cfg.output_dir) / ("step1_michel_run" + std::to_string(run) + ".txt")).string();
         } else {
             out_path = (fs::path(cfg.output_dir) / ("step1_run" + std::to_string(run) + ".txt")).string();
         }
@@ -320,7 +325,11 @@ int main(int argc, char** argv) {
         std::ofstream ofs(out_path);
         if (!ofs) throw std::runtime_error("Failed to open output file: " + out_path);
 
-        ofs << "run\tevent\tCH\tintegral\tpeak_time\n";
+        if (cfg.michel_mode) {
+            ofs << "run\tevent\tCH\tintegral\n";
+        } else {
+            ofs << "run\tevent\tCH\tintegral\tpeak_time\n";
+        }
         ofs << std::fixed << std::setprecision(6);
 
         for (size_t evt = 0; evt < nevt_ref; ++evt) {
@@ -336,8 +345,13 @@ int main(int argc, char** argv) {
                     peak_time = cfg.bins_per_event;
                 }
 
-                ofs << run << "\t" << evt << "\t" << ch
-                    << "\t" << integral << "\t" << peak_time << "\n";
+                if (cfg.michel_mode) {
+                    ofs << run << "\t" << evt << "\t" << ch
+                        << "\t" << integral << "\n";
+                } else {
+                    ofs << run << "\t" << evt << "\t" << ch
+                        << "\t" << integral << "\t" << peak_time << "\n";
+                }
             }
         }
 
