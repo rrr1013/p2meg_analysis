@@ -28,8 +28,8 @@ double ConstraintNLL(const std::vector<double>& yields) {
     // --- N_rmd constraint ---
     const double N_rmd = yields[1];
     if (std::isfinite(N_rmd)) {
-        const double N_rmd_pred = 3000.0;
-        const double sigma_N_rmd_pred = 100000.0;
+        const double N_rmd_pred = 2030.51;
+        const double sigma_N_rmd_pred = 34.8901;
         if (sigma_N_rmd_pred > 0.0 && std::isfinite(sigma_N_rmd_pred)) {
             const double z = (N_rmd - N_rmd_pred) / sigma_N_rmd_pred;
             constraint += 0.5 * z * z;
