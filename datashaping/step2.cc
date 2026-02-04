@@ -41,6 +41,7 @@ struct Config {
     std::string output_dir = "../data/shapeddata";
     std::string input_file;
     std::string output_file;
+    int run = -1;              // if >=0, use this run number
     bool michel_mode = false;
 };
 
@@ -71,6 +72,7 @@ static void usage(const char* prog) {
         << "  --output-dir DIR        output directory (default: ../data/shapeddata)\n"
         << "  --out FILE              output file (default: step2_runM.txt in --output-dir)\n\n"
         << "Options:\n"
+        << "  --run N          run number to use (default: auto-detect)\n"
         << "  --nai-a1-coeff C  coefficient for NaI_A1 (default: 1.0)\n"
         << "  --nai-a2-coeff C  coefficient for NaI_A2 (default: 1.0)\n"
         << "  --nai-b1-coeff C  coefficient for NaI_B1 (default: 1.0)\n"
@@ -79,7 +81,7 @@ static void usage(const char* prog) {
         << "  --michel         Michel mode (read step1_michel_runM.txt and output energy-only)\n";
 }
 
-static std::pair<int, std::string> discover_step1_michel_file(const std::string& input_dir) {
+static std::pair<int, std::string> discover_step1_michel_file(const std::string& input_dir, int run_filter) {
     std::regex re(R"(step1_michel_run([0-9]+)\.txt$)");
     int run_detected = -1;
     bool run_set = false;
@@ -92,6 +94,8 @@ static std::pair<int, std::string> discover_step1_michel_file(const std::string&
         if (!std::regex_match(fname, m, re)) continue;
 
         const int run = std::stoi(m[1].str());
+        if (run_filter >= 0 && run != run_filter) continue;
+
         if (!run_set) {
             run_detected = run;
             run_set = true;
@@ -100,21 +104,23 @@ static std::pair<int, std::string> discover_step1_michel_file(const std::string&
             throw std::runtime_error(
                 "Multiple step1_michel_runM.txt files found in input-dir. Found run" +
                 std::to_string(run_detected) + " and run" + std::to_string(run) +
-                ". Please keep one run per directory or specify --input."
+                ". Please keep one run per directory or specify --run/--input."
             );
         }
     }
 
     if (!run_set) {
         throw std::runtime_error(
-            "No step1_michel_runM.txt found in input-dir. Use --input or check --input-dir."
+            (run_filter >= 0)
+                ? ("No step1_michel_run" + std::to_string(run_filter) + ".txt found in input-dir.")
+                : "No step1_michel_runM.txt found in input-dir. Use --input or check --input-dir."
         );
     }
 
     return {run_detected, found_path};
 }
 
-static std::pair<int, std::string> discover_step1_file(const std::string& input_dir) {
+static std::pair<int, std::string> discover_step1_file(const std::string& input_dir, int run_filter) {
     std::regex re(R"(step1_run([0-9]+)\.txt$)");
     int run_detected = -1;
     bool run_set = false;
@@ -127,6 +133,8 @@ static std::pair<int, std::string> discover_step1_file(const std::string& input_
         if (!std::regex_match(fname, m, re)) continue;
 
         const int run = std::stoi(m[1].str());
+        if (run_filter >= 0 && run != run_filter) continue;
+
         if (!run_set) {
             run_detected = run;
             run_set = true;
@@ -135,14 +143,16 @@ static std::pair<int, std::string> discover_step1_file(const std::string& input_
             throw std::runtime_error(
                 "Multiple step1_runM.txt files found in input-dir. Found run" +
                 std::to_string(run_detected) + " and run" + std::to_string(run) +
-                ". Please keep one run per directory or specify --input."
+                ". Please keep one run per directory or specify --run/--input."
             );
         }
     }
 
     if (!run_set) {
         throw std::runtime_error(
-            "No step1_runM.txt found in input-dir. Use --input or check --input-dir."
+            (run_filter >= 0)
+                ? ("No step1_run" + std::to_string(run_filter) + ".txt found in input-dir.")
+                : "No step1_runM.txt found in input-dir. Use --input or check --input-dir."
         );
     }
 
@@ -163,6 +173,7 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--input-dir") cfg.input_dir = need(a);
         else if (a == "--output-dir") cfg.output_dir = need(a);
         else if (a == "--out") cfg.output_file = need(a);
+        else if (a == "--run") cfg.run = std::stoi(need(a));
         else if (a == "--nai-a1-coeff") cfg.nai_a1_coeff = std::stod(need(a));
         else if (a == "--nai-a2-coeff") cfg.nai_a2_coeff = std::stod(need(a));
         else if (a == "--nai-b1-coeff") cfg.nai_b1_coeff = std::stod(need(a));
@@ -182,6 +193,16 @@ static Config parse_args(int argc, char** argv) {
     return cfg;
 }
 
+static int infer_run_from_step1(const std::string& path, bool michel_mode) {
+    std::regex re(michel_mode ? R"(step1_michel_run([0-9]+)\.txt$)"
+                              : R"(step1_run([0-9]+)\.txt$)");
+    std::smatch m;
+    if (std::regex_search(path, m, re)) {
+        return std::stoi(m[1].str());
+    }
+    return -1;
+}
+
 // =====================
 // Main
 // =====================
@@ -191,22 +212,34 @@ int main(int argc, char** argv) {
 
         int run = -1;
         if (cfg.input_file.empty() && cfg.michel_mode) {
-            auto [detected_run, path] = discover_step1_michel_file(cfg.input_dir);
+            auto [detected_run, path] = discover_step1_michel_file(cfg.input_dir, cfg.run);
             run = detected_run;
             cfg.input_file = path;
         } else if (cfg.input_file.empty()) {
-            auto [detected_run, path] = discover_step1_file(cfg.input_dir);
+            auto [detected_run, path] = discover_step1_file(cfg.input_dir, cfg.run);
             run = detected_run;
             cfg.input_file = path;
         }
+        if (!cfg.input_file.empty() && cfg.run >= 0) {
+            const int inferred = infer_run_from_step1(cfg.input_file, cfg.michel_mode);
+            if (inferred >= 0 && inferred != cfg.run) {
+                throw std::runtime_error(
+                    "Run mismatch: --run=" + std::to_string(cfg.run) +
+                    " but input file looks like run" + std::to_string(inferred) + "."
+                );
+            }
+        }
         if (cfg.output_file.empty() && !cfg.michel_mode) {
-            std::regex re(R"(step1_run([0-9]+)\.txt$)");
-            std::smatch m;
-            if (std::regex_search(cfg.input_file, m, re)) {
-                run = std::stoi(m[1].str());
-            } else if (run < 0) {
-                auto [detected_run, _path] = discover_step1_file(cfg.input_dir);
-                run = detected_run;
+            if (cfg.run >= 0) {
+                run = cfg.run;
+            } else {
+                const int inferred = infer_run_from_step1(cfg.input_file, false);
+                if (inferred >= 0) {
+                    run = inferred;
+                } else if (run < 0) {
+                    auto [detected_run, _path] = discover_step1_file(cfg.input_dir, -1);
+                    run = detected_run;
+                }
             }
             if (run < 0) {
                 throw std::runtime_error("Cannot infer run number from input file. Specify --out.");
@@ -249,12 +282,10 @@ int main(int argc, char** argv) {
         }
 
         if (cfg.michel_mode) {
+            if (cfg.run >= 0) run = cfg.run;
             if (run < 0) {
-                std::regex re(R"(step1_michel_run([0-9]+)\.txt$)");
-                std::smatch m;
-                if (std::regex_search(cfg.input_file, m, re)) {
-                    run = std::stoi(m[1].str());
-                }
+                const int inferred = infer_run_from_step1(cfg.input_file, true);
+                if (inferred >= 0) run = inferred;
             }
             if (run < 0) {
                 throw std::runtime_error("Cannot infer run number from input file. Specify --input with run in name.");
