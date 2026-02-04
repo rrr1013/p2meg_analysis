@@ -48,6 +48,7 @@ struct Config {
     std::string input_dir = "../data/rawdata";
     std::string output_dir = "../data/shapeddata";
     std::string out_file;          // empty => auto step1_runM.txt in output-dir
+    int run = -1;                  // if >=0, use this run number
     int bins_per_event = 500;      // DEFAULT = 500 (requested)
     int baseline_bins  = 50;
     int integ_start    = 0;
@@ -62,12 +63,13 @@ static void usage(const char* prog) {
     std::cerr
         << "Usage:\n"
         << "  " << prog << " [options]\n\n"
-        << "This program auto-detects run number from filenames in the input directory.\n"
+        << "This program auto-detects run number from filenames in the input directory unless --run is set.\n"
         << "It expects exactly one consistent run for the 6 required channels.\n\n"
         << "Options:\n"
         << "  --input-dir DIR        input directory (default: ../data/rawdata)\n"
         << "  --output-dir DIR       output directory (default: ../data/shapeddata)\n"
         << "  --out FILE             output txt file (default: step1_runM.txt in output-dir)\n"
+        << "  --run N                run number to use (default: auto-detect)\n"
         << "  --bins-per-event N      bins per event (default: 500)\n"
         << "  --baseline-bins K       baseline bins from head (default: 50)\n"
         << "  --integ-start S         integration start bin (default: 0)\n"
@@ -187,7 +189,7 @@ static Features compute_features(const std::vector<double>& wf,
 // Scan input directory and find required files.
 // Returns: run_number, and map ch->filepath
 static std::pair<int, std::unordered_map<std::string, std::string>>
-discover_files_and_run(const std::string& input_dir, bool michel_mode) {
+discover_files_and_run(const std::string& input_dir, bool michel_mode, int run_filter) {
     // Match:
     //  - default : wave_<CH>_run<M>.txt
     //  - michel  : Michel_<CH>_run<M>.txt (例: Michel_NaI_A1_run12.txt)
@@ -214,15 +216,19 @@ discover_files_and_run(const std::string& input_dir, bool michel_mode) {
         // Only accept required channels
         if (std::find(CH_ORDER.begin(), CH_ORDER.end(), ch) == CH_ORDER.end()) continue;
 
+        if (run_filter >= 0 && run != run_filter) {
+            continue;
+        }
+
         if (!run_set) {
             run_detected = run;
             run_set = true;
         } else if (run != run_detected) {
-            // If multiple runs exist, this is ambiguous and dangerous
+            // If multiple runs exist without --run, this is ambiguous and dangerous
             throw std::runtime_error(
                 "Multiple run numbers found in input-dir. Found run" + std::to_string(run_detected) +
                 " and run" + std::to_string(run) +
-                ". Please keep one run per directory or extend selection logic."
+                ". Please keep one run per directory or use --run."
             );
         }
 
@@ -234,8 +240,10 @@ discover_files_and_run(const std::string& input_dir, bool michel_mode) {
 
     if (!run_set) {
         throw std::runtime_error(
-            "No matching files found in input-dir. Expected files like wave_PS_A_run12.txt, "
-            "wave_NaI_A1_run12.txt (or Michel_NaI_A1_run12.txt in Michel mode), etc."
+            (run_filter >= 0)
+                ? ("No matching files found in input-dir for run" + std::to_string(run_filter) + ".")
+                : ("No matching files found in input-dir. Expected files like wave_PS_A_run12.txt, "
+                   "wave_NaI_A1_run12.txt (or Michel_NaI_A1_run12.txt in Michel mode), etc.")
         );
     }
 
@@ -264,6 +272,7 @@ static Config parse_args(int argc, char** argv) {
         if (a == "--input-dir") cfg.input_dir = need(a);
         else if (a == "--output-dir") cfg.output_dir = need(a);
         else if (a == "--out") cfg.out_file = need(a);
+        else if (a == "--run") cfg.run = std::stoi(need(a));
         else if (a == "--bins-per-event") cfg.bins_per_event = std::stoi(need(a));
         else if (a == "--baseline-bins") cfg.baseline_bins = std::stoi(need(a));
         else if (a == "--integ-start") cfg.integ_start = std::stoi(need(a));
@@ -287,7 +296,7 @@ int main(int argc, char** argv) {
         Config cfg = parse_args(argc, argv);
 
         // 1) Discover run number and required files from filenames
-        auto [run, ch_to_path] = discover_files_and_run(cfg.input_dir, cfg.michel_mode);
+        auto [run, ch_to_path] = discover_files_and_run(cfg.input_dir, cfg.michel_mode, cfg.run);
 
         // 2) Load and split per channel
         std::unordered_map<std::string, std::vector<std::vector<double>>> ch_events;
@@ -371,4 +380,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-

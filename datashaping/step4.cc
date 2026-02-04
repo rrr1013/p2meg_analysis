@@ -51,6 +51,7 @@ struct Config {
     std::string output_dir = "../data/shapeddata";
     std::string input_file;
     std::string output_file;
+    int run = -1; // if >=0, use this run number
 };
 
 static const std::map<int, double> RUN_PHI = {
@@ -84,6 +85,7 @@ static void usage(const char* prog) {
         << "  --input-dir DIR         input directory (default: ../data/shapeddata)\n"
         << "  --output-dir DIR        output directory (default: ../data/shapeddata)\n"
         << "  --out FILE              output file (default: step4_runM_eg.txt in --output-dir)\n\n"
+        << "  --run N                 run number to use (default: auto-detect)\n"
         << "Input must be (positron,gamma) events with two lines per (run,event).\n"
         << "PHI is the constant angle assigned to the non-zero side (recommend radians).\n"
         << "If RUN_PHI is set in code, it overrides --phi-nonzero per run.\n";
@@ -133,6 +135,7 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--input-dir") cfg.input_dir = need(a);
         else if (a == "--output-dir") cfg.output_dir = need(a);
         else if (a == "--out") cfg.output_file = need(a);
+        else if (a == "--run") cfg.run = std::stoi(need(a));
         else if (a == "--phi-nonzero") {
             cfg.phi_nonzero = std::stod(need(a));
             cfg.phi_set = true;
@@ -149,6 +152,15 @@ static Config parse_args(int argc, char** argv) {
     }
 
     return cfg;
+}
+
+static int infer_run_from_step3_pg(const std::string& path) {
+    std::regex re(R"(step3_run([0-9]+)_pg\.txt$)");
+    std::smatch m;
+    if (std::regex_search(path, m, re)) {
+        return std::stoi(m[1].str());
+    }
+    return -1;
 }
 
 static bool parse_line(const std::string& line, Rec& r) {
@@ -278,36 +290,73 @@ int main(int argc, char** argv) {
         Config cfg = parse_args(argc, argv);
 
         if (cfg.input_file.empty()) {
-            const auto files = discover_step3_pg_files(cfg.input_dir);
-            if (cfg.output_file.empty()) {
-                cfg.output_file = (fs::path(cfg.output_dir) / "step4_eg_all.txt").string();
-            }
-            std::ofstream ofs(cfg.output_file);
-            if (!ofs) throw std::runtime_error("Cannot open output file: " + cfg.output_file);
-            ofs << "E_e\tE_g\tt\tphi_e\tphi_g\n";
-            ofs << std::fixed << std::setprecision(6);
-            for (const auto& [run, path] : files) {
-                auto it = RUN_PHI.find(run);
+            if (cfg.run >= 0) {
+                const std::string fname = "step3_run" + std::to_string(cfg.run) + "_pg.txt";
+                cfg.input_file = (fs::path(cfg.input_dir) / fname).string();
+                if (!fs::exists(cfg.input_file)) {
+                    throw std::runtime_error("Input file not found for run " + std::to_string(cfg.run) +
+                                             ": " + cfg.input_file);
+                }
+                if (cfg.output_file.empty()) {
+                    cfg.output_file = (fs::path(cfg.output_dir) /
+                                       ("step4_run" + std::to_string(cfg.run) + "_eg.txt")).string();
+                }
+                std::ofstream ofs(cfg.output_file);
+                if (!ofs) throw std::runtime_error("Cannot open output file: " + cfg.output_file);
+                ofs << "E_e\tE_g\tt\tphi_e\tphi_g\n";
+                ofs << std::fixed << std::setprecision(6);
+                auto it = RUN_PHI.find(cfg.run);
                 if (it == RUN_PHI.end() && !cfg.phi_set) {
                     throw std::runtime_error(
-                        "No phi defined for run " + std::to_string(run) +
+                        "No phi defined for run " + std::to_string(cfg.run) +
                         ". Set RUN_PHI in code or pass --phi-nonzero."
                     );
                 }
                 const double phi = (it != RUN_PHI.end()) ? it->second : cfg.phi_nonzero;
-                process_file(path, ofs, phi, run);
+                process_file(cfg.input_file, ofs, phi, cfg.run);
+                std::cout << "Output: " << cfg.output_file << "\n";
+            } else {
+                const auto files = discover_step3_pg_files(cfg.input_dir);
+                if (cfg.output_file.empty()) {
+                    cfg.output_file = (fs::path(cfg.output_dir) / "step4_eg_all.txt").string();
+                }
+                std::ofstream ofs(cfg.output_file);
+                if (!ofs) throw std::runtime_error("Cannot open output file: " + cfg.output_file);
+                ofs << "E_e\tE_g\tt\tphi_e\tphi_g\n";
+                ofs << std::fixed << std::setprecision(6);
+                for (const auto& [run, path] : files) {
+                    auto it = RUN_PHI.find(run);
+                    if (it == RUN_PHI.end() && !cfg.phi_set) {
+                        throw std::runtime_error(
+                            "No phi defined for run " + std::to_string(run) +
+                            ". Set RUN_PHI in code or pass --phi-nonzero."
+                        );
+                    }
+                    const double phi = (it != RUN_PHI.end()) ? it->second : cfg.phi_nonzero;
+                    process_file(path, ofs, phi, run);
+                }
+                std::cout << "Output: " << cfg.output_file << "\n";
             }
-            std::cout << "Output: " << cfg.output_file << "\n";
         } else {
+            if (cfg.run >= 0) {
+                const int inferred = infer_run_from_step3_pg(cfg.input_file);
+                if (inferred >= 0 && inferred != cfg.run) {
+                    throw std::runtime_error(
+                        "Run mismatch: --run=" + std::to_string(cfg.run) +
+                        " but input file looks like run" + std::to_string(inferred) + "."
+                    );
+                }
+            }
             if (cfg.output_file.empty()) {
-                std::regex re(R"(step3_run([0-9]+)_pg\.txt$)");
-                std::smatch m;
                 int run = -1;
-                if (std::regex_search(cfg.input_file, m, re)) {
-                    run = std::stoi(m[1].str());
+                if (cfg.run >= 0) {
+                    run = cfg.run;
+                } else {
+                    const int inferred = infer_run_from_step3_pg(cfg.input_file);
+                    if (inferred >= 0) run = inferred;
                 }
                 if (run < 0) {
-                    throw std::runtime_error("Cannot infer run number from input file. Specify --out.");
+                    throw std::runtime_error("Cannot infer run number from input file. Specify --out or --run.");
                 }
                 cfg.output_file = (fs::path(cfg.output_dir) /
                                    ("step4_run" + std::to_string(run) + "_eg.txt")).string();
@@ -317,10 +366,11 @@ int main(int argc, char** argv) {
             ofs << "E_e\tE_g\tt\tphi_e\tphi_g\n";
             ofs << std::fixed << std::setprecision(6);
             int run = -1;
-            std::regex re(R"(step3_run([0-9]+)_pg\.txt$)");
-            std::smatch m;
-            if (std::regex_search(cfg.input_file, m, re)) {
-                run = std::stoi(m[1].str());
+            if (cfg.run >= 0) {
+                run = cfg.run;
+            } else {
+                const int inferred = infer_run_from_step3_pg(cfg.input_file);
+                if (inferred >= 0) run = inferred;
             }
             auto it = (run >= 0) ? RUN_PHI.find(run) : RUN_PHI.end();
             if (it == RUN_PHI.end() && !cfg.phi_set) {
