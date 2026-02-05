@@ -1,8 +1,9 @@
 // check/hist_ADCint.C
 //
 // run番号だけ指定して、6ファイル（NaI 4 + PS 2）のADC積分ヒストを作って
-// 1枚のPDFに配置して保存する。
-// 出力: hist_ADCint_runXX.pdf
+// 1枚目に1Dヒスト6枚（NaI 4 + PS 2 + メタ）、2ページ目以降に全組合せ(6C2=15)の2Dヒストを
+// 6枚/ページで描画してPDF保存する。
+// 出力: doc/hist_ADCint_runXX.pdf
 //
 // 実行例（リポジトリ直下で）:
 //   root -l -q 'check/hist_ADCint.C(12)'
@@ -11,8 +12,10 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <utility>
 
 #include "TH1D.h"
+#include "TH2D.h"
 #include "TCanvas.h"
 #include "TPad.h"
 #include "TLatex.h"
@@ -22,14 +25,15 @@
 #include "TString.h"
 
 // 入力ファイルが置かれているディレクトリ
-// 例: データがリポジトリ直下にあるなら "."、data/ にあるなら "data"。
-// （run番号以外を触る必要があるとすればここだけです）
 static const char* kInputDir = "data/mockdata_wave";
 
-// ヒスト設定
-static const int    kNBins   = 500;
+// 1Dヒスト設定
+static const int    kNBins1D = 500;
 static const double kHistMin = 3000.0;
 static const double kHistMax = 6e5;
+
+// 2Dヒスト設定（重い場合はここを下げてください）
+static const int kNBins2D = 200;
 
 // 波形→イベント切り出し
 static const int kSamplesPerEvent = 500;
@@ -42,6 +46,7 @@ static const char* kLabels[6] = {"NaIA1","NaIA2","NaIB1","NaIB2","PS1","PS2"};
 
 struct HistResult {
   TH1D* h = nullptr;
+  std::vector<double> integrals;
   long  n_events = 0;
   double vmin = 0.0;
   double vmax = 0.0;
@@ -49,13 +54,47 @@ struct HistResult {
   TString err;
 };
 
-static HistResult MakeIntegralHist(const char* filename,
-                                   const char* hname,
-                                   int nbins,
-                                   double h_min,
-                                   double h_max,
-                                   int samples_per_event,
-                                   int baseline_samples)
+static void DrawLabelTopLeft(const char* label)
+{
+  TLatex lat;
+  lat.SetNDC(true);
+  lat.SetTextSize(0.06);
+  lat.DrawLatex(0.14, 0.88, label);
+}
+
+static void DrawErrorText(const TString& msg)
+{
+  TLatex t;
+  t.SetNDC(true);
+  t.SetTextSize(0.05);
+  t.DrawLatex(0.14, 0.78, msg.Data());
+}
+
+static void SetupPad1D(TPad* p)
+{
+  p->SetFillStyle(0);
+  p->SetLeftMargin(0.12);
+  p->SetRightMargin(0.05);
+  p->SetTopMargin(0.08);
+  p->SetBottomMargin(0.12);
+}
+
+static void SetupPad2D(TPad* p)
+{
+  p->SetFillStyle(0);
+  p->SetLeftMargin(0.12);
+  p->SetRightMargin(0.13); // COLZ のカラーバー分
+  p->SetTopMargin(0.08);
+  p->SetBottomMargin(0.12);
+}
+
+static HistResult AnalyzeFileMake1D(const char* filename,
+                                    const char* hname,
+                                    int nbins,
+                                    double h_min,
+                                    double h_max,
+                                    int samples_per_event,
+                                    int baseline_samples)
 {
   HistResult res;
 
@@ -96,7 +135,6 @@ static HistResult MakeIntegralHist(const char* filename,
 
   res.h = new TH1D(hname, Form("Spectrum (%s);Integral;Counts", filename),
                    nbins, h_min, h_max);
-
   for (double s : integrals) res.h->Fill(s);
 
   res.n_events = (long)integrals.size();
@@ -107,32 +145,14 @@ static HistResult MakeIntegralHist(const char* filename,
     res.vmax = *it_max;
   }
 
+  res.integrals.swap(integrals);
   res.ok = true;
   return res;
-}
-
-static void SetupPad(TPad* p)
-{
-  p->SetFillStyle(0);
-  p->SetLeftMargin(0.12);
-  p->SetRightMargin(0.05);
-  p->SetTopMargin(0.08);
-  p->SetBottomMargin(0.12);
-}
-
-static void DrawLabelTopLeft(const char* label)
-{
-  TLatex lat;
-  lat.SetNDC(true);
-  lat.SetTextSize(0.06);
-  lat.DrawLatex(0.14, 0.88, label);
 }
 
 // run番号 → 入力ファイルパスを構成
 static void BuildInputFiles(int run, TString out_files[6])
 {
-  // 画像で示された命名規則に合わせる
-  // wave_NaI_A1_run12.txt 等
   out_files[0] = Form("%s/wave_NaI_A1_run%d.txt", kInputDir, run);
   out_files[1] = Form("%s/wave_NaI_A2_run%d.txt", kInputDir, run);
   out_files[2] = Form("%s/wave_NaI_B1_run%d.txt", kInputDir, run);
@@ -143,28 +163,28 @@ static void BuildInputFiles(int run, TString out_files[6])
 
 void hist_ADCint(int run = 12)
 {
-  gStyle->SetOptStat(1110);
-
+  // ---------- 6本を解析して 1D と integrals を作る ----------
   TString filesS[6];
   BuildInputFiles(run, filesS);
 
   HistResult R[6];
   for (int i = 0; i < 6; ++i) {
-    R[i] = MakeIntegralHist(filesS[i].Data(),
-                            Form("h_%s_run%d", kLabels[i], run),
-                            kNBins, kHistMin, kHistMax,
-                            kSamplesPerEvent, kBaselineSamples);
+    R[i] = AnalyzeFileMake1D(filesS[i].Data(),
+                             Form("h_%s_run%d", kLabels[i], run),
+                             kNBins1D, kHistMin, kHistMax,
+                             kSamplesPerEvent, kBaselineSamples);
     R[i].h->GetXaxis()->SetRangeUser(kHistMin, kHistMax);
   }
 
-  // 出力PDF名（末尾に _run12 形式）
+  // 出力PDF名（doc/ に保存）
   TString out_pdf = Form("doc/hist_ADCint_run%d.pdf", run);
 
-  // レイアウト:
-  // y=0.50-1.00: NaI 2x2
-  // y=0.25-0.50: PS 1x2
-  // y=0.00-0.25: メタ情報
-  TCanvas* c = new TCanvas("c_hist", "ADC Integral Histograms", 1200, 900);
+  // ============================================================
+  // 1ページ目（1D: NaI4 + PS2 + メタ）
+  // ============================================================
+  gStyle->SetOptStat(1110);
+
+  TCanvas* c1 = new TCanvas("c_hist_1d", "ADC Integral 1D", 1200, 900);
 
   TPad* pNaI11 = new TPad("pNaI11","", 0.00, 0.75, 0.50, 1.00);
   TPad* pNaI12 = new TPad("pNaI12","", 0.50, 0.75, 1.00, 1.00);
@@ -176,8 +196,8 @@ void hist_ADCint(int run = 12)
 
   TPad* pMeta  = new TPad("pMeta", "", 0.00, 0.00, 1.00, 0.25);
 
-  SetupPad(pNaI11); SetupPad(pNaI12); SetupPad(pNaI21); SetupPad(pNaI22);
-  SetupPad(pPS1);   SetupPad(pPS2);
+  SetupPad1D(pNaI11); SetupPad1D(pNaI12); SetupPad1D(pNaI21); SetupPad1D(pNaI22);
+  SetupPad1D(pPS1);   SetupPad1D(pPS2);
 
   pMeta->SetLeftMargin(0.04);
   pMeta->SetRightMargin(0.02);
@@ -188,25 +208,12 @@ void hist_ADCint(int run = 12)
   pPS1->Draw();   pPS2->Draw();
   pMeta->Draw();
 
-  // NaI 4枚
-  pNaI11->cd(); R[0].h->Draw(); DrawLabelTopLeft(kLabels[0]);
-  if (!R[0].ok) { TLatex t; t.SetNDC(true); t.SetTextSize(0.05); t.DrawLatex(0.14,0.78,R[0].err); }
-
-  pNaI12->cd(); R[1].h->Draw(); DrawLabelTopLeft(kLabels[1]);
-  if (!R[1].ok) { TLatex t; t.SetNDC(true); t.SetTextSize(0.05); t.DrawLatex(0.14,0.78,R[1].err); }
-
-  pNaI21->cd(); R[2].h->Draw(); DrawLabelTopLeft(kLabels[2]);
-  if (!R[2].ok) { TLatex t; t.SetNDC(true); t.SetTextSize(0.05); t.DrawLatex(0.14,0.78,R[2].err); }
-
-  pNaI22->cd(); R[3].h->Draw(); DrawLabelTopLeft(kLabels[3]);
-  if (!R[3].ok) { TLatex t; t.SetNDC(true); t.SetTextSize(0.05); t.DrawLatex(0.14,0.78,R[3].err); }
-
-  // PS 2枚
-  pPS1->cd(); R[4].h->Draw(); DrawLabelTopLeft(kLabels[4]);
-  if (!R[4].ok) { TLatex t; t.SetNDC(true); t.SetTextSize(0.05); t.DrawLatex(0.14,0.78,R[4].err); }
-
-  pPS2->cd(); R[5].h->Draw(); DrawLabelTopLeft(kLabels[5]);
-  if (!R[5].ok) { TLatex t; t.SetNDC(true); t.SetTextSize(0.05); t.DrawLatex(0.14,0.78,R[5].err); }
+  pNaI11->cd(); R[0].h->Draw(); DrawLabelTopLeft(kLabels[0]); if (!R[0].ok) DrawErrorText(R[0].err);
+  pNaI12->cd(); R[1].h->Draw(); DrawLabelTopLeft(kLabels[1]); if (!R[1].ok) DrawErrorText(R[1].err);
+  pNaI21->cd(); R[2].h->Draw(); DrawLabelTopLeft(kLabels[2]); if (!R[2].ok) DrawErrorText(R[2].err);
+  pNaI22->cd(); R[3].h->Draw(); DrawLabelTopLeft(kLabels[3]); if (!R[3].ok) DrawErrorText(R[3].err);
+  pPS1->cd();   R[4].h->Draw(); DrawLabelTopLeft(kLabels[4]); if (!R[4].ok) DrawErrorText(R[4].err);
+  pPS2->cd();   R[5].h->Draw(); DrawLabelTopLeft(kLabels[5]); if (!R[5].ok) DrawErrorText(R[5].err);
 
   // メタ情報
   pMeta->cd();
@@ -221,9 +228,8 @@ void hist_ADCint(int run = 12)
                    run, out_pdf.Data(),
                    now.GetYear(), now.GetMonth(), now.GetDay(),
                    now.GetHour(), now.GetMinute(), now.GetSecond()));
-
-  pt->AddText(Form("InputDir: %s    samples_per_event=%d, baseline_samples=%d, nbins=%d, hist_range=[%.0f, %.0f]",
-                   kInputDir, kSamplesPerEvent, kBaselineSamples, kNBins, kHistMin, kHistMax));
+  pt->AddText(Form("InputDir: %s    samples_per_event=%d, baseline_samples=%d, nbins1D=%d, nbins2D=%d, range=[%.0f, %.0f]",
+                   kInputDir, kSamplesPerEvent, kBaselineSamples, kNBins1D, kNBins2D, kHistMin, kHistMax));
 
   pt->AddText("Input files / event counts / min-max:");
   for (int i = 0; i < 6; ++i) {
@@ -237,6 +243,126 @@ void hist_ADCint(int run = 12)
   }
   pt->Draw();
 
-  c->SaveAs(out_pdf.Data());
+  // マルチページPDF開始
+  TString out_pdf_open = out_pdf; out_pdf_open += "(";
+  c1->SaveAs(out_pdf_open.Data());
+
+  // ============================================================
+  // 2ページ目以降（2D: 6C2 = 15通り、6枚/ページ）
+  // ============================================================
+
+  // 組合せリスト
+  std::vector<std::pair<int,int>> pairs;
+  pairs.reserve(15);
+  for (int i = 0; i < 6; ++i) {
+    for (int j = i + 1; j < 6; ++j) {
+      pairs.emplace_back(i, j);
+    }
+  }
+
+  // 2Dヒストを作成（必要ならここでまとめて作る）
+  std::vector<TH2D*> h2s;
+  h2s.reserve(pairs.size());
+
+  for (size_t p = 0; p < pairs.size(); ++p) {
+    int i = pairs[p].first;
+    int j = pairs[p].second;
+
+    TString name  = Form("h2_%s_vs_%s_run%d", kLabels[i], kLabels[j], run);
+    TString title = Form("%s vs %s (run%d);%s integral;%s integral",
+                         kLabels[i], kLabels[j], run, kLabels[i], kLabels[j]);
+
+    TH2D* h2 = new TH2D(name.Data(), title.Data(),
+                        kNBins2D, kHistMin, kHistMax,
+                        kNBins2D, kHistMin, kHistMax);
+
+    // どちらかが読めていない場合は空のまま（描画時にエラー表示）
+    if (R[i].ok && R[j].ok) {
+      const long nfill = (long)std::min(R[i].integrals.size(), R[j].integrals.size());
+      for (long k = 0; k < nfill; ++k) {
+        h2->Fill(R[i].integrals[k], R[j].integrals[k]);
+      }
+    }
+
+    h2s.push_back(h2);
+  }
+
+  gStyle->SetOptStat(0); // 2Dはstat boxを消す（見づらいので）
+
+  const int per_page = 6;
+  const int n_pages_2d = (int)((h2s.size() + per_page - 1) / per_page);
+
+  for (int page = 0; page < n_pages_2d; ++page) {
+
+    TCanvas* c2 = new TCanvas(Form("c_hist_2d_p%d", page+1),
+                              Form("ADC Integral 2D page %d", page+1),
+                              1200, 900);
+
+    // 2 x 3 の6パッド（全面使用）
+    TPad* pads[6];
+    pads[0] = new TPad(Form("p2d_%d_0",page), "", 0.00, 0.66, 0.50, 1.00);
+    pads[1] = new TPad(Form("p2d_%d_1",page), "", 0.50, 0.66, 1.00, 1.00);
+    pads[2] = new TPad(Form("p2d_%d_2",page), "", 0.00, 0.33, 0.50, 0.66);
+    pads[3] = new TPad(Form("p2d_%d_3",page), "", 0.50, 0.33, 1.00, 0.66);
+    pads[4] = new TPad(Form("p2d_%d_4",page), "", 0.00, 0.00, 0.50, 0.33);
+    pads[5] = new TPad(Form("p2d_%d_5",page), "", 0.50, 0.00, 1.00, 0.33);
+
+    for (int k = 0; k < 6; ++k) {
+      SetupPad2D(pads[k]);
+      pads[k]->Draw();
+    }
+
+    for (int slot = 0; slot < per_page; ++slot) {
+      const int idx = page * per_page + slot;
+      pads[slot]->cd();
+
+      if (idx >= (int)h2s.size()) {
+        // 最終ページの余りスロットは空欄
+        TLatex t;
+        t.SetNDC(true);
+        t.SetTextSize(0.07);
+        t.DrawLatex(0.20, 0.50, " ");
+        continue;
+      }
+
+      int i = pairs[idx].first;
+      int j = pairs[idx].second;
+
+      if (!(R[i].ok && R[j].ok)) {
+        // どちらかの入力が読めていない
+        TLatex t;
+        t.SetNDC(true);
+        t.SetTextSize(0.06);
+        t.DrawLatex(0.14, 0.80, Form("%s vs %s", kLabels[i], kLabels[j]));
+        t.SetTextSize(0.05);
+        if (!R[i].ok) t.DrawLatex(0.14, 0.68, R[i].err.Data());
+        if (!R[j].ok) t.DrawLatex(0.14, 0.58, R[j].err.Data());
+        continue;
+      }
+
+      h2s[idx]->Draw("COLZ");
+
+      // パッド内ラベル（ペア名）
+      TLatex lat;
+      lat.SetNDC(true);
+      lat.SetTextSize(0.06);
+      lat.DrawLatex(0.14, 0.88, Form("%s vs %s", kLabels[i], kLabels[j]));
+
+      // 使ったイベント数（ズレがある場合の確認用）
+      const long nfill = (long)std::min(R[i].integrals.size(), R[j].integrals.size());
+      lat.SetTextSize(0.05);
+      lat.DrawLatex(0.14, 0.80, Form("N(fill) = %ld", nfill));
+    }
+
+    // PDFへ追加（最後のページだけ閉じ括弧）
+    const bool is_last_page = (page == n_pages_2d - 1);
+    if (is_last_page) {
+      TString out_pdf_close = out_pdf; out_pdf_close += ")";
+      c2->SaveAs(out_pdf_close.Data());
+    } else {
+      c2->SaveAs(out_pdf.Data());
+    }
+  }
+
   std::cout << "Saved: " << out_pdf << std::endl;
 }
