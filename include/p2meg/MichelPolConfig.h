@@ -45,7 +45,7 @@ struct MichelPolConfig {
 
 // 初期値（必要に応じて手動で書き換える）
 inline constexpr MichelPolConfig michel_pol_config{
-    0.5,   // cos_theta_abs  (初期: |cosθ|=1/2)
+    0.86602,   // cos_theta_abs  (初期: |cosθ|=1/2)
     0.0,   // Ee_min [MeV]
     60.0,  // Ee_max [MeV]
     120,   // nbins_Ee
