@@ -50,7 +50,8 @@ struct Config {
 struct LineRec {
     int run = -1;
     int event = -1;
-    int module = -1;            // 1 or 2
+    int module = -1;            // 1 or 2 (A/B)
+    std::string module_label;   // "A" or "B"
     double energy = 0.0;
     double peak_time_real = 0.0;
     std::string particle;       // "positron" or "gamma"
@@ -149,17 +150,42 @@ static int infer_run_from_step2(const std::string& path) {
     return -1;
 }
 
+static bool parse_module_token(const std::string& s, int& module, std::string& label) {
+    if (s == "A" || s == "a") {
+        module = 1;
+        label = "A";
+        return true;
+    }
+    if (s == "B" || s == "b") {
+        module = 2;
+        label = "B";
+        return true;
+    }
+    if (s == "1") {
+        module = 1;
+        label = "A";
+        return true;
+    }
+    if (s == "2") {
+        module = 2;
+        label = "B";
+        return true;
+    }
+    return false;
+}
+
 static bool parse_line(const std::string& line, LineRec& rec) {
     if (line.empty()) return false;
     if (line[0] == '#') return false;
 
     std::istringstream iss(line);
 
-    int run, event, module;
+    int run, event;
+    std::string module_token;
     double energy, t;
     std::string particle;
 
-    if (!(iss >> run >> event >> module >> energy >> t >> particle)) {
+    if (!(iss >> run >> event >> module_token >> energy >> t >> particle)) {
         return false; // header or malformed
     }
 
@@ -167,10 +193,16 @@ static bool parse_line(const std::string& line, LineRec& rec) {
     if (particle != "positron" && particle != "gamma") {
         return false;
     }
+    int module = -1;
+    std::string module_label;
+    if (!parse_module_token(module_token, module, module_label)) {
+        return false;
+    }
 
     rec.run = run;
     rec.event = event;
     rec.module = module;
+    rec.module_label = module_label;
     rec.energy = energy;
     rec.peak_time_real = t;
     rec.particle = particle;
@@ -179,7 +211,7 @@ static bool parse_line(const std::string& line, LineRec& rec) {
     std::ostringstream oss;
     oss << rec.run << "\t"
         << rec.event << "\t"
-        << rec.module << "\t"
+        << rec.module_label << "\t"
         << std::fixed << std::setprecision(6) << rec.energy << "\t"
         << std::scientific << std::setprecision(2) << rec.peak_time_real << "\t"
         << rec.particle;

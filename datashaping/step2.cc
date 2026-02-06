@@ -33,9 +33,13 @@ namespace fs = std::filesystem;
 // =====================
 struct Config {
     double nai_a1_coeff = 1.0; // coefficient for NaI_A1
+    double nai_a1_offset = 0.0; // offset for NaI_A1
     double nai_a2_coeff = 1.0; // coefficient for NaI_A2
+    double nai_a2_offset = 0.0; // offset for NaI_A2
     double nai_b1_coeff = 1.0; // coefficient for NaI_B1
+    double nai_b1_offset = 0.0; // offset for NaI_B1
     double nai_b2_coeff = 1.0; // coefficient for NaI_B2
+    double nai_b2_offset = 0.0; // offset for NaI_B2
     double time_bin   = 4e-9;  // [s]
     std::string input_dir = "../data/shapeddata";
     std::string output_dir = "../data/shapeddata";
@@ -74,9 +78,13 @@ static void usage(const char* prog) {
         << "Options:\n"
         << "  --run N          run number to use (default: auto-detect)\n"
         << "  --nai-a1-coeff C  coefficient for NaI_A1 (default: 1.0)\n"
+        << "  --nai-a1-offset B offset for NaI_A1 (default: 0.0)\n"
         << "  --nai-a2-coeff C  coefficient for NaI_A2 (default: 1.0)\n"
+        << "  --nai-a2-offset B offset for NaI_A2 (default: 0.0)\n"
         << "  --nai-b1-coeff C  coefficient for NaI_B1 (default: 1.0)\n"
+        << "  --nai-b1-offset B offset for NaI_B1 (default: 0.0)\n"
         << "  --nai-b2-coeff C  coefficient for NaI_B2 (default: 1.0)\n"
+        << "  --nai-b2-offset B offset for NaI_B2 (default: 0.0)\n"
         << "  --time-bin T     time per bin [s] (default: 4e-9)\n"
         << "  --michel         Michel mode (read step1_michel_runM.txt and output energy-only)\n";
 }
@@ -175,9 +183,13 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--out") cfg.output_file = need(a);
         else if (a == "--run") cfg.run = std::stoi(need(a));
         else if (a == "--nai-a1-coeff") cfg.nai_a1_coeff = std::stod(need(a));
+        else if (a == "--nai-a1-offset") cfg.nai_a1_offset = std::stod(need(a));
         else if (a == "--nai-a2-coeff") cfg.nai_a2_coeff = std::stod(need(a));
+        else if (a == "--nai-a2-offset") cfg.nai_a2_offset = std::stod(need(a));
         else if (a == "--nai-b1-coeff") cfg.nai_b1_coeff = std::stod(need(a));
+        else if (a == "--nai-b1-offset") cfg.nai_b1_offset = std::stod(need(a));
         else if (a == "--nai-b2-coeff") cfg.nai_b2_coeff = std::stod(need(a));
+        else if (a == "--nai-b2-offset") cfg.nai_b2_offset = std::stod(need(a));
         else if (a == "--time-bin") cfg.time_bin = std::stod(need(a));
         else if (a == "--michel") cfg.michel_mode = true;
         else if (a == "-h" || a == "--help") { usage(argv[0]); std::exit(0); }
@@ -307,11 +319,11 @@ int main(int argc, char** argv) {
                 const auto& nai4 = ev.ch.at("NaI_B2");
 
                 double energy1 =
-                    cfg.nai_a1_coeff * nai1.integral +
-                    cfg.nai_a2_coeff * nai2.integral;
+                    cfg.nai_a1_coeff * nai1.integral + cfg.nai_a1_offset +
+                    cfg.nai_a2_coeff * nai2.integral + cfg.nai_a2_offset;
                 double energy2 =
-                    cfg.nai_b1_coeff * nai3.integral +
-                    cfg.nai_b2_coeff * nai4.integral;
+                    cfg.nai_b1_coeff * nai3.integral + cfg.nai_b1_offset +
+                    cfg.nai_b2_coeff * nai4.integral + cfg.nai_b2_offset;
 
                 ofs1 << std::fixed << std::setprecision(6) << energy1 << "\n";
                 ofs2 << std::fixed << std::setprecision(6) << energy2 << "\n";
@@ -337,8 +349,8 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_A2");
 
                 double energy =
-                    cfg.nai_a1_coeff * nai1.integral +
-                    cfg.nai_a2_coeff * nai2.integral;
+                    cfg.nai_a1_coeff * nai1.integral + cfg.nai_a1_offset +
+                    cfg.nai_a2_coeff * nai2.integral + cfg.nai_a2_offset;
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;
@@ -348,7 +360,7 @@ int main(int argc, char** argv) {
 
                 ofs << ev.run << "\t"
                     << ev.event << "\t"
-                    << 1 << "\t"
+                    << "A" << "\t"
                     << std::fixed << std::setprecision(6) << energy << "\t"
                     << std::scientific << std::setprecision(2) << peak_time_real << "\t"
                     << particle << "\n";
@@ -361,8 +373,8 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_B2");
 
                 double energy =
-                    cfg.nai_b1_coeff * nai1.integral +
-                    cfg.nai_b2_coeff * nai2.integral;
+                    cfg.nai_b1_coeff * nai1.integral + cfg.nai_b1_offset +
+                    cfg.nai_b2_coeff * nai2.integral + cfg.nai_b2_offset;
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;
@@ -372,7 +384,7 @@ int main(int argc, char** argv) {
 
                 ofs << ev.run << "\t"
                     << ev.event << "\t"
-                    << 2 << "\t"
+                    << "B" << "\t"
                     << std::fixed << std::setprecision(6) << energy << "\t"
                     << std::scientific << std::setprecision(2) << peak_time_real << "\t"
                     << particle << "\n";

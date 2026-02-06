@@ -169,14 +169,19 @@ static bool parse_line(const std::string& line, Rec& r) {
 
     std::istringstream iss(line);
     int run, event, module;
+    std::string module_token;
     double energy, t;
     std::string particle;
 
-    if (!(iss >> run >> event >> module >> energy >> t >> particle)) {
+    if (!(iss >> run >> event >> module_token >> energy >> t >> particle)) {
         return false; // header or malformed
     }
     if (particle != "positron" && particle != "gamma") return false;
-    if (module != 1 && module != 2) return false;
+    if (module_token == "A" || module_token == "a") module = 1;
+    else if (module_token == "B" || module_token == "b") module = 2;
+    else if (module_token == "1") module = 1;
+    else if (module_token == "2") module = 2;
+    else return false;
 
     r.run = run;
     r.event = event;

@@ -12,10 +12,11 @@
 // Run:
 //   ./eventdisplay --input-dir ./data/rawdata
 //   ./eventdisplay --bins-per-event 500 --baseline-bins 50
-//   ./eventdisplay --nai-a1-coeff 1.0 --nai-a2-coeff 1.0 --nai-b1-coeff 1.0 --nai-b2-coeff 1.0
+//   ./eventdisplay --nai-a1-coeff 1.0 --nai-a1-offset 0.0 --nai-a2-coeff 1.0 --nai-a2-offset 0.0 \
+//                 --nai-b1-coeff 1.0 --nai-b1-offset 0.0 --nai-b2-coeff 1.0 --nai-b2-offset 0.0
 //
 // Notes:
-// - Energy per NaI channel = coeff * integral (same coefficients as step2).
+// - Energy per NaI channel = coeff * integral + offset (same coefficients as step2).
 // - NaI integrals below --nai-integ-threshold are set to 0.
 // - PS does not use energy conversion; only HIT/NO based on --ps-integ-threshold.
 // - Events are displayed one by one; press Enter for next, or 'q' + Enter to quit.
@@ -52,9 +53,13 @@ struct Config {
     int run_filter = -1;
 
     double nai_a1_coeff = 1.0;
+    double nai_a1_offset = 0.0;
     double nai_a2_coeff = 1.0;
+    double nai_a2_offset = 0.0;
     double nai_b1_coeff = 1.0;
+    double nai_b1_offset = 0.0;
     double nai_b2_coeff = 1.0;
+    double nai_b2_offset = 0.0;
 
     double ps_integ_threshold = 100.0;
     double nai_integ_threshold = 2000.0;
@@ -76,9 +81,13 @@ static void usage(const char* prog) {
         << "  --michel                  read Michel_*.txt files (default: wave_*.txt)\n"
         << "  --run N                   select run number N (default: auto-detect)\n"
         << "  --nai-a1-coeff C          coeff for NaI_A1 (default: 1.0)\n"
+        << "  --nai-a1-offset B         offset for NaI_A1 (default: 0.0)\n"
         << "  --nai-a2-coeff C          coeff for NaI_A2 (default: 1.0)\n"
+        << "  --nai-a2-offset B         offset for NaI_A2 (default: 0.0)\n"
         << "  --nai-b1-coeff C          coeff for NaI_B1 (default: 1.0)\n"
+        << "  --nai-b1-offset B         offset for NaI_B1 (default: 0.0)\n"
         << "  --nai-b2-coeff C          coeff for NaI_B2 (default: 1.0)\n"
+        << "  --nai-b2-offset B         offset for NaI_B2 (default: 0.0)\n"
         << "  --ps-integ-threshold T    PS integral threshold (default: 100)\n"
         << "  --nai-integ-threshold T   NaI integral threshold (default: 2000)\n"
         << "  --start-event N           start event index (default: 0)\n"
@@ -266,9 +275,13 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--michel") cfg.michel_mode = true;
         else if (a == "--run") cfg.run_filter = std::stoi(need(a));
         else if (a == "--nai-a1-coeff") cfg.nai_a1_coeff = std::stod(need(a));
+        else if (a == "--nai-a1-offset") cfg.nai_a1_offset = std::stod(need(a));
         else if (a == "--nai-a2-coeff") cfg.nai_a2_coeff = std::stod(need(a));
+        else if (a == "--nai-a2-offset") cfg.nai_a2_offset = std::stod(need(a));
         else if (a == "--nai-b1-coeff") cfg.nai_b1_coeff = std::stod(need(a));
+        else if (a == "--nai-b1-offset") cfg.nai_b1_offset = std::stod(need(a));
         else if (a == "--nai-b2-coeff") cfg.nai_b2_coeff = std::stod(need(a));
+        else if (a == "--nai-b2-offset") cfg.nai_b2_offset = std::stod(need(a));
         else if (a == "--ps-integ-threshold") cfg.ps_integ_threshold = std::stod(need(a));
         else if (a == "--nai-integ-threshold") cfg.nai_integ_threshold = std::stod(need(a));
         else if (a == "--start-event") cfg.start_event = std::stoi(need(a));
@@ -289,6 +302,14 @@ static double coeff_for_channel(const Config& cfg, const std::string& ch) {
     if (ch == "NaI_A2") return cfg.nai_a2_coeff;
     if (ch == "NaI_B1") return cfg.nai_b1_coeff;
     if (ch == "NaI_B2") return cfg.nai_b2_coeff;
+    return 0.0;
+}
+
+static double offset_for_channel(const Config& cfg, const std::string& ch) {
+    if (ch == "NaI_A1") return cfg.nai_a1_offset;
+    if (ch == "NaI_A2") return cfg.nai_a2_offset;
+    if (ch == "NaI_B1") return cfg.nai_b1_offset;
+    if (ch == "NaI_B2") return cfg.nai_b2_offset;
     return 0.0;
 }
 
@@ -398,7 +419,7 @@ int main(int argc, char** argv) {
                     if (integral <= cfg.nai_integ_threshold) {
                         integral = 0.0;
                     }
-                    double energy = coeff_for_channel(cfg, ch) * integral;
+                    double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(cfg, ch);
                     integral_map[ch] = integral;
                     energy_map[ch] = energy;
                 }
