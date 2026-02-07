@@ -45,7 +45,7 @@ static const std::vector<std::string> CH_ORDER = {
 
 struct Config {
     std::string input_dir = "../data/rawdata";
-    int bins_per_event = 1000;
+    int bins_per_event = 500;
     int baseline_bins = 50;
     int integ_start = 0;
     int integ_end = -1; // -1 => to end
