@@ -18,7 +18,7 @@
 // Notes:
 // - Energy per NaI channel = coeff * integral + offset (same coefficients as step2).
 // - NaI integrals below --nai-integ-threshold are set to 0.
-// - PS does not use energy conversion; only HIT/NO based on --ps-integ-threshold.
+// - PS does not use energy conversion; only HIT/NO based on amplitude (baseline - min).
 // - Events are displayed one by one; press Enter for next, or 'q' + Enter to quit.
 
 #include <algorithm>
@@ -61,8 +61,8 @@ struct Config {
     double nai_b2_coeff = 1.0;
     double nai_b2_offset = 0.0;
 
-    double ps_integ_threshold = 100.0;
-    double nai_integ_threshold = 2000.0;
+    double ps_amp_threshold = 50.0; // PS: amplitude threshold (baseline - min), unit: ADC count
+    double nai_integ_threshold = 500.0;
 
     int start_event = 0;
     int max_events = -1; // -1 => all
@@ -88,7 +88,7 @@ static void usage(const char* prog) {
         << "  --nai-b1-offset B         offset for NaI_B1 (default: 0.0)\n"
         << "  --nai-b2-coeff C          coeff for NaI_B2 (default: 1.0)\n"
         << "  --nai-b2-offset B         offset for NaI_B2 (default: 0.0)\n"
-        << "  --ps-integ-threshold T    PS integral threshold (default: 100)\n"
+        << "  --ps-amp-threshold T      PS amplitude threshold (baseline - min, default: 100)\n"
         << "  --nai-integ-threshold T   NaI integral threshold (default: 2000)\n"
         << "  --start-event N           start event index (default: 0)\n"
         << "  --max-events N            max events to display (default: all)\n"
@@ -160,6 +160,7 @@ static double baseline_mean(const std::vector<double>& wf, int baseline_bins) {
 struct Features {
     double integral = 0.0;
     int peak_idx = 0;
+    double amplitude = 0.0; // baseline - min (>=0)
 };
 
 static Features compute_features(const std::vector<double>& wf,
@@ -195,7 +196,9 @@ static Features compute_features(const std::vector<double>& wf,
         }
     }
     int peak_idx = (count > 0) ? static_cast<int>((sum_idx + count / 2) / count) : 0;
-    return {integral, peak_idx};
+    double amplitude = bl - min_val;
+    if (amplitude < 0.0) amplitude = 0.0;
+    return {integral, peak_idx, amplitude};
 }
 
 static std::pair<int, std::unordered_map<std::string, std::string>>
@@ -282,7 +285,7 @@ static Config parse_args(int argc, char** argv) {
         else if (a == "--nai-b1-offset") cfg.nai_b1_offset = std::stod(need(a));
         else if (a == "--nai-b2-coeff") cfg.nai_b2_coeff = std::stod(need(a));
         else if (a == "--nai-b2-offset") cfg.nai_b2_offset = std::stod(need(a));
-        else if (a == "--ps-integ-threshold") cfg.ps_integ_threshold = std::stod(need(a));
+        else if (a == "--ps-amp-threshold") cfg.ps_amp_threshold = std::stod(need(a));
         else if (a == "--nai-integ-threshold") cfg.nai_integ_threshold = std::stod(need(a));
         else if (a == "--start-event") cfg.start_event = std::stoi(need(a));
         else if (a == "--max-events") cfg.max_events = std::stoi(need(a));
@@ -411,7 +414,7 @@ int main(int argc, char** argv) {
                 double integral = feat.integral;
 
                 if (is_ps(ch)) {
-                    bool hit = (integral > cfg.ps_integ_threshold);
+                    bool hit = (feat.amplitude > cfg.ps_amp_threshold);
                     ps_hit_map[ch] = hit;
                     integral_map[ch] = integral;
                     energy_map[ch] = 0.0;
