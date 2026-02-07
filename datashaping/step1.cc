@@ -49,7 +49,7 @@ struct Config {
     std::string output_dir = "../data/shapeddata";
     std::string out_file;          // empty => auto step1_runM.txt in output-dir
     int run = -1;                  // if >=0, use this run number
-    int bins_per_event = 500;      // DEFAULT = 500 (requested)
+    int bins_per_event = 1000;      // DEFAULT = 500 (requested)
     int baseline_bins  = 50;
     int integ_start    = 0;
     int integ_end      = -1;       // -1 => to end
