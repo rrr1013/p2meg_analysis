@@ -1,12 +1,12 @@
 // check/hist_ADCint.C
 //
-// run番号だけ指定して、6ファイル（NaI 4 + PS 2）のADC積分ヒストを作って
+// 手書きで指定した6ファイル（NaI 4 + PS 2）のADC積分ヒストを作って
 // 1枚目に1Dヒスト6枚（NaI 4 + PS 2 + メタ）、2ページ目以降に全組合せ(6C2=15)の2Dヒストを
 // 6枚/ページで描画してPDF保存する。
-// 出力: doc/hist_ADCint_runXX.pdf
+// 出力: kOutputPdfName で指定したPDF
 //
 // 実行例（リポジトリ直下で）:
-//   root -l -q 'check/hist_ADCint.C(12)'
+//   root -l -q 'check/hist_ADCint.C'
 
 #include <iostream>
 #include <fstream>
@@ -25,7 +25,31 @@
 #include "TString.h"
 
 // 入力ファイルが置かれているディレクトリ
-static const char* kInputDir = "data/mockdata_wave";
+static const char* kInputDir = "data/rawdata";
+
+// 入力ファイル名（必要に応じてここを手書きで変更する）
+static const char* kInputFiles[6] = {
+  "wave_NaI_A1_run12.txt",
+  "wave_NaI_A2_run12.txt",
+  "wave_NaI_B1_run12.txt",
+  "wave_NaI_B2_run12.txt",
+  "wave_PS_A_run12.txt",
+  "wave_PS_B_run12.txt"
+};
+
+// static const char* kInputFiles[6] = {
+//   "wave_NaI_A1_run12.txt",
+//   "wave_NaI_A2_run12.txt",
+//   "wave_NaI_B1_run12.txt",
+//   "wave_NaI_B2_run12.txt",
+//   "wave_PS_A_run12.txt",
+//   "wave_PS_B_run12.txt"
+// };
+
+// 出力PDF名（必要に応じて変更する）
+static const char* kOutputPdfName = "doc/hist_ADCint_manual.pdf";
+
+
 
 // 1Dヒスト設定
 static const int    kNBins1D = 500;
@@ -150,34 +174,31 @@ static HistResult AnalyzeFileMake1D(const char* filename,
   return res;
 }
 
-// run番号 → 入力ファイルパスを構成
-static void BuildInputFiles(int run, TString out_files[6])
+// 入力ファイル名配列をフルパスに変換
+static void BuildInputFilesFromManual(TString out_files[6])
 {
-  out_files[0] = Form("%s/wave_NaI_A1_run%d.txt", kInputDir, run);
-  out_files[1] = Form("%s/wave_NaI_A2_run%d.txt", kInputDir, run);
-  out_files[2] = Form("%s/wave_NaI_B1_run%d.txt", kInputDir, run);
-  out_files[3] = Form("%s/wave_NaI_B2_run%d.txt", kInputDir, run);
-  out_files[4] = Form("%s/wave_PS_A_run%d.txt",   kInputDir, run);
-  out_files[5] = Form("%s/wave_PS_B_run%d.txt",   kInputDir, run);
+  for (int i = 0; i < 6; ++i) {
+    out_files[i] = Form("%s/%s", kInputDir, kInputFiles[i]);
+  }
 }
 
-void hist_ADCint(int run = 12)
+void hist_ADCint()
 {
   // ---------- 6本を解析して 1D と integrals を作る ----------
   TString filesS[6];
-  BuildInputFiles(run, filesS);
+  BuildInputFilesFromManual(filesS);
 
   HistResult R[6];
   for (int i = 0; i < 6; ++i) {
     R[i] = AnalyzeFileMake1D(filesS[i].Data(),
-                             Form("h_%s_run%d", kLabels[i], run),
+                             Form("h_%s", kLabels[i]),
                              kNBins1D, kHistMin, kHistMax,
                              kSamplesPerEvent, kBaselineSamples);
     R[i].h->GetXaxis()->SetRangeUser(kHistMin, kHistMax);
   }
 
   // 出力PDF名（doc/ に保存）
-  TString out_pdf = Form("doc/hist_ADCint_run%d.pdf", run);
+  TString out_pdf = kOutputPdfName;
 
   // ============================================================
   // 1ページ目（1D: NaI4 + PS2 + メタ）
@@ -224,12 +245,12 @@ void hist_ADCint(int run = 12)
   pt->SetTextSize(0.10);
 
   TDatime now;
-  pt->AddText(Form("Run: %d    Output: %s    Generated: %04d-%02d-%02d %02d:%02d:%02d",
-                   run, out_pdf.Data(),
+  pt->AddText(Form("Output: %s    Generated: %04d-%02d-%02d %02d:%02d:%02d",
+                   out_pdf.Data(),
                    now.GetYear(), now.GetMonth(), now.GetDay(),
                    now.GetHour(), now.GetMinute(), now.GetSecond()));
-  pt->AddText(Form("InputDir: %s    samples_per_event=%d, baseline_samples=%d, nbins1D=%d, nbins2D=%d, range=[%.0f, %.0f]",
-                   kInputDir, kSamplesPerEvent, kBaselineSamples, kNBins1D, kNBins2D, kHistMin, kHistMax));
+  pt->AddText(Form("samples_per_event=%d, baseline_samples=%d, nbins1D=%d, nbins2D=%d, range=[%.0f, %.0f]",
+                   kSamplesPerEvent, kBaselineSamples, kNBins1D, kNBins2D, kHistMin, kHistMax));
 
   pt->AddText("Input files / event counts / min-max:");
   for (int i = 0; i < 6; ++i) {
@@ -268,9 +289,9 @@ void hist_ADCint(int run = 12)
     int i = pairs[p].first;
     int j = pairs[p].second;
 
-    TString name  = Form("h2_%s_vs_%s_run%d", kLabels[i], kLabels[j], run);
-    TString title = Form("%s vs %s (run%d);%s integral;%s integral",
-                         kLabels[i], kLabels[j], run, kLabels[i], kLabels[j]);
+    TString name  = Form("h2_%s_vs_%s", kLabels[i], kLabels[j]);
+    TString title = Form("%s vs %s;%s integral;%s integral",
+                         kLabels[i], kLabels[j], kLabels[i], kLabels[j]);
 
     TH2D* h2 = new TH2D(name.Data(), title.Data(),
                         kNBins2D, kHistMin, kHistMax,
