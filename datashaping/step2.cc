@@ -10,7 +10,7 @@
 // Rules:
 // - module 1: PS_A, NaI_A1, NaI_A2
 // - module 2: PS_B, NaI_B1, NaI_B2
-// - energy = cA * NaI_A_integral + cB * NaI_B_integral
+// - energy = a * integral + b (per NaI channel; b is fixed in code)
 // - peak_time_real = min(NaI_A_peak, NaI_B_peak) * time_bin
 // - particle = "positron" if PS_integral > 0 else "gamma"
 
@@ -28,10 +28,17 @@
 
 namespace fs = std::filesystem;
 
+// NaI のエネルギーオフセット（b項）。現状は 0 固定。
+static const double kNaI_A1_Offset = -558.571;
+static const double kNaI_A2_Offset = -674.076;
+static const double kNaI_B1_Offset = -580.215;
+static const double kNaI_B2_Offset = -649.299;
+
 // =====================
 // Config
 // =====================
 struct Config {
+<<<<<<< HEAD
     double nai_a1_coeff = 1.0; // coefficient for NaI_A1
     double nai_a1_offset = 0.0; // offset for NaI_A1
     double nai_a2_coeff = 1.0; // coefficient for NaI_A2
@@ -40,6 +47,12 @@ struct Config {
     double nai_b1_offset = 0.0; // offset for NaI_B1
     double nai_b2_coeff = 1.0; // coefficient for NaI_B2
     double nai_b2_offset = 0.0; // offset for NaI_B2
+=======
+    double nai_a1_coeff = 0.352608; // coefficient for NaI_A1
+    double nai_a2_coeff = 0.344478; // coefficient for NaI_A2
+    double nai_b1_coeff = 0.548069; // coefficient for NaI_B1
+    double nai_b2_coeff = 0.342241; // coefficient for NaI_B2
+>>>>>>> pileup
     double time_bin   = 4e-9;  // [s]
     std::string input_dir = "../data/shapeddata";
     std::string output_dir = "../data/shapeddata";
@@ -319,11 +332,19 @@ int main(int argc, char** argv) {
                 const auto& nai4 = ev.ch.at("NaI_B2");
 
                 double energy1 =
+<<<<<<< HEAD
                     cfg.nai_a1_coeff * nai1.integral + cfg.nai_a1_offset +
                     cfg.nai_a2_coeff * nai2.integral + cfg.nai_a2_offset;
                 double energy2 =
                     cfg.nai_b1_coeff * nai3.integral + cfg.nai_b1_offset +
                     cfg.nai_b2_coeff * nai4.integral + cfg.nai_b2_offset;
+=======
+                    cfg.nai_a1_coeff * nai1.integral + kNaI_A1_Offset +
+                    cfg.nai_a2_coeff * nai2.integral + kNaI_A2_Offset;
+                double energy2 =
+                    cfg.nai_b1_coeff * nai3.integral + kNaI_B1_Offset +
+                    cfg.nai_b2_coeff * nai4.integral + kNaI_B2_Offset;
+>>>>>>> pileup
 
                 ofs1 << std::fixed << std::setprecision(6) << energy1 << "\n";
                 ofs2 << std::fixed << std::setprecision(6) << energy2 << "\n";
@@ -349,8 +370,13 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_A2");
 
                 double energy =
+<<<<<<< HEAD
                     cfg.nai_a1_coeff * nai1.integral + cfg.nai_a1_offset +
                     cfg.nai_a2_coeff * nai2.integral + cfg.nai_a2_offset;
+=======
+                    cfg.nai_a1_coeff * nai1.integral + kNaI_A1_Offset +
+                    cfg.nai_a2_coeff * nai2.integral + kNaI_A2_Offset;
+>>>>>>> pileup
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;
@@ -373,8 +399,13 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_B2");
 
                 double energy =
+<<<<<<< HEAD
                     cfg.nai_b1_coeff * nai1.integral + cfg.nai_b1_offset +
                     cfg.nai_b2_coeff * nai2.integral + cfg.nai_b2_offset;
+=======
+                    cfg.nai_b1_coeff * nai1.integral + kNaI_B1_Offset +
+                    cfg.nai_b2_coeff * nai2.integral + kNaI_B2_Offset;
+>>>>>>> pileup
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;

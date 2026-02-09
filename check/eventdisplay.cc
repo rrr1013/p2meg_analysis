@@ -5,6 +5,7 @@
 //   wave_PS_A_run12.txt, wave_PS_B_run12.txt,
 //   wave_NaI_A1_run12.txt, wave_NaI_A2_run12.txt,
 //   wave_NaI_B1_run12.txt, wave_NaI_B2_run12.txt
+//   test12-wave1.txt .. test12-wave6.txt   (channel index = 1..6)
 //
 // Build:
 //   g++ -O2 -std=c++17 src/eventdisplay.cc -o eventdisplay
@@ -43,6 +44,12 @@ static const std::vector<std::string> CH_ORDER = {
     "NaI_A1", "NaI_A2", "NaI_B1", "NaI_B2", "PS_A", "PS_B"
 };
 
+// NaI のエネルギーオフセット（b項）。現状は 0 固定。
+static const double kNaI_A1_Offset = -558.571;
+static const double kNaI_A2_Offset = -674.076;
+static const double kNaI_B1_Offset = -580.215;
+static const double kNaI_B2_Offset = -649.299;
+
 struct Config {
     std::string input_dir = "../data/rawdata";
     int bins_per_event = 1000;
@@ -52,6 +59,7 @@ struct Config {
     bool michel_mode = false;
     int run_filter = -1;
 
+<<<<<<< HEAD
     double nai_a1_coeff = 1.0;
     double nai_a1_offset = 0.0;
     double nai_a2_coeff = 1.0;
@@ -63,6 +71,15 @@ struct Config {
 
     double ps_amp_threshold = 50.0; // PS: amplitude threshold (baseline - min), unit: ADC count
     double nai_integ_threshold = 500.0;
+=======
+    double nai_a1_coeff = 0.352608;
+    double nai_a2_coeff = 0.344478;
+    double nai_b1_coeff = 0.548069;
+    double nai_b2_coeff = 0.342241;
+
+    double ps_integ_threshold = 10.0;
+    double nai_integ_threshold = 200.0;
+>>>>>>> pileup
 
     int start_event = 0;
     int max_events = -1; // -1 => all
@@ -204,7 +221,16 @@ static Features compute_features(const std::vector<double>& wf,
 static std::pair<int, std::unordered_map<std::string, std::string>>
 discover_files_and_run(const std::string& input_dir, bool michel_mode, int run_filter) {
     const std::string prefix = michel_mode ? "Michel_" : "wave_";
-    std::regex re(("^" + prefix + "([A-Za-z0-9_]+)_run([0-9]+)\\.txt$"));
+    std::regex re_wave(("^" + prefix + "([A-Za-z0-9_]+)_run([0-9]+)\\.txt$"));
+    std::regex re_test("^test([0-9]+)-wave([0-9]+)\\.txt$");
+
+    auto channel_from_index = [](int idx, std::string* out) -> bool {
+        if (idx < 0) return false;
+        const size_t i = static_cast<size_t>(idx);
+        if (i >= CH_ORDER.size()) return false;
+        *out = CH_ORDER[i];
+        return true;
+    };
 
     std::unordered_map<std::string, std::string> ch_to_path;
     ch_to_path.reserve(CH_ORDER.size());
@@ -217,10 +243,19 @@ discover_files_and_run(const std::string& input_dir, bool michel_mode, int run_f
 
         const std::string fname = entry.path().filename().string();
         std::smatch m;
-        if (!std::regex_match(fname, m, re)) continue;
+        std::string ch;
+        int run = -1;
 
-        const std::string ch = m[1].str();
-        const int run = std::stoi(m[2].str());
+        if (std::regex_match(fname, m, re_wave)) {
+            ch = m[1].str();
+            run = std::stoi(m[2].str());
+        } else if (!michel_mode && std::regex_match(fname, m, re_test)) {
+            run = std::stoi(m[1].str());
+            const int ch_idx = std::stoi(m[2].str());
+            if (!channel_from_index(ch_idx, &ch)) continue;
+        } else {
+            continue;
+        }
 
         if (std::find(CH_ORDER.begin(), CH_ORDER.end(), ch) == CH_ORDER.end()) continue;
 
@@ -246,7 +281,7 @@ discover_files_and_run(const std::string& input_dir, bool michel_mode, int run_f
     if (!run_set) {
         throw std::runtime_error(
             "No matching files found in input-dir. Expected files like wave_PS_A_run12.txt, "
-            "wave_NaI_A1_run12.txt, etc."
+            "wave_NaI_A1_run12.txt, or test12-wave1.txt .. test12-wave6.txt."
         );
     }
 
@@ -308,11 +343,19 @@ static double coeff_for_channel(const Config& cfg, const std::string& ch) {
     return 0.0;
 }
 
+<<<<<<< HEAD
 static double offset_for_channel(const Config& cfg, const std::string& ch) {
     if (ch == "NaI_A1") return cfg.nai_a1_offset;
     if (ch == "NaI_A2") return cfg.nai_a2_offset;
     if (ch == "NaI_B1") return cfg.nai_b1_offset;
     if (ch == "NaI_B2") return cfg.nai_b2_offset;
+=======
+static double offset_for_channel(const std::string& ch) {
+    if (ch == "NaI_A1") return kNaI_A1_Offset;
+    if (ch == "NaI_A2") return kNaI_A2_Offset;
+    if (ch == "NaI_B1") return kNaI_B1_Offset;
+    if (ch == "NaI_B2") return kNaI_B2_Offset;
+>>>>>>> pileup
     return 0.0;
 }
 
@@ -422,7 +465,11 @@ int main(int argc, char** argv) {
                     if (integral <= cfg.nai_integ_threshold) {
                         integral = 0.0;
                     }
+<<<<<<< HEAD
                     double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(cfg, ch);
+=======
+                    double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(ch);
+>>>>>>> pileup
                     integral_map[ch] = integral;
                     energy_map[ch] = energy;
                 }
