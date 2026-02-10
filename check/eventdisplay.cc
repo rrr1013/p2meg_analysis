@@ -59,19 +59,6 @@ struct Config {
     bool michel_mode = false;
     int run_filter = -1;
 
-<<<<<<< HEAD
-    double nai_a1_coeff = 1.0;
-    double nai_a1_offset = 0.0;
-    double nai_a2_coeff = 1.0;
-    double nai_a2_offset = 0.0;
-    double nai_b1_coeff = 1.0;
-    double nai_b1_offset = 0.0;
-    double nai_b2_coeff = 1.0;
-    double nai_b2_offset = 0.0;
-
-    double ps_amp_threshold = 50.0; // PS: amplitude threshold (baseline - min), unit: ADC count
-    double nai_integ_threshold = 500.0;
-=======
     double nai_a1_coeff = 0.352608;
     double nai_a2_coeff = 0.344478;
     double nai_b1_coeff = 0.548069;
@@ -79,7 +66,6 @@ struct Config {
 
     double ps_integ_threshold = 10.0;
     double nai_integ_threshold = 200.0;
->>>>>>> pileup
 
     int start_event = 0;
     int max_events = -1; // -1 => all
@@ -343,19 +329,11 @@ static double coeff_for_channel(const Config& cfg, const std::string& ch) {
     return 0.0;
 }
 
-<<<<<<< HEAD
-static double offset_for_channel(const Config& cfg, const std::string& ch) {
-    if (ch == "NaI_A1") return cfg.nai_a1_offset;
-    if (ch == "NaI_A2") return cfg.nai_a2_offset;
-    if (ch == "NaI_B1") return cfg.nai_b1_offset;
-    if (ch == "NaI_B2") return cfg.nai_b2_offset;
-=======
 static double offset_for_channel(const std::string& ch) {
     if (ch == "NaI_A1") return kNaI_A1_Offset;
     if (ch == "NaI_A2") return kNaI_A2_Offset;
     if (ch == "NaI_B1") return kNaI_B1_Offset;
     if (ch == "NaI_B2") return kNaI_B2_Offset;
->>>>>>> pileup
     return 0.0;
 }
 
@@ -465,11 +443,7 @@ int main(int argc, char** argv) {
                     if (integral <= cfg.nai_integ_threshold) {
                         integral = 0.0;
                     }
-<<<<<<< HEAD
-                    double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(cfg, ch);
-=======
                     double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(ch);
->>>>>>> pileup
                     integral_map[ch] = integral;
                     energy_map[ch] = energy;
                 }

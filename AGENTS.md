@@ -38,10 +38,12 @@ PSIで行われている本物のMEG実験と区別するため、p2MEG実験と
 解析コードを管理するディレクトリ構成は以下の通りです。
 ```
 p2meg_alalysis/
+├── check/         # 生データ（ADC波形）をそのまま確認するコード。波形表示・積分ヒストなど。
+├── datashaping/   # 生データ（ADC波形）から物理データ（5D/1D）を作る前処理コード。
 ├── macros/        # ROOT マクロを配置する。解析処理の中心となるスクリプト群。
 ├── src/           # C++ ソースコード（.cc, .cpp）。大規模処理やクラス実装を書く。
 ├── include/p2meg/ # ヘッダファイル（.h, .hh）。関数・クラス宣言をまとめる。
-├── data/          # ローカルの解析入力データを置く領域。生データは Git 管理対象外。
+├── data/          # ローカルの解析入力データ。rawdata/（生データ）と shapeddata/（整形後）を置く。
 ├── scripts/       # シェルスクリプト・バッチ処理を置く。大量処理の自動化などに使用。
 ├── build/         # p2me_analysis/build/ にビルド生成物を置く
 └── doc/           # 図・解析結果・メモ・仕様など、解析に関する文書を保存する領域。
@@ -57,6 +59,8 @@ p2meg_alalysis/
 * 実装（.cc/.cpp）は `src/` に置く
 
   * 例：`src/RMDSpectrum.cc`
+* 生データの目視確認・健全性確認コードは `check/` に置く
+* 生データ整形（raw ADC 波形 → 物理データ）のコードは `datashaping/` に置く
 * ROOT マクロや実行用スクリプトは `macros/` や `scripts/` に置く（必要な場合のみ）
 * 解析ノート・仕様・規約は `doc/` に置く
 
@@ -330,3 +334,39 @@ struct Event {
 
 - 出力:
   - 戻り値: （なし）
+
+## 3. データ構造について
+
+コードを書くときは、データを「生データ」「物理解析用データ」に分けて扱う。
+
+### 3.1 生データ（digitizer の ADC 波形）
+
+生データは `data/rawdata/` に置き、1 run を 6 チャネルのテキストファイルで管理する。
+
+- ファイル名（通常）: `wave_<CH>_run<M>.txt`
+- チャネル: `PS_A`, `PS_B`, `NaI_A1`, `NaI_A2`, `NaI_B1`, `NaI_B2`
+- 中身: 1行1サンプルの ADC 値（空行は無視）
+- 事象化: 連続する `bins_per_event` サンプルを1事象として分割する（値は実行時引数で指定）
+- 1binの時間は4ns
+
+実装上の概念構造（メモ）:
+```cpp
+// run M の生波形
+// wave[ch][event][sample] = ADC count
+std::map<std::string, std::vector<std::vector<double>>> wave;
+```
+
+### 3.2 物理解析で使う最終データ
+
+1) 本解析（μ→eγ）用の 5D データ
+- 変数: `Ee, Eg, t, phi_detector_e, phi_detector_g`
+- 対応構造体: `include/p2meg/Event.h` の `Event`
+- 入力元: `step4` 出力（`E_e, E_g, t, phi_e, phi_g`）
+
+2) ミシェル解析用の 1D データ
+- 変数: `Ee` のみ
+- 対応構造体: `include/p2meg/MichelEData.h` の `MichelEEvent`
+- 入力元: `step2 --michel` 出力の `Michel_module1_runM.txt`, `Michel_module2_runM.txt`（1行1列）
+
+注意:
+- 解析コードに渡すときは、`Ee, Eg: MeV`, `t: ns`, `phi: rad` に単位をそろえる。
