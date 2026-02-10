@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC="${SCRIPT_DIR}/check/eventdisplay.cc"
+BIN_DIR="${SCRIPT_DIR}/build"
+BIN="${BIN_DIR}/eventdisplay_bin"
+CXX="${CXX:-g++}"
+
+if [[ ! -f "${SRC}" ]]; then
+  echo "ERROR: source file not found: ${SRC}" >&2
+  exit 1
+fi
+
+GNUPLOT_BIN=""
+if command -v gnuplot >/dev/null 2>&1; then
+  GNUPLOT_BIN="$(command -v gnuplot)"
+else
+  for cand in /opt/homebrew/bin/gnuplot /usr/local/bin/gnuplot /usr/bin/gnuplot; do
+    if [[ -x "${cand}" ]]; then
+      GNUPLOT_BIN="${cand}"
+      break
+    fi
+  done
+fi
+
+if [[ -z "${GNUPLOT_BIN}" ]]; then
+  echo "ERROR: gnuplot is required but was not found." >&2
+  echo "       Install it and retry (e.g. brew install gnuplot)." >&2
+  exit 1
+fi
+
+GNUPLOT_DIR="$(cd "$(dirname "${GNUPLOT_BIN}")" && pwd)"
+case ":${PATH-}:" in
+  *":${GNUPLOT_DIR}:"*) ;;
+  *) export PATH="${GNUPLOT_DIR}${PATH:+:${PATH}}" ;;
+esac
+
+mkdir -p "${BIN_DIR}"
+need_build=0
+if [[ ! -x "${BIN}" ]]; then
+  need_build=1
+elif [[ "${EVENTDISPLAY_FORCE_REBUILD:-0}" == "1" ]]; then
+  need_build=1
+fi
+
+if (( need_build )); then
+  echo "[build] ${SRC} -> ${BIN}" >&2
+  tmp_bin="${BIN}.tmp.$$"
+  if "${CXX}" -O2 -std=c++17 "${SRC}" -o "${tmp_bin}"; then
+    mv "${tmp_bin}" "${BIN}"
+    chmod +x "${BIN}"
+  else
+    rm -f "${tmp_bin}"
+    exit 1
+  fi
+fi
+
+if [[ ! -x "${BIN}" ]]; then
+  echo "ERROR: no runnable binary available: ${BIN}" >&2
+  exit 1
+fi
+
+exec "${BIN}" "$@"

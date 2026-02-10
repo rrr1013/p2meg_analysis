@@ -138,13 +138,6 @@ p2meg_alalysis/
 #ifndef P2MEG_CONSTANTS_H
 #define P2MEG_CONSTANTS_H
 
-// ============================================================
-// p2MEG 解析用の定数・パラメータ定義
-//
-// ・単位は MeV（エネルギー・質量）
-// ・ヘッダオンリーで使うため、inline constexpr で多重定義を防ぐ
-// ============================================================
-
 // ミシェルパラメータ（相互作用の形だけを表す）
 struct MichelParams {
     double rho;
@@ -211,17 +204,6 @@ inline constexpr double alpha =
 #ifndef P2MEG_ANALYSIS_WINDOW_H
 #define P2MEG_ANALYSIS_WINDOW_H
 
-// ============================================================
-// p2MEG 解析窓
-//
-// 単位:
-//  - Ee, Eg: MeV
-//  - t     : ns
-//  - theta : rad
-//
-// theta は e と γ のなす角で 0 <= theta <= pi を想定。
-// ============================================================
-
 struct AnalysisWindow4D {
     double Ee_min;     // [MeV]
     double Ee_max;     // [MeV]
@@ -262,10 +244,6 @@ inline constexpr AnalysisWindow4D analysis_window{
 // ============================================================
 // p2MEG 分解能モデル
 //
-// 単位:
-//  - Ee, Eg: MeV
-//  - t     : ns
-//
 // 角度 theta の扱い:
 //  - 測定設定に合わせて、角度は離散化する
 //      theta_i = i * pi / N_theta   (i = 0..N_theta)
@@ -275,11 +253,6 @@ inline constexpr AnalysisWindow4D analysis_window{
 // エネルギー分解能:
 //  - energy_response_shape_e/g(E_res, E_true) は
 //      「真値 E_true に対する再構成 E_res の分布 shape（未正規化）」を返す
-//  - e+ と γ で別の shape を持てるように分離する
-//  - 正規化やスメア生成は内部で自動化する
-//  - ユーザが変更するのは shape 部分だけでよい
-//
-// t_mean は Δt の平均値（現状は 0 以外にもなり得るので分離）
 // ============================================================
 
 struct DetectorResolutionConst {
