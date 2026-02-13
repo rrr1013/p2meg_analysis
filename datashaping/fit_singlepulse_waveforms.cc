@@ -40,8 +40,9 @@
 // ------------------------------
 static const int kBaselineWinSamples = 100;   // ベースライン探索窓の長さ [sample]
 static const double kSnrThreshold = 8.0;       // S/N カット
-static const int kAlignWinStart = 105;          // 相互相関窓開始
-static const int kAlignWinEnd = 135;            // 相互相関窓終了
+// 相互相関窓: t0_index 基準（[t0-kAlignWinPreSamples, t0+kAlignWinPostSamples)）
+static const int kAlignWinPreSamples = 15;
+static const int kAlignWinPostSamples = 15;
 static const int kMaxShift = 15;               // 許容シフト
 static const double kDerivThreshold = 2.5;     // 2つ目パルスの導関数閾値 (×MAD換算σ)
 static const double kRecoveryDip = 2.5;        // 回復後再ディップ閾値 (×MAD換算σ)
@@ -301,6 +302,18 @@ static std::pair<double, double> ExpandRange(double ymin, double ymax, double fr
     return {ymin - pad, ymax + pad};
 }
 
+// t0_index 基準で相関窓 [start, end) を作る
+static void BuildAlignWindowFromT0(int t0_index, int n_samples, int& win_start, int& win_end) {
+    win_start = t0_index - kAlignWinPreSamples;
+    win_end = t0_index + kAlignWinPostSamples;
+    if (win_start < 0) win_start = 0;
+    if (win_end > n_samples) win_end = n_samples;
+    if (win_end <= win_start + 1) {
+        win_start = 0;
+        win_end = std::min(n_samples, 2);
+    }
+}
+
 // 傾きが負に最大（最も急な立ち下がり）の点を t0 とする
 static int FindTemplateT0ByMaxNegSlope(const std::vector<double>& templ) {
     if (templ.size() < 2) return 0;
@@ -425,11 +438,13 @@ static int FindFallingStartIndex(const std::vector<double>& y, double noise_mad,
 }
 
 // 粗シフト後に相関窓が有効範囲内かどうか
-static bool IsCorrelationWindowValid(int shift, int n_samples) {
-    const int win_start = kAlignWinStart;
-    const int win_end = kAlignWinEnd - 1;
+static bool IsCorrelationWindowValid(int shift, int n_samples, int t0_index) {
+    int win_start = 0;
+    int win_end = 0;
+    BuildAlignWindowFromT0(t0_index, n_samples, win_start, win_end);
+    const int win_last = win_end - 1;
     const int src_start = win_start - shift;
-    const int src_end = win_end - shift;
+    const int src_end = win_last - shift;
     return (src_start >= 0 && src_end < n_samples);
 }
 
@@ -794,7 +809,7 @@ void singlePulseTemplateDemo(const std::vector<std::vector<double>>& pulses,
         int fall_idx = FindFallingStartIndex(y, noise_mad, idx_min);
         if (fall_idx >= 0) {
             int s_coarse = kCoarseTargetIndex - fall_idx;
-            if (IsCorrelationWindowValid(s_coarse, N)) {
+            if (IsCorrelationWindowValid(s_coarse, N, kCoarseTargetIndex)) {
                 ycoarse = ShiftWave(y, s_coarse);
             }
         }
@@ -809,8 +824,11 @@ void singlePulseTemplateDemo(const std::vector<std::vector<double>>& pulses,
     for (auto &v : ref) v /= coarse_aligned.size();
 
     // Step3-3: 相互相関で微調整（leading-edge の短窓のみ）
+    int align_win_start = 0;
+    int align_win_end = 0;
+    BuildAlignWindowFromT0(kCoarseTargetIndex, N, align_win_start, align_win_end);
     for (auto &ycoarse : coarse_aligned) {
-        int s = FindShiftByCorrelation(ycoarse, ref, kAlignWinStart, kAlignWinEnd, kMaxShift);
+        int s = FindShiftByCorrelation(ycoarse, ref, align_win_start, align_win_end, kMaxShift);
         std::vector<double> yshift = ShiftWave(ycoarse, -s);
         aligned.push_back(yshift);
 
@@ -918,8 +936,11 @@ void singlePulseTemplateDemo(const std::vector<std::vector<double>>& pulses,
         if (templ[i] < thr) { fit_end = i; break; }
     }
 
+    // 最終テンプレの t0_index を先に推定し、以後の時刻基準をそろえる
+    int t0_slope = FindTemplateT0ByMaxNegSlope(templ);
+
     TF1 *f = new TF1("f", pulseModel, fit_start, fit_end, 5);
-    f->SetParameters(1.0, 40.0, 5.0, 80.0, 2.0);
+    f->SetParameters(1.0, static_cast<double>(t0_slope), 5.0, 80.0, 2.0);
     f->SetParNames("A","t0","tau_r","tau_d","sigma");
 
     // フィットは実行（c4 の重ね描きで使用）
@@ -928,7 +949,6 @@ void singlePulseTemplateDemo(const std::vector<std::vector<double>>& pulses,
     gfit->Fit(f, "R");
 
     // テンプレート JSON を出力（t0_index は負の最大傾き位置）
-    int t0_slope = FindTemplateT0ByMaxNegSlope(templ);
     WriteTemplateJson("data/shapeddata/template.json", templ, kSampleDt, kNormDescription,
                       t0_slope, f, run_no, ch_name);
 
@@ -979,12 +999,15 @@ void singlePulseTemplateDemo(const std::vector<std::vector<double>>& pulses,
             int s_coarse = 0;
             if (fall_idx >= 0) {
                 s_coarse = kCoarseTargetIndex - fall_idx;
-                if (!IsCorrelationWindowValid(s_coarse, N)) {
+                if (!IsCorrelationWindowValid(s_coarse, N, kCoarseTargetIndex)) {
                     s_coarse = 0;
                 }
             }
             std::vector<double> ycoarse = (s_coarse != 0) ? ShiftWave(y, s_coarse) : y;
-            int s_fine = FindShiftByCorrelation(ycoarse, templ, kAlignWinStart, kAlignWinEnd, kMaxShift);
+            int draw_win_start = 0;
+            int draw_win_end = 0;
+            BuildAlignWindowFromT0(t0_slope, N, draw_win_start, draw_win_end);
+            int s_fine = FindShiftByCorrelation(ycoarse, templ, draw_win_start, draw_win_end, kMaxShift);
             int s_total = s_coarse - s_fine;
             double scale = (minv < 0) ? (-minv) : 1.0;
 

@@ -12,8 +12,8 @@
 // 既定パラメータ
 // nSigma: 相関ピーク閾値の係数（sigmaCorr に掛ける）
 static const double kDefaultNSigma = 2.0;
-// minSep: 候補の最小間隔。負値なら L*ratio で決める
-static const double kDefaultMinSepRatio = 0.0; // L/4
+// minSep: 候補の最小間隔 [sample]
+static const int kDefaultMinSepSamples = 20;
 // maxK: 保持する候補の最大数（逐次追加の上限）
 static const int kDefaultMaxK = 30;
 // positiveArea: 面積の符号を正に強制
@@ -29,7 +29,7 @@ static const bool kDefaultDebug = false;
 // no_sign_cut: 極性の符号カットを無効化
 static const bool kDefaultNoSignCut = false;
 // ridge: 正規方程式に足すリッジ係数（0で無効）
-static const double kDefaultRidge = 0.0;
+static const double kDefaultRidge = 0;
 // no_crop: テンプレの切り出しを無効化
 static const bool kDefaultNoCrop = false;
 // crop_pre/crop_post: t0_index を中心とした切り出し幅
@@ -37,10 +37,18 @@ static const int kDefaultCropPre =20;
 static const int kDefaultCropPost = 20;
 // rss_improve_min: RSS改善率の打ち切り閾値
 static const double kDefaultRssImproveMin = 0.005;
+// aMin_sigma_factor: 振幅下限 aMin を決める係数（aMin = factor * sigmaA）
+static const double kDefaultAMinSigmaFactor = 3.0;
 // thr0_factor: 候補生成の相関閾値（sigmaCorr に掛ける）
-static const double kDefaultThr0Factor = 1.0;
+static const double kDefaultThr0Factor = 2.0;
 // nms_window: NMSの半窓幅（サンプル数）
 static const int kDefaultNmsWindow = 10;
+// local_refine_half_width: 候補採用後に再探索する時刻の半幅（±この値）
+static const int kDefaultLocalRefineHalfWidth = 2;
+// post_accept_refine_half_width: 採用後に全パルス時刻を再調整する半幅（±この値）
+static const int kDefaultPostAcceptRefineHalfWidth = 10;
+// iter0_rank_first: iter=0 は相関順位を優先し、最初に通る候補を採用する
+static const bool kDefaultIter0RankFirst = true;
 // debug_event: デバッグ出力対象イベント（負値なら全イベント）
 static const long long kDefaultDebugEvent = -1;
 // 既定パス
@@ -260,34 +268,29 @@ static bool LoadBaselineNoise(const std::string& path, std::vector<BaselineNoise
     std::string line;
     while (std::getline(ifs, line)) {
         if (line.empty()) continue;
-        std::stringstream ss(line);
-        std::string col;
         BaselineNoise bn;
-        if (!std::getline(ss, col, ',')) continue;
-        if (!ParseLongLong(col, bn.event_id)) {
+        std::vector<std::string> cols;
+        {
+            std::stringstream ss(line);
+            std::string col;
+            while (std::getline(ss, col, ',')) cols.push_back(col);
+        }
+        if (cols.size() >= 5) {
             // 新形式: run,event_id,CH,baseline,noise
-            // 旧形式: event_id,baseline,sigma
-            // ヘッダ or 非数値行はスキップ
-            // new format: 先頭は run なので event_id は次の列
-            if (!std::getline(ss, col, ',')) continue;
-            if (!ParseLongLong(col, bn.event_id)) continue;
-            // CH
-            if (!std::getline(ss, col, ',')) continue;
-            // baseline
-            if (!std::getline(ss, col, ',')) continue;
-            if (!ParseDouble(col, bn.baseline)) continue;
-            // noise
-            if (!std::getline(ss, col, ',')) continue;
-            if (!ParseDouble(col, bn.sigma)) continue;
+            if (!ParseLongLong(cols[1], bn.event_id)) continue;
+            if (!ParseDouble(cols[3], bn.baseline)) continue;
+            if (!ParseDouble(cols[4], bn.sigma)) continue;
             out.push_back(bn);
             continue;
         }
-        // 旧形式: event_id,baseline,sigma
-        if (!std::getline(ss, col, ',')) continue;
-        if (!ParseDouble(col, bn.baseline)) continue;
-        if (!std::getline(ss, col, ',')) continue;
-        if (!ParseDouble(col, bn.sigma)) continue;
-        out.push_back(bn);
+        if (cols.size() >= 3) {
+            // 旧形式: event_id,baseline,sigma
+            if (!ParseLongLong(cols[0], bn.event_id)) continue;
+            if (!ParseDouble(cols[1], bn.baseline)) continue;
+            if (!ParseDouble(cols[2], bn.sigma)) continue;
+            out.push_back(bn);
+            continue;
+        }
     }
     return true;
 }
@@ -345,6 +348,18 @@ static void ComputeCorrelation(const std::vector<double>& x, const std::vector<d
         c[s] = acc;
         a_hat[s] = acc / sumT2;
     }
+}
+
+// 相関値 c[s] = sum_j x[s+j] T[j] を単一点で評価
+static bool ComputeCorrelationAtStart(const std::vector<double>& x, const std::vector<double>& T,
+                                      int s, double& c_out) {
+    const int N = static_cast<int>(x.size());
+    const int L = static_cast<int>(T.size());
+    if (s < 0 || s + L > N) return false;
+    double acc = 0.0;
+    for (int j = 0; j < L; ++j) acc += x[s + j] * T[j];
+    c_out = acc;
+    return true;
 }
 
 static std::vector<int> SelectCandidates(const std::vector<double>& c, double sigmaCorr,
@@ -486,6 +501,43 @@ static bool FitAmplitudes(const std::vector<double>& x, const std::vector<double
     return true;
 }
 
+// ベースライン b_fixed を固定して、振幅 a だけ最小二乗で解く
+static bool FitAmplitudesFixedBaseline(const std::vector<double>& x, const std::vector<double>& T,
+                                       const std::vector<int>& tks, double b_fixed,
+                                       std::vector<double>& a_out,
+                                       double ridge) {
+    const int N = static_cast<int>(x.size());
+    const int L = static_cast<int>(T.size());
+    const int M = static_cast<int>(tks.size());
+    if (M <= 0) {
+        a_out.clear();
+        return true;
+    }
+
+    std::vector< std::vector<double> > ATA(M, std::vector<double>(M, 0.0));
+    std::vector<double> ATy(M, 0.0);
+
+    for (int i = 0; i < N; ++i) {
+        const double yi = x[i] - b_fixed;
+        for (int k = 0; k < M; ++k) {
+            int j = i - tks[k];
+            double uk = (j >= 0 && j < L) ? T[j] : 0.0;
+            ATy[k] += uk * yi;
+            for (int l = k; l < M; ++l) {
+                int j2 = i - tks[l];
+                double ul = (j2 >= 0 && j2 < L) ? T[j2] : 0.0;
+                ATA[k][l] += uk * ul;
+                if (l != k) ATA[l][k] = ATA[k][l];
+            }
+        }
+    }
+
+    std::vector<double> sol;
+    if (!SolveNormalEq(ATA, ATy, sol, ridge)) return false;
+    a_out.swap(sol);
+    return true;
+}
+
 static double ComputeRSS(const std::vector<double>& x, const std::vector<double>& T,
                          const std::vector<int>& tks, double b_fit, const std::vector<double>& a_fit) {
     const int N = static_cast<int>(x.size());
@@ -521,6 +573,75 @@ static void ComputeResidual(const std::vector<double>& x, const std::vector<doub
         }
         r[i] = x[i] - yhat;
     }
+}
+
+// 各パルスの相関最大アンカーを固定し、その近傍だけで時刻を再調整する
+static bool RefineTimesAroundAnchors(const std::vector<double>& x,
+                                     const std::vector<double>& T,
+                                     const std::vector<int>& anchors,
+                                     int minSep,
+                                     int half_width,
+                                     double ridge,
+                                     std::vector<int>& tks_out,
+                                     double& b_out,
+                                     std::vector<double>& a_out,
+                                     double& rss_out) {
+    if (anchors.empty()) return false;
+
+    std::vector<int> tks = anchors;
+    std::vector<double> a_fit;
+    double b_fit = 0.0;
+    if (!FitAmplitudes(x, T, tks, b_fit, a_fit, ridge)) return false;
+    double rss = ComputeRSS(x, T, tks, b_fit, a_fit);
+
+    const int kMaxPass = 3;
+    for (int pass = 0; pass < kMaxPass; ++pass) {
+        bool changed = false;
+        for (size_t k = 0; k < tks.size(); ++k) {
+            int best_tk = tks[k];
+            std::vector<double> best_a = a_fit;
+            double best_b = b_fit;
+            double best_rss = rss;
+
+            for (int d = -half_width; d <= half_width; ++d) {
+                int tk_try = anchors[k] + d;
+                bool ok_sep = true;
+                for (size_t l = 0; l < tks.size(); ++l) {
+                    if (l == k) continue;
+                    if (std::abs(tks[l] - tk_try) < minSep) { ok_sep = false; break; }
+                }
+                if (!ok_sep) continue;
+
+                std::vector<int> tks_try = tks;
+                tks_try[k] = tk_try;
+                std::vector<double> a_try;
+                double b_try = 0.0;
+                if (!FitAmplitudes(x, T, tks_try, b_try, a_try, ridge)) continue;
+                double rss_try = ComputeRSS(x, T, tks_try, b_try, a_try);
+                if (rss_try < best_rss) {
+                    best_tk = tk_try;
+                    best_a.swap(a_try);
+                    best_b = b_try;
+                    best_rss = rss_try;
+                }
+            }
+
+            if (best_tk != tks[k]) {
+                tks[k] = best_tk;
+                a_fit.swap(best_a);
+                b_fit = best_b;
+                rss = best_rss;
+                changed = true;
+            }
+        }
+        if (!changed) break;
+    }
+
+    tks_out.swap(tks);
+    a_out.swap(a_fit);
+    b_out = b_fit;
+    rss_out = rss;
+    return true;
 }
 
 static bool FindFall50(const std::vector<double>& T, int t_start, double a,
@@ -573,28 +694,36 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
     const bool dbg = debug && (debug_event < 0 || event_id == debug_event);
     if (y.size() < t_corr.T.size()) return;
     double baseline = 0.0, sigma = 0.0;
-    if (!FindBaselineNoise(bnmap, event_id, baseline, sigma)) {
+    const bool has_baseline_csv = FindBaselineNoise(bnmap, event_id, baseline, sigma);
+    if (!has_baseline_csv) {
         EstimateBaselineSigma(y, baseline, sigma);
-        if (dbg) {
-            std::cerr << "[event " << event_id << "] baseline/sigma estimated: "
-                      << baseline << ", " << sigma << "\n";
-        }
+    }
+    if (dbg) {
+        std::cerr << "[event " << event_id << "] baseline/sigma used: "
+                  << baseline << ", " << sigma
+                  << " (source=" << (has_baseline_csv ? "csv" : "estimated") << ")\n";
     }
     std::vector<double> x(y.size(), 0.0);
     for (size_t i = 0; i < y.size(); ++i) x[i] = y[i] - baseline;
 
     double sigmaCorr = sigma * std::sqrt(t_corr.sumT2);
     const double sigmaA = (t_full.sumT2 > 0.0) ? (sigma / std::sqrt(t_full.sumT2)) : sigma;
-    const double aMin = 3.0 * sigmaA;
+    const double aMin = kDefaultAMinSigmaFactor * sigmaA;
     const double thr = nSigma * sigmaCorr;
 
     std::vector<int> tks_full;
+    std::vector<int> tks_anchor_full;
     std::vector<int> tks_crop;
-    std::vector<double> c_at_accept;
     tks_full.reserve(maxK);
+    tks_anchor_full.reserve(maxK);
     tks_crop.reserve(maxK);
-    c_at_accept.reserve(maxK);
     double b_fit = 0.0;
+    if (!has_baseline_csv && !x.empty()) {
+        // baseline CSV が無い場合のみ、残差平均で b_fit 初期値を与える
+        double sx = 0.0;
+        for (double v : x) sx += v;
+        b_fit = sx / static_cast<double>(x.size());
+    }
     std::vector<double> a_fit;
     double rss_prev = -1.0;
 
@@ -633,61 +762,106 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
         if (cand.empty()) break;
 
         bool added = false;
-        for (size_t idx = 0; idx < cand.size(); ++idx) {
-            int s = cand[idx];
-            int s_full = s - t_corr.crop_start;
-            bool ok_sep = true;
-            for (size_t k = 0; k < tks_full.size(); ++k) {
-                if (std::abs(tks_full[k] - s_full) < minSep) { ok_sep = false; break; }
-            }
-            if (!ok_sep) continue;
+        bool found_best = false;
+        int best_anchor = -1;
+        double best_rss_iter = 0.0;
+        double best_b_fit = 0.0;
+        int best_s_full = 0;
+        std::vector<int> best_tks_full;
+        std::vector<double> best_a_fit;
 
-            std::vector<int> tks_full_try = tks_full;
-            tks_full_try.push_back(s_full);
-            std::vector<double> a_try;
-            double b_try = 0.0;
-            if (!FitAmplitudes(x, t_full.T, tks_full_try, b_try, a_try, ridge)) {
-                if (dbg) {
-                    std::cerr << "[event " << event_id << "] fit failed (singular/ill-conditioned)\n";
+        const size_t cand_end = cand.size();
+        for (size_t idx = 0; idx < cand_end; ++idx) {
+            int s_center = cand[idx];
+            bool found_local = false;
+            double local_best_rss = 0.0;
+            double local_best_b = 0.0;
+            std::vector<int> local_best_tks;
+            std::vector<double> local_best_a;
+
+            for (int delta = -kDefaultLocalRefineHalfWidth;
+                 delta <= kDefaultLocalRefineHalfWidth; ++delta) {
+                const int s_try = s_center + delta;
+                if (s_try < 0 || s_try >= static_cast<int>(c_res.size())) continue;
+                const int s_full_try = s_try - t_corr.crop_start;
+
+                bool ok_sep = true;
+                for (size_t k = 0; k < tks_full.size(); ++k) {
+                    if (std::abs(tks_full[k] - s_full_try) < minSep) { ok_sep = false; break; }
                 }
-                continue;
-            }
-            // 逐次追加の採否判定：a*c>0 を満たさない候補はスキップ
-            if (!no_sign_cut && !a_try.empty()) {
-                if (a_try.back() * c_res[s] <= 0.0) {
+                if (!ok_sep) continue;
+
+                std::vector<int> tks_full_try = tks_full;
+                tks_full_try.push_back(s_full_try);
+                std::vector<double> a_try;
+                // 採用判定中はベースライン固定（b_fit）で、新規候補のみ時刻局所探索
+                if (!FitAmplitudesFixedBaseline(x, t_full.T, tks_full_try, b_fit, a_try, ridge)) {
+                    if (dbg) {
+                        std::cerr << "[event " << event_id << "] fit failed (singular/ill-conditioned)\n";
+                    }
                     continue;
                 }
-            }
-            // 1発目以降のみ：追加した成分が弱すぎるならスキップ
-            if (tks_full_try.size() > 1 && !a_try.empty() && std::fabs(a_try.back()) < aMin) {
-                continue;
-            }
-            // 2発目以降のみ：相関閾値より小さい候補ならスキップ
-            if (tks_full_try.size() > 1 && std::fabs(c_res[s]) < thr) {
-                continue;
-            }
 
-            double rss = ComputeRSS(x, t_full.T, tks_full_try, b_try, a_try);
-            if (rss_prev > 0.0) {
-                double improve = (rss_prev - rss) / rss_prev;
-                if (improve < rss_improve_min) {
+                if (a_try.empty()) continue;
+                const double a_new = a_try.back();
+                // 基準は相関最大点に固定（s_try ではなく s_center）
+                if (!no_sign_cut && a_new * c_res[s_center] <= 0.0) {
                     continue;
+                }
+                if (tks_full_try.size() > 1 && std::fabs(a_new) < aMin) {
+                    continue;
+                }
+                if (tks_full_try.size() > 1 && std::fabs(c_res[s_center]) < thr) {
+                    continue;
+                }
+
+                const double rss_try = ComputeRSS(x, t_full.T, tks_full_try, b_fit, a_try);
+                if (rss_prev > 0.0) {
+                    const double improve = (rss_prev - rss_try) / rss_prev;
+                    if (improve < rss_improve_min) {
+                        continue;
+                    }
+                }
+
+                if (!found_local || rss_try < local_best_rss) {
+                    found_local = true;
+                    local_best_rss = rss_try;
+                    local_best_b = b_fit;
+                    local_best_tks = tks_full_try;
+                    local_best_a = a_try;
                 }
             }
 
-            tks_full.swap(tks_full_try);
-            tks_crop.push_back(s);
-            c_at_accept.push_back(c_res[s]);
-            a_fit.swap(a_try);
-            b_fit = b_try;
-            rss_prev = rss;
+            if (!found_local) continue;
+
+            if (!found_best || local_best_rss < best_rss_iter) {
+                found_best = true;
+                best_anchor = s_center;
+                best_s_full = local_best_tks.back();
+                best_rss_iter = local_best_rss;
+                best_b_fit = local_best_b;
+                best_tks_full = local_best_tks;
+                best_a_fit = local_best_a;
+                // iter=0 は相関順位を優先し、「最初に通った候補」を採用する
+                if (kDefaultIter0RankFirst && iter == 0) break;
+            }
+        }
+
+        if (found_best) {
+            // 採用判定段階では「ベースライン固定 + 新規候補のみ局所調整」で更新
+            // 採用後の全体リファイン（baseline + 全時刻）はループ終了後に1回だけ実施
+            tks_anchor_full.push_back(best_s_full);
+            tks_full.swap(best_tks_full);
+            a_fit.swap(best_a_fit);
+            b_fit = best_b_fit;
+            rss_prev = best_rss_iter;
             added = true;
             if (dbg) {
-                std::cerr << "[event " << event_id << "] accept t_start=" << s
-                          << " t_start_full=" << s_full
-                          << " a=" << (a_fit.empty() ? 0.0 : a_fit.back()) << "\n";
+                std::cerr << "[event " << event_id << "] accept(best-RSS) t_anchor=" << best_anchor
+                          << " t_start_full(decision)=" << best_s_full
+                          << " a=" << (a_fit.empty() ? 0.0 : a_fit.back())
+                          << " rss=" << rss_prev << "\n";
             }
-            break;
         }
         if (!added) break;
 
@@ -695,7 +869,27 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
     }
     if (tks_full.empty()) return;
 
-    // b_fit, a_fit は逐次追加で決定済み
+    // 採用完了後に1回だけ、ベースライン+全時刻を再調整
+    {
+        std::vector<int> tks_refined;
+        std::vector<double> a_refined;
+        double b_refined = 0.0;
+        double rss_refined = 0.0;
+        bool refined_ok = RefineTimesAroundAnchors(x, t_full.T, tks_anchor_full, minSep,
+                                                   kDefaultPostAcceptRefineHalfWidth, ridge,
+                                                   tks_refined, b_refined, a_refined, rss_refined);
+        if (refined_ok) {
+            tks_full.swap(tks_refined);
+            a_fit.swap(a_refined);
+            b_fit = b_refined;
+            rss_prev = rss_refined;
+        }
+    }
+
+    tks_crop.resize(tks_full.size());
+    for (size_t k = 0; k < tks_full.size(); ++k) {
+        tks_crop[k] = tks_full[k] + t_corr.crop_start;
+    }
 
     const double baseline_fit = baseline + b_fit;
     int pulse_index = 0;
@@ -703,8 +897,9 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
         double a = a_fit[k];
         bool keep = true;
         if (!no_sign_cut) {
-            if (k < c_at_accept.size()) {
-                keep = (a * c_at_accept[k] > 0.0);
+            double c_now = 0.0;
+            if (ComputeCorrelationAtStart(x, t_corr.T, tks_crop[k], c_now)) {
+                keep = (a * c_now > 0.0);
             } else {
                 keep = false;
             }
@@ -740,7 +935,8 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
         }
 
         if (dbg) {
-            double cv = (k < c_at_accept.size()) ? c_at_accept[k] : 0.0;
+            double cv = 0.0;
+            ComputeCorrelationAtStart(x, t_corr.T, t_start, cv);
             std::cerr << "WRITE t=" << t_start << " t_full=" << t_start_full
                       << " a=" << a << " c=" << cv << "\n";
         }
@@ -829,7 +1025,7 @@ int main(int argc, char** argv) {
     std::string baseline_path = kDefaultBaselinePath;
     std::string wave_path = kDefaultWavePath;
     double nSigma = kDefaultNSigma;
-    int minSep = -1; // 負値なら L*ratio
+    int minSep = kDefaultMinSepSamples; // 既定はサンプル数で指定
     int maxK = kDefaultMaxK;
     bool positiveArea = kDefaultPositiveArea;
     bool selftest = kDefaultSelfTest;
@@ -896,10 +1092,7 @@ int main(int argc, char** argv) {
     if (!no_crop) {
         CropTemplateAroundT0(t_corr, crop_pre, crop_post);
     }
-    if (minSep < 0) {
-        minSep = static_cast<int>(std::floor(t_corr.T.size() * kDefaultMinSepRatio + 0.5));
-        if (minSep < 1) minSep = 1;
-    }
+    if (minSep < 1) minSep = 1;
 
     std::vector<BaselineNoise> bnlist;
     if (!LoadBaselineNoise(baseline_path, bnlist)) {
