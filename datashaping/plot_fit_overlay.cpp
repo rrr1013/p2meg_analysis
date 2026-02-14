@@ -331,7 +331,8 @@ static bool LoadPulsesForEvent(const std::string& path, long long event_id, int 
         p.amplitude = a;
         pulses.push_back(p);
     }
-    return !pulses.empty();
+    // ファイルを正常に読めたら true（当該 event のパルス0件も許容）
+    return true;
 }
 
 static void BuildFit(const std::vector<double>& y, const TemplateData& t, double baseline,
@@ -458,11 +459,15 @@ int main(int argc, char** argv) {
     double baseline_fit = 0.0;
     bool has_baseline_fit = false;
     if (!LoadPulsesForEvent(pulses_path, event_id, t.t0_index, pulses, baseline_fit, has_baseline_fit)) {
-        std::cerr << "error: event_id " << event_id << " not found in " << pulses_path << "\n";
+        std::cerr << "error: failed to open pulses file: " << pulses_path << "\n";
         return 1;
     }
     if (debug) {
         std::cerr << "info: pulses loaded. M=" << pulses.size() << "\n";
+        if (pulses.empty()) {
+            std::cerr << "info: no pulse info for event " << event_id
+                      << ". y_fit is baseline only.\n";
+        }
     }
     if (has_baseline_fit) {
         baseline = baseline_fit;

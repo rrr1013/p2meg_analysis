@@ -363,32 +363,27 @@ static bool ComputeCorrelationAtStart(const std::vector<double>& x, const std::v
 }
 
 static std::vector<int> SelectCandidates(const std::vector<double>& c, double sigmaCorr,
-                                         double thr0_factor, int nms_window, int maxK,
-                                         int dom_sign) {
+                                         double thr0_factor, int nms_window, int maxK) {
     const int S = static_cast<int>(c.size());
     std::vector<int> local;
     const double thr0 = thr0_factor * sigmaCorr;
     if (S == 1) {
-        if (std::fabs(c[0]) > thr0 && (dom_sign > 0 ? (c[0] > 0.0) : (c[0] < 0.0))) {
+        if (std::fabs(c[0]) > thr0 && c[0] > 0.0) {
             local.push_back(0);
         }
     } else if (S == 2) {
         if (std::fabs(c[0]) >= std::fabs(c[1]) && std::fabs(c[0]) > thr0 &&
-            (dom_sign > 0 ? (c[0] > 0.0) : (c[0] < 0.0))) {
+            c[0] > 0.0) {
             local.push_back(0);
         }
         if (std::fabs(c[1]) > std::fabs(c[0]) && std::fabs(c[1]) > thr0 &&
-            (dom_sign > 0 ? (c[1] > 0.0) : (c[1] < 0.0))) {
+            c[1] > 0.0) {
             local.push_back(1);
         }
     } else if (S >= 3) {
         for (int s = 0; s < S; ++s) {
             if (std::fabs(c[s]) <= thr0) continue;
-            if (dom_sign > 0) {
-                if (c[s] <= 0.0) continue;
-            } else {
-                if (c[s] >= 0.0) continue;
-            }
+            if (c[s] <= 0.0) continue;
             int lo = s - nms_window;
             int hi = s + nms_window;
             if (lo < 0) lo = 0;
@@ -644,39 +639,6 @@ static bool RefineTimesAroundAnchors(const std::vector<double>& x,
     return true;
 }
 
-static bool FindFall50(const std::vector<double>& T, int t_start, double a,
-                       double polarity, double& fall_sample, double& fall_time,
-                       double dt, int t0_index) {
-    const int L = static_cast<int>(T.size());
-    // ピーク探索（polarityの符号で極大/極小を選択）
-    int peak_j = 0;
-    double peak = a * T[0];
-    for (int j = 1; j < L; ++j) {
-        double v = a * T[j];
-        if (polarity < 0) {
-            if (v < peak) { peak = v; peak_j = j; }
-        } else {
-            if (v > peak) { peak = v; peak_j = j; }
-        }
-    }
-    double target = 0.5 * std::fabs(peak);
-    int j_found = -1;
-    for (int j = peak_j + 1; j < L; ++j) {
-        double v = std::fabs(a * T[j]);
-        if (v <= target) { j_found = j; break; }
-    }
-    if (j_found < 0) return false;
-    int j0 = j_found - 1;
-    double v0 = std::fabs(a * T[j0]);
-    double v1 = std::fabs(a * T[j_found]);
-    double frac = 0.0;
-    if (v0 != v1) frac = (target - v0) / (v1 - v0);
-    double sample = (t_start + j0) + frac;
-    fall_sample = sample;
-    fall_time = (sample - t0_index) * dt;
-    return true;
-}
-
 static void WritePulsesHeader(std::ofstream& ofs) {
     ofs << "run,event_id,pulse_index,area,t_fall_start_sample_raw,amplitude,baseline_fit\n";
 }
@@ -740,16 +702,14 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
             if (c_res[i] > cmax) cmax = c_res[i];
             if (c_res[i] < cmin) cmin = c_res[i];
         }
-        int dom_sign = (std::fabs(cmax) >= std::fabs(cmin)) ? 1 : -1;
         std::vector<int> cand = SelectCandidates(c_res, sigmaCorr, kDefaultThr0Factor,
-                                                 kDefaultNmsWindow, maxK, dom_sign);
+                                                 kDefaultNmsWindow, maxK);
         if (dbg) {
             std::cerr << "[event " << event_id << "] iter=" << iter
                       << " candidates=" << cand.size()
                       << " cmax=" << cmax << " cmin=" << cmin
                       << " sigmaCorr=" << sigmaCorr
-                      << " thr=" << (nSigma * sigmaCorr)
-                      << " dom_sign=" << (dom_sign > 0 ? "+" : "-") << "\n";
+                      << " thr=" << (nSigma * sigmaCorr) << "\n";
             if (!cand.empty()) {
                 std::cerr << "[event " << event_id << "] ranked_candidates:";
                 for (size_t i = 0; i < cand.size(); ++i) {
@@ -924,15 +884,6 @@ static void ProcessEvent(long long event_id, const std::vector<double>& y,
         double t_start_time = (t_start_full - t_full.t0_index) * t_full.dt;
         double area = a * t_full.areaT;
         if (positiveArea && area < 0.0) area = -area;
-
-        double fall_sample = -1.0;
-        double fall_time = 0.0;
-        bool ok_fall = FindFall50(t_full.T, static_cast<int>(t_start_full), a, t_full.polarity, fall_sample, fall_time,
-                                  t_full.dt, t_full.t0_index);
-        if (!ok_fall) {
-            fall_sample = static_cast<double>(t_start_full + static_cast<int>(t_full.T.size()) - 1);
-            fall_time = (fall_sample - t_full.t0_index) * t_full.dt;
-        }
 
         if (dbg) {
             double cv = 0.0;
