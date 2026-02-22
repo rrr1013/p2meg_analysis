@@ -55,7 +55,7 @@ static const char* kPSFiles[2] = {
 static const char* kOutputDir = "doc/mainexp";
 
 // 波形→イベント切り出し
-static const int    kSamplesPerEvent = 500;  // 1 event あたりサンプル数
+static const int    kSamplesPerEvent = 1000;  // 1 event あたりサンプル数
 static const double kDtNs = 4.0;             // 1bin の時間 [ns]（プロット用）
 
 // パルス検出パラメータ（ピーク高さ分布を見るための暫定値。ヒストを見て手で調整）
