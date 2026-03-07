@@ -10,7 +10,8 @@
 //    ACC の PDF 値を返す。
 //  - 格子は 4D（Ee, Eg, phi_detector_e, phi_detector_g）で保存しておき、
 //    評価時に theta_eg = |phi_e - phi_g| を作って解析窓カットを行う。
-//  - 時間因子は解析窓内一様として解析的に掛ける。
+//  - 時間因子は root 内の Eg 条件付き key_tshape_egbin* テンプレートを優先し、
+//    無い場合は単一 key_tshape、さらに無ければ解析窓内一様へフォールバックする。
 // ============================================================
 
 // 初期化：root ファイルから格子PDF（4D）を読み込む
@@ -24,7 +25,8 @@ bool ACCGridPdf_IsLoaded();
 
 // PDF 評価（ロード済みが前提）
 // 解析窓外は 0 を返す
-// 時間因子は一様 (1/(t_max - t_min)) を掛ける
+// 時間因子は Eg 条件付き key_tshape_egbin* から作る p_t(t|Eg) を掛ける
+// （無ければ単一 key_tshape、さらに無ければ一様）
 // phi は DetectorResolution の範囲にクリップし離散化して評価する
 double ACCGridPdf(double Ee, double Eg, double t,
                   double phi_detector_e, double phi_detector_g);

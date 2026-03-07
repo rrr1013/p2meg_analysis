@@ -12,7 +12,9 @@
 //  - ACC (accidental) 成分の 4D 格子 PDF
 //    p_acc(Ee, Eg, phi_detector_e, phi_detector_g)
 //    を ROOT に保存する。
-//  - 時間 t は解析窓内で一様として評価側で解析的に掛ける。
+//  - 併せて、最終解析で使う Eg 条件付き時間テンプレート
+//      f_t(t | Eg category)
+//    も保存する。
 //
 // 設計方針（重要）
 //  - 入力イベントは (Ee, Eg, t, phi_detector_e, phi_detector_g)。
@@ -28,6 +30,9 @@
 //
 // 出力（ROOT）
 //  - key 名の 4D THnD（Ee, Eg, phi_e, phi_g）
+//  - key_tshape の 1D TH1D（後方互換用の全 Eg 時間テンプレート密度）
+//  - key_tshape_egbin0, key_tshape_egbin1, ... の 1D TH1D
+//    （Eg category ごとの t_all 上時間テンプレート密度）
 //  - メタ情報（N_phi_e/g、ビニング、phi 軸定義、正規化条件）
 // ============================================================
 

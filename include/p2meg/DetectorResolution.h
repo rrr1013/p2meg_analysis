@@ -50,18 +50,18 @@ struct DetectorResolutionConst {
 };
 
 inline constexpr DetectorResolutionConst detres{
-    0.1,  // sigma_t  [ns]
+    10,  // sigma_t  [ns]
     9,    // N_theta  （0..pi を 9 分割 → 20 度刻み）
     0, // t_mean [ns]
-    -0.8,    // P_mu
+    -0.6,    // P_mu
 
-    pi * (-30.0/180.0),   // phi_e_min [rad]
-    pi * (150.0/180.0),   // phi_e_max [rad]
-    9,                    // N_phi_e  （20 度刻み）
+    pi * (-90.0/180.0),   // phi_e_min [rad]
+    pi * (90.0/180.0),   // phi_e_max [rad]
+    3,                    // N_phi_e  （20 度刻み）
 
-    pi * (-30.0/180.0),   // phi_g_min [rad]
-    pi * (150.0/180.0),   // phi_g_max [rad]
-    9                     // N_phi_g  （20 度刻み）
+    pi * (-90.0/180.0),   // phi_g_min [rad]
+    pi * (90.0/180.0),   // phi_g_max [rad]
+    3                     // N_phi_g  （20 度刻み）
 };
 
 // ------------------------------------------------------------
@@ -178,14 +178,15 @@ static inline bool Detector_IsAllowedPhiPairIndex(int i_e, int i_g,
     if (i_e < 0 || i_g < 0) return false;
     if (i_e > res.N_phi_e || i_g > res.N_phi_g) return false;
 
-    // 20 度刻みの運用角（画像メモ）に合わせた許可ペア:
-    //  - 固定角: phi = 150 度（index = N_phi）
-    //  - 走査角: phi = -30, -10, 10, 30, 50 度（index = 0..4）
+    // 60 度刻みの運用角に合わせた許可ペア:
+    //  - 固定角: phi = +90 度（index = N_phi）
+    //  - 走査角: phi = -90, -30, +30 度（index = 0..N_phi-1）
     //  - run ごとの入れ替えを考慮し、e 固定/g 走査 と g 固定/e 走査の両方を許可
+    //  - これにより theta_eg = |phi_e-phi_g| は 180, 120, 60 度のみになる
     const bool e_fixed = (i_e == res.N_phi_e);
     const bool g_fixed = (i_g == res.N_phi_g);
-    const bool e_scan = (i_e >= 0 && i_e <= 4);
-    const bool g_scan = (i_g >= 0 && i_g <= 4);
+    const bool e_scan = (i_e >= 0 && i_e < res.N_phi_e);
+    const bool g_scan = (i_g >= 0 && i_g < res.N_phi_g);
     return (e_fixed && g_scan) || (g_fixed && e_scan);
 }
 

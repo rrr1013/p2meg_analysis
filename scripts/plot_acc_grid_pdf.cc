@@ -7,19 +7,19 @@
 //   ./build/plot_acc_grid_pdf [in.root] [key] [out.pdf]
 //
 // 例:
-//   ./build/plot_acc_grid_pdf data/pdf_cache/acc_grid.root acc_grid doc/acc_grid_hist.pdf
+//   ./build/plot_acc_grid_pdf data/pdf_cache/acc_grid.root acc_grid doc/finalanalysis/acc_grid_hist.pdf
 //
 // 出力:
-//   doc/acc_grid_hist.pdf（3ページ）
+//   doc/finalanalysis/acc_grid_hist.pdf（3ページ）
 //    1) メタ情報
-//    2) 1D (Ee, Eg, phi_detector_e, phi_detector_g, theta_eg)
-//    3) 2D (Ee,Eg), (theta_eg,Ee), (theta_eg,Eg), (phi_e,phi_g)
+//    2) 1D (Ee, Eg, t, phi_detector_e, phi_detector_g, theta_eg)
+//    3) 2D (Ee,Eg), (theta_eg,t), (t,Ee), (theta_eg,Ee), (theta_eg,Eg), (phi_e,phi_g)
 //
 // 注意:
 //  - acc_grid は Ee/Eg の密度（MeV^-2）として格納されている。
 //  - 表示用ヒストは dEe dEg を掛けた「確率質量」で作る。
 //  - phi は離散点（N_phi+1）であり、phi の幅は正規化に含めない。
-//  - t は解析窓内一様であり、本図では表示しない。
+//  - t は key_tshape があればその形を使い、無ければ解析窓内一様にする。
 
 #include <cmath>
 #include <iostream>
@@ -48,14 +48,72 @@
 
 // ---- 固定ビン数（plot_data_hist に合わせる）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
+static constexpr int kNBins_t   = 160; // t
 static constexpr int kNBins_phi = 120; // phi_detector_e/g
 static constexpr int kNBins_th  = 120; // theta_eg
 
 static constexpr int kNBins2D_E   = 120;
+static constexpr int kNBins2D_t   = 160;
 static constexpr int kNBins2D_th  = 120;
 static constexpr int kNBins2D_phi = 120;
 
 static bool IsFinite(double x) { return std::isfinite(x); }
+
+static double IntegrateDensityRange1D(const TH1D& h, double x_min, double x_max)
+{
+    if (!IsFinite(x_min) || !IsFinite(x_max)) return 0.0;
+    if (!(x_max > x_min)) return 0.0;
+
+    const int nb = h.GetXaxis()->GetNbins();
+    double sum = 0.0;
+    for (int ib = 1; ib <= nb; ++ib) {
+        const double lo = h.GetXaxis()->GetBinLowEdge(ib);
+        const double hi = lo + h.GetXaxis()->GetBinWidth(ib);
+        const double ov = std::min(hi, x_max) - std::max(lo, x_min);
+        if (!(ov > 0.0)) continue;
+
+        const double dens = h.GetBinContent(ib);
+        if (dens > 0.0 && IsFinite(dens)) sum += dens * ov;
+    }
+    return (sum > 0.0 && IsFinite(sum)) ? sum : 0.0;
+}
+
+static void BuildTimeBinMasses(const TH1D* h_tshape,
+                               double t_min,
+                               double t_max,
+                               std::vector<double>& masses_out,
+                               bool& uses_template_out,
+                               double& aw_norm_out)
+{
+    masses_out.assign(kNBins_t, 0.0);
+    uses_template_out = false;
+    aw_norm_out = 0.0;
+
+    if (h_tshape) {
+        const double aw_norm = IntegrateDensityRange1D(*h_tshape, t_min, t_max);
+        if (aw_norm > 0.0 && IsFinite(aw_norm)) {
+            const double dt = (t_max - t_min) / static_cast<double>(kNBins_t);
+            double sum_mass = 0.0;
+            for (int ib = 0; ib < kNBins_t; ++ib) {
+                const double lo = t_min + dt * static_cast<double>(ib);
+                const double hi = lo + dt;
+                const double m = IntegrateDensityRange1D(*h_tshape, lo, hi) / aw_norm;
+                masses_out[ib] = (m > 0.0 && IsFinite(m)) ? m : 0.0;
+                sum_mass += masses_out[ib];
+            }
+            if (sum_mass > 0.0 && IsFinite(sum_mass)) {
+                for (double& m : masses_out) m /= sum_mass;
+                uses_template_out = true;
+                aw_norm_out = aw_norm;
+                return;
+            }
+        }
+    }
+
+    const double uniform_mass = 1.0 / static_cast<double>(kNBins_t);
+    for (double& m : masses_out) m = uniform_mass;
+    aw_norm_out = (t_max > t_min) ? (t_max - t_min) : 0.0;
+}
 
 static std::vector<std::string> SplitLines(const std::string& s)
 {
@@ -82,6 +140,8 @@ static void DrawMetaPage(const char* infile,
                          double phi_e_max,
                          double phi_g_min,
                          double phi_g_max,
+                         bool uses_t_template,
+                         double tshape_aw_norm,
                          const std::string& meta_text)
 {
     TLatex lat;
@@ -114,20 +174,21 @@ static void DrawMetaPage(const char* infile,
     lat.DrawLatex(0.05, 0.43, Form("phi grid: N_phi_e=%d  N_phi_g=%d", n_phi_e, n_phi_g));
     lat.DrawLatex(0.05, 0.39, Form("phi_e range: [%.6g, %.6g] rad", phi_e_min, phi_e_max));
     lat.DrawLatex(0.05, 0.35, Form("phi_g range: [%.6g, %.6g] rad", phi_g_min, phi_g_max));
+    lat.DrawLatex(0.05, 0.31, Form("t shape: %s", uses_t_template ? "template in AW" : "uniform fallback in AW"));
+    lat.DrawLatex(0.05, 0.27, Form("tshape_AW_norm: %.6g", tshape_aw_norm));
 
     lat.SetTextSize(0.030);
-    lat.DrawLatex(0.05, 0.30, "Analysis window (Ee, Eg, t, theta):");
+    lat.DrawLatex(0.05, 0.22, "Analysis window (Ee, Eg, t, theta):");
     lat.SetTextSize(0.028);
-    lat.DrawLatex(0.08, 0.25, Form("Ee [MeV]    : [%.6g, %.6g]", analysis_window.Ee_min, analysis_window.Ee_max));
-    lat.DrawLatex(0.08, 0.21, Form("Eg [MeV]    : [%.6g, %.6g]", analysis_window.Eg_min, analysis_window.Eg_max));
-    lat.DrawLatex(0.08, 0.17, Form("t  [ns]     : [%.6g, %.6g]", analysis_window.t_min,  analysis_window.t_max));
-    lat.DrawLatex(0.08, 0.13, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
+    lat.DrawLatex(0.08, 0.18, Form("Ee [MeV]    : [%.6g, %.6g]", analysis_window.Ee_min, analysis_window.Ee_max));
+    lat.DrawLatex(0.08, 0.14, Form("Eg [MeV]    : [%.6g, %.6g]", analysis_window.Eg_min, analysis_window.Eg_max));
+    lat.DrawLatex(0.08, 0.10, Form("t  [ns]     : [%.6g, %.6g]", analysis_window.t_min,  analysis_window.t_max));
+    lat.DrawLatex(0.08, 0.06, Form("theta_eg [rad] : [%.6g, %.6g]", analysis_window.theta_min, analysis_window.theta_max));
 
     lat.SetTextSize(0.026);
-    lat.DrawLatex(0.05, 0.08, "t: uniform in window (not plotted).  phi: discrete (N_phi+1 points).");
-
+    lat.DrawLatex(0.55, 0.08, "phi: discrete (N_phi+1 points).");
     lat.SetTextSize(0.024);
-    lat.DrawLatex(0.05, 0.04, "Pages: (1) meta  (2) 1D  (3) 2D");
+    lat.DrawLatex(0.55, 0.04, "Pages: (1) meta  (2) 1D  (3) 2D");
 
     if (!meta_text.empty()) {
         const std::vector<std::string> lines = SplitLines(meta_text);
@@ -153,7 +214,7 @@ int main(int argc, char** argv)
 {
     const char* infile = "data/pdf_cache/acc_grid.root";
     const char* key = "acc_grid";
-    const char* outpdf = "doc/acc_grid_hist.pdf";
+    const char* outpdf = "doc/finalanalysis/acc_grid_hist.pdf";
 
     if (argc >= 2) infile = argv[1];
     if (argc >= 3) key = argv[2];
@@ -197,6 +258,15 @@ int main(int argc, char** argv)
     f.GetObject(meta_name.c_str(), meta);
     if (meta) meta_text = meta->GetTitle();
 
+    TH1D* h_tshape = nullptr;
+    const std::string tshape_name = std::string(key) + "_tshape";
+    TH1D* tshape_in = nullptr;
+    f.GetObject(tshape_name.c_str(), tshape_in);
+    if (tshape_in) {
+        h_tshape = dynamic_cast<TH1D*>(tshape_in->Clone("acc_tshape_clone"));
+        if (h_tshape) h_tshape->SetDirectory(nullptr);
+    }
+
     int n_phi_e = 0;
     int n_phi_g = 0;
     double phi_e_min = detres.phi_e_min;
@@ -230,7 +300,7 @@ int main(int argc, char** argv)
     f.Close();
 
     gStyle->SetOptStat(0);
-    gSystem->mkdir("doc", /*recursive=*/true);
+    gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
 
     const double Ee_min = analysis_window.Ee_min;
     const double Ee_max = analysis_window.Ee_max;
@@ -238,6 +308,8 @@ int main(int argc, char** argv)
     const double Eg_max = analysis_window.Eg_max;
     const double th_win_min = analysis_window.theta_min;
     const double th_win_max = analysis_window.theta_max;
+    const double t_min = analysis_window.t_min;
+    const double t_max = analysis_window.t_max;
     if (n_phi_e <= 0) n_phi_e = Math_GetNPhiE(detres);
     if (n_phi_g <= 0) n_phi_g = Math_GetNPhiG(detres);
 
@@ -268,6 +340,7 @@ int main(int argc, char** argv)
     // ---- 1D ----
     TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
     TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
+    TH1D* hT    = new TH1D("hT",    "t;t [ns];Entries",                    kNBins_t,  t_min,  t_max);
     TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
                            kNBins_phi, phi_e_min, phi_e_max_plot);
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
@@ -278,6 +351,12 @@ int main(int argc, char** argv)
     // ---- 2D ----
     TH2D* h_EeEg = new TH2D("h_EeEg", "(Ee, Eg);Ee [MeV];Eg [MeV]",
                             kNBins2D_E, Ee_min, Ee_max, kNBins2D_E, Eg_min, Eg_max);
+
+    TH2D* h_ThT  = new TH2D("h_ThT", "(theta_{eg}, t);theta_{eg} [rad];t [ns]",
+                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_t,  t_min,  t_max);
+
+    TH2D* h_TEe  = new TH2D("h_TEe", "(t, Ee);t [ns];Ee [MeV]",
+                            kNBins2D_t,  t_min,  t_max, kNBins2D_E, Ee_min, Ee_max);
 
     TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
                             kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Ee_min, Ee_max);
@@ -301,6 +380,11 @@ int main(int argc, char** argv)
     double sum_mass = 0.0;
     long n_negative = 0;
     long n_nonfinite = 0;
+    std::vector<double> t_bin_mass;
+    bool uses_t_template = false;
+    double tshape_aw_norm = 0.0;
+    BuildTimeBinMasses(h_tshape, t_min, t_max, t_bin_mass, uses_t_template, tshape_aw_norm);
+    const double dt_bin = (t_max - t_min) / static_cast<double>(kNBins_t);
 
     const int n0 = axE->GetNbins();
     const int n1 = axG->GetNbins();
@@ -358,9 +442,21 @@ int main(int argc, char** argv)
 
                     // 2D
                     h_EeEg->Fill(Ee, Eg, mass);
+                    h_PePg->Fill(phi_e, phi_g, mass);
                     if (in_theta) h_ThEe->Fill(theta_eg, Ee, mass);
                     if (in_theta) h_ThEg->Fill(theta_eg, Eg, mass);
-                    h_PePg->Fill(phi_e, phi_g, mass);
+
+                    if (in_theta) {
+                        for (int it = 0; it < kNBins_t; ++it) {
+                            const double mt = t_bin_mass[it];
+                            if (!(mt > 0.0) || !IsFinite(mt)) continue;
+                            const double t_center = t_min + dt_bin * (static_cast<double>(it) + 0.5);
+                            const double mass5 = mass * mt;
+                            hT->Fill(t_center, mass5);
+                            h_ThT->Fill(theta_eg, t_center, mass5);
+                            h_TEe->Fill(t_center, Ee, mass5);
+                        }
+                    }
                 }
             }
         }
@@ -376,7 +472,8 @@ int main(int argc, char** argv)
     c0.cd();
     DrawMetaPage(infile, key, outpdf, *grid, sum_mass,
                  n_negative, n_nonfinite, n_phi_e, n_phi_g,
-                 phi_e_min, phi_e_max, phi_g_min, phi_g_max, meta_text);
+                 phi_e_min, phi_e_max, phi_g_min, phi_g_max,
+                 uses_t_template, tshape_aw_norm, meta_text);
 
     // ---- ページ2：1D ----
     TCanvas c1("c1", "1D acc grid", 1200, 800);
@@ -384,9 +481,10 @@ int main(int argc, char** argv)
 
     c1.cd(1); gPad->SetGrid(); hEe->SetLineWidth(2); hEe->Draw("hist");
     c1.cd(2); gPad->SetGrid(); hEg->SetLineWidth(2); hEg->Draw("hist");
-    c1.cd(3); gPad->SetGrid(); hPhiE->SetLineWidth(2); hPhiE->Draw("hist");
-    c1.cd(4); gPad->SetGrid(); hPhiG->SetLineWidth(2); hPhiG->Draw("hist");
-    c1.cd(5); gPad->SetGrid(); hThEg->SetLineWidth(2); hThEg->Draw("hist");
+    c1.cd(3); gPad->SetGrid(); hT->SetLineWidth(2); hT->SetMinimum(0); hT->Draw("hist");
+    c1.cd(4); gPad->SetGrid(); hPhiE->SetLineWidth(2); hPhiE->Draw("hist");
+    c1.cd(5); gPad->SetGrid(); hPhiG->SetLineWidth(2); hPhiG->Draw("hist");
+    c1.cd(6); gPad->SetGrid(); hThEg->SetLineWidth(2); hThEg->Draw("hist");
 
     // ---- ページ3：2D ----
     auto Draw2D = [](TH2D* h){
@@ -396,11 +494,13 @@ int main(int argc, char** argv)
     };
 
     TCanvas c2("c2", "2D acc grid", 1200, 800);
-    c2.Divide(2, 2);
+    c2.Divide(3, 2);
     c2.cd(1); Draw2D(h_EeEg);
-    c2.cd(2); Draw2D(h_ThEe);
-    c2.cd(3); Draw2D(h_ThEg);
-    c2.cd(4); Draw2D(h_PePg);
+    c2.cd(2); Draw2D(h_ThT);
+    c2.cd(3); Draw2D(h_TEe);
+    c2.cd(4); Draw2D(h_ThEe);
+    c2.cd(5); Draw2D(h_ThEg);
+    c2.cd(6); Draw2D(h_PePg);
 
     // ---- PDF（3ページ）----
     TString out = outpdf;

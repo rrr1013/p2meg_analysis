@@ -1,0 +1,220 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\geometry{margin=22mm}
+
+\title{p2MEG における停止ミューオン数正規化の導出}
+\author{p2MEG 解析メモ}
+\date{2026年3月6日}
+
+\begin{document}
+\maketitle
+
+\section{独立な記号}
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+記号 & 定義 \\
+\midrule
+$j$ & run または幾何配置の添字 \\
+$N_{j,\mathrm{HE}}^{\mathrm{data}}$ & 実験で得た高エネルギー窓の $E_e$ 1次元カウント \\
+$\kappa_{j}^{\mathrm{Michel}}$ &
+\(
+\kappa_{j}^{\mathrm{Michel}}
+=
+\dfrac{N_{j,\mathrm{HE}}^{\mathrm{Michel,MC}}}{N_{\mu,j}^{\mathrm{stop,MC}}}
+\) \\
+$\kappa_{j}^{\mathrm{sig}}$ &
+\(
+\kappa_{j}^{\mathrm{sig}}
+=
+\dfrac{N_{j}^{\mathrm{sig,MC}}}{N_{\mu,j}^{\mathrm{stop,MC}}}
+\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{導出}
+\subsection{有効停止ミューオン数の定義}
+signal 事象数を $N_{j}^{\mathrm{sig}}$、分岐比を $\mathcal{B}\equiv \mathrm{BR}(\mu\to e\gamma)$ とする。
+run $j$ ごとに
+\begin{equation}
+N_{j}^{\mathrm{sig}}
+=
+N_{\mu,j}^{\mathrm{eff}}\,\mathcal{B}
+\end{equation}
+となるように $N_{\mu,j}^{\mathrm{eff}}$ を定義する。
+
+従って、全 run を合わせると
+\begin{equation}
+N^{\mathrm{sig}}
+=
+\sum_j N_{j}^{\mathrm{sig}}
+=
+\mathcal{B}\sum_j N_{\mu,j}^{\mathrm{eff}}
+\end{equation}
+であり、
+\begin{equation}
+\mathcal{B}
+=
+\frac{N^{\mathrm{sig}}}{N_{\mu}^{\mathrm{eff}}},
+\qquad
+N_{\mu}^{\mathrm{eff}} \equiv \sum_j N_{\mu,j}^{\mathrm{eff}}
+\label{eq:br_def}
+\end{equation}
+となる。
+
+\subsection{高エネルギー Michel データによる導出}
+高エネルギー窓の実験カウント $N_{j,\mathrm{HE}}^{\mathrm{data}}$ は、停止ミューオン数を $N_{\mu,j}^{\mathrm{stop}}$、
+$e$ が検出器で反応して再構成される確率を $\eta_{e,j}$ とすると、
+\begin{equation}
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+=
+N_{\mu,j}^{\mathrm{stop}}
+\times
+\left(
+\frac{N_{j,\mathrm{HE}}^{\mathrm{Michel,MC}}}{N_{\mu,j}^{\mathrm{stop,MC}}}
+\right)
+\times
+\eta_{e,j}
+\end{equation}
+と書ける。
+
+表の定義
+\begin{equation}
+\kappa_{j}^{\mathrm{Michel}}
+=
+\frac{N_{j,\mathrm{HE}}^{\mathrm{Michel,MC}}}{N_{\mu,j}^{\mathrm{stop,MC}}}
+\end{equation}
+を用いると、
+\begin{equation}
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+=
+N_{\mu,j}^{\mathrm{stop}}
+\times
+\kappa_{j}^{\mathrm{Michel}}
+\times
+\eta_{e,j}
+\end{equation}
+となる。従って、
+\begin{equation}
+N_{\mu,j}^{\mathrm{stop}}
+=
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+\times
+\frac{1}{\kappa_{j}^{\mathrm{Michel}}}
+\times
+\frac{1}{\eta_{e,j}}
+\label{eq:nstop}
+\end{equation}
+を得る。
+
+次に、$\gamma$ が検出器で反応して再構成される確率を $\eta_{\gamma,j}$ とすると、
+\begin{equation}
+N_{\mu,j}^{\mathrm{eff}}
+=
+N_{\mu,j}^{\mathrm{stop}}
+\times
+\left(
+\frac{N_{j}^{\mathrm{sig,MC}}}{N_{\mu,j}^{\mathrm{stop,MC}}}
+\right)
+\times
+\eta_{e,j}
+\times
+\eta_{\gamma,j}
+\end{equation}
+である。
+
+表の定義
+\begin{equation}
+\kappa_{j}^{\mathrm{sig}}
+=
+\frac{N_{j}^{\mathrm{sig,MC}}}{N_{\mu,j}^{\mathrm{stop,MC}}}
+\end{equation}
+を用いると、
+\begin{equation}
+N_{\mu,j}^{\mathrm{eff}}
+=
+N_{\mu,j}^{\mathrm{stop}}
+\times
+\kappa_{j}^{\mathrm{sig}}
+\times
+\eta_{e,j}
+\times
+\eta_{\gamma,j}
+\label{eq:neff0}
+\end{equation}
+となる。
+
+ここで式\eqref{eq:nstop} を式\eqref{eq:neff0} に代入すると、
+\begin{equation}
+N_{\mu,j}^{\mathrm{eff}}
+=
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+\times
+\frac{1}{\kappa_{j}^{\mathrm{Michel}}}
+\times
+\frac{1}{\eta_{e,j}}
+\times
+\kappa_{j}^{\mathrm{sig}}
+\times
+\eta_{e,j}
+\times
+\eta_{\gamma,j}
+\end{equation}
+となり、$e$ 側の確率 $\eta_{e,j}$ は打ち消し合って
+\begin{equation}
+N_{\mu,j}^{\mathrm{eff}}
+=
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+\times
+\frac{\kappa_{j}^{\mathrm{sig}}}{\kappa_{j}^{\mathrm{Michel}}}
+\times
+\eta_{\gamma,j}
+\label{eq:neff_final}
+\end{equation}
+を得る。
+
+最後に、全 run を合わせた有効停止ミューオン数は
+\begin{equation}
+N_{\mu}^{\mathrm{eff}}
+=
+\sum_j N_{\mu,j}^{\mathrm{eff}}
+=
+\sum_j
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+\times
+\frac{\kappa_{j}^{\mathrm{sig}}}{\kappa_{j}^{\mathrm{Michel}}}
+\times
+\eta_{\gamma,j}
+\end{equation}
+である。
+
+\section{結果}
+従って、Michel 専用 MC を用いて高エネルギー $E_e$ 1次元データで正規化すると、
+\begin{equation}
+\boxed{
+N_{\mu,j}^{\mathrm{eff}}
+=
+N_{j,\mathrm{HE}}^{\mathrm{data}}
+\times
+\frac{\kappa_{j}^{\mathrm{sig}}}{\kappa_{j}^{\mathrm{Michel}}}
+\times
+\eta_{\gamma,j}
+}
+\end{equation}
+となる。
+
+したがって、分岐比は式\eqref{eq:br_def} により
+\begin{equation}
+\mathrm{BR}(\mu\to e\gamma)
+=
+\frac{N^{\mathrm{sig}}}{N_{\mu}^{\mathrm{eff}}}
+\end{equation}
+で与えられる。
+
+\end{document}

@@ -53,8 +53,8 @@ static TString MakeOutputPdfPath(const char* infile)
   TString base = gSystem->BaseName(infile);
   Ssiz_t dot = base.Last('.');
   if (dot != kNPOS) base.Remove(dot);
-  gSystem->mkdir("doc", /*recursive=*/true);
-  return Form("doc/fit_rmd_in_esb_%s.pdf", base.Data());
+  gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
+  return Form("doc/finalanalysis/fit_rmd_in_esb_%s.pdf", base.Data());
 }
 
 // 正規化ガウシアンの区間積分
@@ -68,8 +68,8 @@ static double GaussFrac(double t1, double t2, double mu, double sigma)
 }
 
 void fit_rmd_in_esb(const char* infile = "data/mockdata/testdata1.dat",
-                    double t_all_min = -10.0,
-                    double t_all_max =  10.0,
+                    double t_all_min = -500.0,
+                    double t_all_max =  500.0,
                     int nbins_t = 240,
                     double Eg_all_min = 10.0,
                     double Eg_all_max = 70.0,

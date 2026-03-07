@@ -1,0 +1,394 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{bm}
+\geometry{margin=22mm}
+
+\title{p2MEG run8 における Michel 崩壊事象選別の再構築解析\\
+ヒストグラム根拠に基づく段階的しきい値決定・sideband差分・スペクトル重ね合わせ}
+\author{p2MEG 解析レポート}
+\date{2026年2月28日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本レポートは、run8 データの Michel 崩壊事象選別を、
+「全体最適化」ではなく
+「各変数のヒストグラムを順に確認して cut を決める」方式で再構築した結果をまとめる。
+
+今回の主眼は次の3点である。
+\begin{enumerate}
+  \item PS 波高しきい値を主ピーク前の\textbf{谷}で決める。
+  \item NaI の $\Delta t_{12}$ cut を、中心山を十分に取り込む根拠付きで決める。
+  \item sideband 差分と Michel スペクトル重ね合わせの手順を、式と図で明示する。
+\end{enumerate}
+
+段階的に決めた最終作業点は
+\[
+\mathrm{PS_A}\ge 125.5,\quad
+\mathrm{PS_B}\ge 178.5,\quad
+|\Delta t_{12}|\le 35,\quad
+|dt|\le 12,\quad
+E_{\mathrm{sum}}\ge 27000
+\]
+（単位はそれぞれ ADC counts, sample, sample, ADC$\times$sample）である。
+
+本作業点での sideband 差し引きエネルギー分布に対する Michel 形状重ね合わせは、
+A+B 合算で $\chi^2/\mathrm{ndf}=0.813$、
+A side で 0.794 となった。
+一方で B side は fit status が非0で安定収束しなかった。
+この結果は「clean 条件導入で背景は大きく抑制できたが、
+side ごとの統計・形状安定性には差が残る」ことを示す。
+\end{abstract}
+
+\section{解析目的と従来考察の問題点}
+\subsection{解析目的}
+本解析の目的は、
+\begin{enumerate}
+  \item 各しきい値を個別のヒストグラムから決定できるようにすること、
+  \item その決定根拠を第三者が追跡可能な形で示すこと、
+  \item 最終的に Michel スペクトルとの一致度を指標として採否判断すること
+\end{enumerate}
+である。
+
+\subsection{従来考察の主な問題}
+今回の再構築前には、次の問題があった。
+\begin{enumerate}
+  \item PS 閾値が主ピーク前谷から外れており、ノイズ帯と信号帯の境界として説得力が不足していた。
+  \item $\Delta t_{12}$ cut が A 側中心山を十分取り込んでいない可能性が残っていた。
+  \item sideband 差分の操作（なぜそのスケール係数で引くのか、何を差し引いているのか）の説明が不十分だった。
+  \item Michel フィット関数の定義と図上表示が不足していた。
+\end{enumerate}
+
+本レポートでは、これら4点をすべて修正した。
+
+\section{用語定義と観測量}
+\begin{longtable}{p{0.30\linewidth}p{0.62\linewidth}}
+\toprule
+用語・記号 & 定義 \\
+\midrule
+PS & プラスチックシンチレータ（Plastic Scintillator）。PS\_A, PS\_B の2チャネル。 \\
+NaI & ヨウ化ナトリウムシンチレータ。NaI\_A1, A2, B1, B2 の4チャネル。 \\
+side & A side=(PS\_A, NaI\_A1, NaI\_A2), B side=(PS\_B, NaI\_B1, NaI\_B2)。 \\
+$\Delta t_{12}$ & 同一 side の NaI 2チャネル時刻差（sample）。 \\
+$dt$ & module 時刻と PS 時刻の差、$dt=t_{\mathrm{mod}}-t_{\mathrm{PS}}$（sample）。 \\
+$E_{\mathrm{sum}}$ & NaI 2チャネル積分和（ADC$\times$sample）。 \\
+prompt 窓 & 同時事象が優勢とみなす窓。$|dt|\le w$。 \\
+sideband 窓 & 偶発背景評価窓。$80\le |dt|\le 160$。 \\
+\bottomrule
+\end{longtable}
+
+\section{波形処理とヒット判定の詳細}
+\subsection{ベースラインとパルス信号}
+各イベント（1000 samples）ごとに、ADC 値の最頻値をベースライン $b$ とし、
+
+a signal sequence $s_i$ を
+\begin{equation}
+ s_i = b - \mathrm{ADC}_i
+\end{equation}
+で定義する。
+
+\subsection{PS ヒット判定}
+PS パルスは簡易しきい値法で検出する。
+立ち上がりしきい値（seed）と終了しきい値（end）を使い、
+連続区間からパルス候補を作る。
+各候補の振幅は区間内最大値で定義する。
+
+このとき、「PS ヒット」とは
+\begin{equation}
+ \mathrm{amp}_{\mathrm{PS}} \ge \mathrm{PS\ threshold}
+\end{equation}
+を満たす候補である。
+本解析ではしきい値そのものをヒストグラムで決定した（後述）。
+
+\subsection{NaI パルス分解とフィット関数}
+NaI では重なりパルスを分離するため、既知形状で各候補をフィットした。
+使用した波形モデルは
+\begin{equation}
+ s(t) = A\left[\exp\left(-\frac{t-t_0}{\tau_r+d}\right)-
+ \exp\left(-\frac{t-t_0}{\tau_r}\right)\right]\Theta(t-t_0)
+\end{equation}
+である。
+ここで $A$ は振幅、$t_0$ は到達時刻、$\tau_r$ と $d$ はチャネル固定形状定数、
+$\Theta$ はステップ関数である。
+
+積分量は近似的に
+\begin{equation}
+ I \simeq A\,d
+\end{equation}
+で扱う。
+
+さらに NaI ヒット判定には clean 条件を導入し、
+フィット時刻 $t_0$ の近傍窓（$\pm 150$ sample）で
+候補開始点が1本のみのパルスだけを採用した。
+実測では clean 条件により
+pass1/pass2 ともに
+\[
+47448 / 129301 \ (\sim 36.7\%)
+\]
+まで候補が絞り込まれた。
+
+\subsection{NaI module 化と $\Delta t_{12}$ cut}
+同一 side の 2チャネル（A1-A2, B1-B2）で最も近い時刻同士を組にし、
+\begin{equation}
+ |\Delta t_{12}| \le \Delta t_{12}^{\mathrm{cut}}
+\end{equation}
+を満たすものだけを module パルスとして採用する。
+module 時刻とエネルギーは
+\begin{equation}
+ t_{\mathrm{mod}}=\frac{t_1+t_2}{2},\qquad E_{\mathrm{sum}}=I_1+I_2
+\end{equation}
+で定義した。
+
+\section{段階的 cut 決定の結果}
+本解析で作成した診断図は
+\texttt{doc/mainexp/michel\_stepwise\_hist\_based\_run8.pdf}
+にまとめた。
+
+\subsection{Step A: PS 波高しきい値（谷位置）}
+図\ref{fig:ps}の波高ヒストグラムから、
+主ピーク直前の谷を閾値として採用した。
+
+\begin{table}[htbp]
+\centering
+\caption{PS 閾値決定}
+\begin{tabular}{lccc}
+\toprule
+チャネル & 主ピーク位置 & 谷位置 & 採用閾値 \\
+\midrule
+PS\_A & 143.5 & 125.5 & 125.5 \\
+PS\_B & 214.5 & 178.5 & 178.5 \\
+\bottomrule
+\end{tabular}
+\label{tab:ps}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=2]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{PS 波高ヒストグラム。赤破線が採用閾値、紫破線が主ピーク。}
+  \label{fig:ps}
+\end{figure}
+
+この変更により、ユーザ指摘どおり「閾値が谷から外れている」問題を解消した。
+
+\subsection{Step B: $\Delta t_{12}$ cut（A側山を取り込む設計）}
+$\Delta t_{12}$ の signed 分布中心をガウスで近似し、
+\begin{equation}
+ \Delta t_{12}^{\mathrm{cut}} = \left\lceil \frac{\max(4\sigma_A,4\sigma_B)}{5} \right\rceil \times 5
+\end{equation}
+で cut を決めた（5 sample 刻み丸め）。
+
+実測は
+\begin{equation}
+\sigma_A=8.745,\quad \sigma_B=1.669
+\end{equation}
+より
+\begin{equation}
+\Delta t_{12}^{\mathrm{cut}}=35
+\end{equation}
+となった。
+
+実際、cut=35 における受理率は
+A 46.6\%、B 35.6\% となった。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=3]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{signed $\Delta t_{12}$ 分布。赤破線が採用 cut、緑破線が中心ガウス近似。}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=4]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{左: $|\Delta t_{12}|$ 分布。右: cut 値に対する累積受理率。}
+\end{figure}
+
+\subsection{Step C: prompt 時間窓}
+$dt=t_{\mathrm{mod}}-t_{\mathrm{PS}}$ 分布の中心成分をガウス近似し、
+幅と谷位置の両方を参照して prompt 半窓を決めた。
+
+最終的に
+\begin{equation}
+|dt|\le 12
+\end{equation}
+を採用した。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=5]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{全候補の $|dt|$ 分布（prompt 窓決定用）。}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=6]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{A/B side の $dt$ 分布。赤破線が prompt 窓。}
+\end{figure}
+
+\subsection{Step D: sideband 差分とエネルギー閾値}
+\subsubsection{sideband 差分の定義}
+prompt 窓を $|dt|\le w$、sideband を $80\le |dt|\le 160$ とすると、
+幅比に基づくスケール係数は
+\begin{equation}
+ s = \frac{\text{width(prompt)}}{\text{width(sideband)}}
+   = \frac{w}{160-80}
+\end{equation}
+である。
+本解析では $w=12$ なので
+\begin{equation}
+ s=0.15
+\end{equation}
+となる。
+
+この係数で sideband を引いた差分を
+\begin{equation}
+ H_{\mathrm{excess}}(E)=H_{\mathrm{prompt}}(E)-s\,H_{\mathrm{side}}(E)
+\end{equation}
+と定義する。
+
+\subsubsection{エネルギー閾値の決め方}
+低エネルギー側ピークと高エネルギー側構造の間の谷を
+$H_{\mathrm{excess}}(E)$ から探索し、
+\begin{equation}
+E_{\mathrm{sum}}\ge 27000
+\end{equation}
+を採用した。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=7]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{$|dt|$ で見た prompt/sideband の定義。}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=8]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{左: prompt/sideband のエネルギー分布（raw と scaled）。右: excess と閾値。}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=9]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{全 cut 適用後の $|dt|$ 分布。prompt/sideband 窓を再確認。}
+\end{figure}
+
+\section{Michel スペクトル重ね合わせ}
+\subsection{フィット関数}
+最終 excess 分布に対して、
+\begin{equation}
+ f(E) = N\,x^2(3-2x)+C,\qquad x=\frac{E-E_0}{W},\quad 0<x<1
+\end{equation}
+を用いてフィットした。
+
+ここで
+$N$ は規格化、$E_0$ は立ち上がり位置、$W$ は有効幅、$C$ は定数オフセットである。
+
+\subsection{定量結果}
+\begin{table}[htbp]
+\centering
+\caption{Michel 形状重ね合わせ結果}
+\begin{tabular}{lcccc}
+\toprule
+対象 & fit status & $\chi^2/\mathrm{ndf}$ & $E_0$ & $W$ \\
+\midrule
+A+B 合算 & zero & 0.813 & 23240.0 & 120000 \\
+A side & zero & 0.794 & 23228.2 & 119996 \\
+B side & non-zero & 0.659 & 61771.9 & 51075.4 \\
+\bottomrule
+\end{tabular}
+\label{tab:michel}
+\end{table}
+
+イベント数は
+prompt = 404,
+sideband = 324,
+excess積分 = 355.4
+であった。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=10]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{合算エネルギー分布と Michel 形状重ね合わせ。}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=11]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{A side（左）/B side（右）を分けた Michel 重ね合わせ。}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=12]{mainexp/michel_stepwise_hist_based_run8.pdf}
+  \caption{合算・A・B の pull 分布（Data-Fit を統計誤差で規格化）。}
+\end{figure}
+
+\section{考察}
+\subsection{$t=0$ カスプ解釈}
+しきい値を厳しくしても中心尖りが完全に消えないことから、
+カスプ構造は単純な低振幅ノイズだけでなく、
+最近傍対応選択・多重パルス混在の寄与を含むと考えるのが妥当である。
+
+\subsection{$\Delta t_{12}$ cut の妥当性}
+今回 cut=35 は、A 側 4$\sigma$ を基準にした最小側の作業点である。
+clean 条件導入後の分布では、A/B の受理率が 46.6\% / 35.6\% となり、
+特に B 側で厳しめに選別されている。
+
+\subsection{sideband 差分の意味}
+sideband 差分は
+「prompt 窓に含まれる偶発的な成分を、遠い時間差窓の実測分布で近似し引く」
+操作である。
+重要なのは、単に引くのではなく、窓幅比でスケールする点である。
+本解析では
+\begin{equation}
+H_{\mathrm{excess}}=H_{\mathrm{prompt}}-0.15\,H_{\mathrm{side}}
+\end{equation}
+を用いた。
+
+\subsection{Michel 一致の現状}
+B side は fit status が非0で安定収束せず、
+A side と合算のみが fit status=0 で収束した。
+従って、現在の結論は
+\begin{quote}
+Michel 成分の痕跡は確認できるが、
+side 別に同程度の安定フィットが得られる段階には未到達である。
+\end{quote}
+となる。
+
+\section{結論と今後}
+\subsection{本ターンで達成したこと}
+ユーザ要求に対して、以下を実装・実行した。
+\begin{enumerate}
+  \item 図の大幅増量（段階決定ごとの診断図を追加）。
+  \item ヒット判定・フィット関数・sideband差分の式による明示。
+  \item PS 閾値を谷位置へ修正（125.5/178.5）。
+  \item NaI clean 条件（fit窓内単発）を導入。
+  \item $\Delta t_{12}$ cut を clean 条件下で再最適化（35）。
+  \item Michel フィットを合算と A/B 別で図示。
+\end{enumerate}
+
+\subsection{次に行うべき高精度化}
+本結果から直接導かれる次段階は以下である。
+\begin{enumerate}
+  \item A/B NaI のエネルギー較正（ADC 軸の side 間差補正）。
+  \item single-PS, single-module 条件を段階的に導入し、カスプ成分を分離検証。
+  \item run8 以外の角度設定 run に同一手順を適用し、再現性を確認。
+\end{enumerate}
+
+\section*{再現情報}
+実行コマンド:
+\begin{verbatim}
+root -l -b -q 'check/michel_stepwise_hist_based_run8.C'
+\end{verbatim}
+図出力:
+\begin{verbatim}
+doc/mainexp/michel_stepwise_hist_based_run8.pdf
+\end{verbatim}
+
+\end{document}

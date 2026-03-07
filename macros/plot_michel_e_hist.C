@@ -3,7 +3,7 @@
 // Michel 偏極測定用 Ee-only データのヒストグラム確認
 //
 // 入力: Ee-only .dat（1行1事象、1列Ee[MeV]。空行/#コメント行は無視）
-// 出力: doc/michel_e_hist_<basename>.pdf（2ページ）
+// 出力: doc/finalanalysis/michel_e_hist_<basename>.pdf（2ページ）
 //   1) meta（入出力・設定・統計）
 //   2) Ee ヒストグラム
 //
@@ -39,8 +39,8 @@ static TString MakeOutputPdfPath(const char* infile)
     Ssiz_t dot = base.Last('.');
     if (dot != kNPOS) base.Remove(dot);       // e.g. xxx
 
-    gSystem->mkdir("doc", /*recursive=*/true);
-    return Form("doc/michel_e_hist_%s.pdf", base.Data());
+    gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
+    return Form("doc/finalanalysis/michel_e_hist_%s.pdf", base.Data());
 }
 
 static void DrawMetaPage(const char* infile,

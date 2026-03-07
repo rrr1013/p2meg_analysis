@@ -8,13 +8,13 @@
 //        AW : 解析窓4D (Ee, Eg, t, theta_eg) 内
 //        TSB: (Ee, Eg, theta_eg) は解析窓内、t は解析窓外（全時間範囲内）
 //
-// 出力: doc/data_hist_<入力ファイル名(拡張子除く)>_acc_subtracted.pdf（3ページ）
+// 出力: doc/finalanalysis/data_hist_<入力ファイル名(拡張子除く)>_acc_subtracted.pdf（3ページ）
 //   1ページ目: メタ情報（TSB幅、スケール、Nacc予測など）
 //   2ページ目: 1D（青:差し引き後=折れ線 + 水色の誤差帯、赤:raw=薄い点のみ）
 //   3ページ目: 2D（差し引き後のみ）
 //
 // 実行例（リポジトリ直下から）:
-//   root -l -q 'macros/plot_data_hist_accsub.C("data/mockdata/testdata1.dat")'
+//   root -l -q 'macros/plot_data_hist_accsub.C("data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt")'
 //
 
 R__ADD_INCLUDE_PATH(./include)
@@ -22,6 +22,7 @@ R__ADD_INCLUDE_PATH(./include)
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -43,6 +44,7 @@ R__ADD_INCLUDE_PATH(./include)
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
 static constexpr int kNBins_t   = 160; // t
+static constexpr int kNBins_t_shape = 400; // ACC時間テンプレート（t_all上）
 static constexpr int kNBins_phi = 120; // phi_detector_e/g
 static constexpr int kNBins_th  = 120; // theta_eg
 
@@ -53,8 +55,13 @@ static constexpr int kNBins2D_phi = 120;
 
 // ---- TSB の全時間範囲（基本案）----
 // ここは実データの取得レンジに合わせて変更してください。
-static constexpr double kTAllMin = -10.0;
-static constexpr double kTAllMax =  10.0;
+static constexpr double kTAllMin = -500.0;
+static constexpr double kTAllMax =  500.0;
+
+// ---- ESB(Eg) の全エネルギー範囲（p_t_acc抽出用）----
+//   Eg in [kEgAllMin, kEgAllMax] のうち解析窓外を ESB とみなす
+static constexpr double kEgAllMin = 0.0;   // [MeV]
+static constexpr double kEgAllMax = 500.0; // [MeV]
 
 static bool ParseEventLine5Doubles(const std::string& line,
                                   double& Epos, double& Egam, double& dt,
@@ -79,8 +86,8 @@ static TString MakeOutputPdfPath(const char* infile)
     Ssiz_t dot = base.Last('.');
     if (dot != kNPOS) base.Remove(dot);       // e.g. xxx
 
-    gSystem->mkdir("doc", /*recursive=*/true);
-    return Form("doc/data_hist_%s_acc_subtracted.pdf", base.Data());
+    gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
+    return Form("doc/finalanalysis/data_hist_%s_acc_subtracted.pdf", base.Data());
 }
 
 static void DrawMetaPage(const char* infile,
@@ -89,11 +96,17 @@ static void DrawMetaPage(const char* infile,
                          long long n_parsed,
                          long long n_aw,
                          long long n_tsb,
+                         long long n_tshape_ctrl,
                          double t_all_min,
                          double t_all_max,
+                         double eg_all_min,
+                         double eg_all_max,
                          double w_win,
                          double w_tsb,
-                         double scale_s,
+                         double scale_geom,
+                         double tshape_aw_mass,
+                         double tshape_tsb_mass,
+                         double scale_tshape,
                          double nacc_pred,
                          double nacc_err)
 {
@@ -112,23 +125,25 @@ static void DrawMetaPage(const char* infile,
     lat.DrawLatex(0.05, 0.66, Form("parsed (5 doubles)   : %lld", n_parsed));
     lat.DrawLatex(0.05, 0.61, Form("AW events (in window): %lld", n_aw));
     lat.DrawLatex(0.05, 0.56, Form("TSB events (E/theta in win, t in SB): %lld", n_tsb));
+    lat.DrawLatex(0.05, 0.51, Form("t-shape events (Eg-sideband): %lld", n_tshape_ctrl));
 
     lat.SetTextSize(0.032);
-    lat.DrawLatex(0.05, 0.48, "Time definition:");
+    lat.DrawLatex(0.05, 0.44, "Time / Eg sideband definition:");
     lat.SetTextSize(0.030);
-    lat.DrawLatex(0.08, 0.43, Form("t_all [ns]   : [%.6g, %.6g]", t_all_min, t_all_max));
-    lat.DrawLatex(0.08, 0.38, Form("t_win [ns]   : [%.6g, %.6g]", analysis_window.t_min, analysis_window.t_max));
-    lat.DrawLatex(0.08, 0.33, Form("W_win [ns]   : %.6g", w_win));
-    lat.DrawLatex(0.08, 0.28, Form("W_TSB [ns]   : %.6g", w_tsb));
-    lat.DrawLatex(0.08, 0.23, Form("scale s=W_win/W_TSB : %.6g", scale_s));
+    lat.DrawLatex(0.08, 0.39, Form("t_all [ns]   : [%.6g, %.6g]", t_all_min, t_all_max));
+    lat.DrawLatex(0.08, 0.35, Form("t_win [ns]   : [%.6g, %.6g]", analysis_window.t_min, analysis_window.t_max));
+    lat.DrawLatex(0.08, 0.31, Form("Eg_all [MeV] : [%.6g, %.6g]", eg_all_min, eg_all_max));
+    lat.DrawLatex(0.08, 0.27, Form("W_win [ns]   : %.6g", w_win));
+    lat.DrawLatex(0.08, 0.23, Form("W_TSB [ns]   : %.6g", w_tsb));
+    lat.DrawLatex(0.08, 0.19, Form("s_geom=W_win/W_TSB : %.6g", scale_geom));
+    lat.DrawLatex(0.08, 0.15, Form("tshape AW mass : %.6g", tshape_aw_mass));
+    lat.DrawLatex(0.08, 0.11, Form("tshape TSB mass: %.6g", tshape_tsb_mass));
+    lat.DrawLatex(0.08, 0.07, Form("s_tshape=AW/TSB: %.6g", scale_tshape));
 
     lat.SetTextSize(0.032);
-    lat.DrawLatex(0.05, 0.15, "ACC prediction in AW (stat only):");
+    lat.DrawLatex(0.55, 0.15, "ACC prediction in AW (stat only):");
     lat.SetTextSize(0.030);
-    lat.DrawLatex(0.08, 0.10, Form("N_acc_pred = %.6g  +/-  %.6g", nacc_pred, nacc_err));
-
-    lat.SetTextSize(0.026);
-    lat.DrawLatex(0.05, 0.05, "Pages: (1) meta  (2) 1D (sub line + error band, raw points)  (3) 2D (sub only)");
+    lat.DrawLatex(0.58, 0.10, Form("N_acc_pred = %.6g  +/-  %.6g", nacc_pred, nacc_err));
 }
 
 static void StyleRaw(TH1* h)
@@ -155,6 +170,85 @@ static void StyleSub(TH1* h)
 
     // 点は出さない（誤差は帯で出す）
     h->SetMarkerSize(0.0);
+}
+
+static void ConvertHistCountsToDensity(TH1D* h)
+{
+    // 1Dヒストの count/bin を count/ns へ変換する。
+    // 物理カットではなく、t テンプレート積分をビン幅非依存にするための処理。
+    if (!h) return;
+    for (int ib = 1; ib <= h->GetNbinsX(); ++ib) {
+        const double w = h->GetXaxis()->GetBinWidth(ib);
+        if (!(w > 0.0) || !std::isfinite(w)) {
+            h->SetBinContent(ib, 0.0);
+            h->SetBinError(ib, 0.0);
+            continue;
+        }
+        h->SetBinContent(ib, h->GetBinContent(ib) / w);
+        h->SetBinError(ib, h->GetBinError(ib) / w);
+    }
+}
+
+static double IntegrateHistDensityRange(const TH1D* h, double x_min, double x_max)
+{
+    // piecewise-constant 密度を区間積分する。
+    // x は [ns]、bin content は [counts/ns] を想定。
+    if (!h) return 0.0;
+    if (!std::isfinite(x_min) || !std::isfinite(x_max)) return 0.0;
+    if (!(x_max > x_min)) return 0.0;
+
+    double sum = 0.0;
+    for (int ib = 1; ib <= h->GetNbinsX(); ++ib) {
+        const double lo = h->GetXaxis()->GetBinLowEdge(ib);
+        const double hi = lo + h->GetXaxis()->GetBinWidth(ib);
+        const double ov = std::min(hi, x_max) - std::max(lo, x_min);
+        if (!(ov > 0.0)) continue;
+        const double dens = h->GetBinContent(ib);
+        if (dens > 0.0 && std::isfinite(dens)) sum += dens * ov;
+    }
+    return (sum > 0.0 && std::isfinite(sum)) ? sum : 0.0;
+}
+
+static double IntegrateHistDensityTimeSideband(const TH1D* h,
+                                               double t_all_min,
+                                               double t_all_max)
+{
+    const double left = IntegrateHistDensityRange(h, t_all_min, analysis_window.t_min);
+    const double right = IntegrateHistDensityRange(h, analysis_window.t_max, t_all_max);
+    const double s = left + right;
+    return (s > 0.0 && std::isfinite(s)) ? s : 0.0;
+}
+
+static TH1D* MakeAccPredT_FromTemplate(const TH1D* hRawT,
+                                       const TH1D* hTShapeDensity,
+                                       long long n_tsb,
+                                       double tshape_tsb_mass)
+{
+    // ACC(t) を Eg-sideband 由来テンプレートで予測する:
+    //   mu_bin = N_TSB * ( ∫_bin f_t(t)dt / ∫_TSB f_t(t)dt )
+    if (!hRawT) return nullptr;
+
+    TH1D* h = (TH1D*)hRawT->Clone("hAccPred_t");
+    h->Reset("ICES");
+    h->Sumw2();
+
+    if (!hTShapeDensity) return h;
+    if (!(tshape_tsb_mass > 0.0) || !std::isfinite(tshape_tsb_mass)) return h;
+    if (n_tsb <= 0) return h;
+
+    const double inv_tsb = 1.0 / tshape_tsb_mass;
+    const double sqrt_n_tsb = std::sqrt((double)n_tsb);
+    for (int ib = 1; ib <= h->GetNbinsX(); ++ib) {
+        const double lo = h->GetXaxis()->GetBinLowEdge(ib);
+        const double hi = lo + h->GetXaxis()->GetBinWidth(ib);
+        const double mass_bin = IntegrateHistDensityRange(hTShapeDensity, lo, hi);
+        const double frac = mass_bin * inv_tsb;
+        const double mu = (double)n_tsb * frac;
+        const double err = sqrt_n_tsb * frac;
+        h->SetBinContent(ib, (mu > 0.0 && std::isfinite(mu)) ? mu : 0.0);
+        h->SetBinError(ib, (err > 0.0 && std::isfinite(err)) ? err : 0.0);
+    }
+    return h;
 }
 
 static TH1D* MakeAccPredT_FromTSB(const TH1D* hRawT, long long n_tsb, double w_tsb)
@@ -186,19 +280,48 @@ static TH1D* MakeAccPredT_FromTSB(const TH1D* hRawT, long long n_tsb, double w_t
     return h;
 }
 
-static TH2D* MakeAccPred2D_ThT_FromTSB(const TH2D* hRawThT, const TH1D* hTSBTh, double w_tsb)
+static TH2D* MakeAccPred2D_ThT_FromTSB(const TH2D* hRawThT,
+                                       const TH1D* hTSBTh,
+                                       const TH1D* hTShapeDensity,
+                                       double tshape_tsb_mass)
 {
-    // ACC: t一様。theta分布はTSBのhTSBThから。
-    // content(i_th, j_t) = (M_th(i)/w_tsb) * dt_bin(j)
+    // ACC: theta分布はTSBから、t分布は Eg-sideband テンプレートから与える。
+    // content(i_th, j_t) = M_th(i) * (∫_{bin j} f_t dt / ∫_{TSB} f_t dt)
     if (!hRawThT || !hTSBTh) return nullptr;
 
     TH2D* h = (TH2D*)hRawThT->Clone("hAccPred_ThT");
     h->Reset("ICES");
 
-    if (w_tsb <= 0.0) return h;
+    if (!hTShapeDensity) return h;
+    if (!(tshape_tsb_mass > 0.0) || !std::isfinite(tshape_tsb_mass)) return h;
+
+    const double inv_tsb = 1.0 / tshape_tsb_mass;
 
     for (int ith = 1; ith <= h->GetNbinsX(); ++ith) {
         const double M = hTSBTh->GetBinContent(ith);
+        if (!std::isfinite(M) || M <= 0.0) continue;
+        for (int jt = 1; jt <= h->GetNbinsY(); ++jt) {
+            const double lo = h->GetYaxis()->GetBinLowEdge(jt);
+            const double hi = lo + h->GetYaxis()->GetBinWidth(jt);
+            const double mass_bin = IntegrateHistDensityRange(hTShapeDensity, lo, hi);
+            const double frac = mass_bin * inv_tsb;
+            h->SetBinContent(ith, jt, M * frac);
+        }
+    }
+    return h;
+}
+
+static TH2D* MakeAccPred2D_ThT_UniformFromTSB(const TH2D* hRawThT,
+                                              const TH1D* hTSBTh,
+                                              double w_tsb)
+{
+    if (!hRawThT || !hTSBTh) return nullptr;
+    TH2D* h = (TH2D*)hRawThT->Clone("hAccPred_ThT_uniform");
+    h->Reset("ICES");
+    if (!(w_tsb > 0.0) || !std::isfinite(w_tsb)) return h;
+    for (int ith = 1; ith <= h->GetNbinsX(); ++ith) {
+        const double M = hTSBTh->GetBinContent(ith);
+        if (!std::isfinite(M) || M <= 0.0) continue;
         const double rate_th = M / w_tsb;
         for (int jt = 1; jt <= h->GetNbinsY(); ++jt) {
             const double dt = h->GetYaxis()->GetBinWidth(jt);
@@ -208,23 +331,51 @@ static TH2D* MakeAccPred2D_ThT_FromTSB(const TH2D* hRawThT, const TH1D* hTSBTh, 
     return h;
 }
 
-static TH2D* MakeAccPred2D_TEe_FromTSB(const TH2D* hRawTEe, const TH1D* hTSBEe, double w_tsb)
+static TH2D* MakeAccPred2D_TEe_FromTSB(const TH2D* hRawTEe,
+                                       const TH1D* hTSBEe,
+                                       const TH1D* hTShapeDensity,
+                                       double tshape_tsb_mass)
 {
-    // ACC: t一様。Ee分布はTSBのhTSBEeから。
-    // content(j_t, k_Ee) = (M_Ee(k)/w_tsb) * dt_bin(j)
+    // ACC: Ee分布はTSBから、t分布は Eg-sideband テンプレートから与える。
+    // content(j_t, k_Ee) = M_Ee(k) * (∫_{bin j} f_t dt / ∫_{TSB} f_t dt)
     if (!hRawTEe || !hTSBEe) return nullptr;
 
     TH2D* h = (TH2D*)hRawTEe->Clone("hAccPred_TEe");
     h->Reset("ICES");
 
-    if (w_tsb <= 0.0) return h;
+    if (!hTShapeDensity) return h;
+    if (!(tshape_tsb_mass > 0.0) || !std::isfinite(tshape_tsb_mass)) return h;
 
+    const double inv_tsb = 1.0 / tshape_tsb_mass;
+
+    for (int jt = 1; jt <= h->GetNbinsX(); ++jt) {
+        const double lo = h->GetXaxis()->GetBinLowEdge(jt);
+        const double hi = lo + h->GetXaxis()->GetBinWidth(jt);
+        const double mass_bin = IntegrateHistDensityRange(hTShapeDensity, lo, hi);
+        const double frac = mass_bin * inv_tsb;
+        for (int k = 1; k <= h->GetNbinsY(); ++k) {
+            const double M = hTSBEe->GetBinContent(k);
+            if (!std::isfinite(M) || M <= 0.0) continue;
+            h->SetBinContent(jt, k, M * frac);
+        }
+    }
+    return h;
+}
+
+static TH2D* MakeAccPred2D_TEe_UniformFromTSB(const TH2D* hRawTEe,
+                                              const TH1D* hTSBEe,
+                                              double w_tsb)
+{
+    if (!hRawTEe || !hTSBEe) return nullptr;
+    TH2D* h = (TH2D*)hRawTEe->Clone("hAccPred_TEe_uniform");
+    h->Reset("ICES");
+    if (!(w_tsb > 0.0) || !std::isfinite(w_tsb)) return h;
     for (int jt = 1; jt <= h->GetNbinsX(); ++jt) {
         const double dt = h->GetXaxis()->GetBinWidth(jt);
         for (int k = 1; k <= h->GetNbinsY(); ++k) {
             const double M = hTSBEe->GetBinContent(k);
-            const double rate_Ee = M / w_tsb;
-            h->SetBinContent(jt, k, rate_Ee * dt);
+            if (!std::isfinite(M) || M <= 0.0) continue;
+            h->SetBinContent(jt, k, (M / w_tsb) * dt);
         }
     }
     return h;
@@ -318,9 +469,15 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
     TH2D* hTSB_PePg = new TH2D("hTSB_PePg", "(phi_{detector,e}, phi_{detector,#gamma}) (TSB);phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
                                kNBins2D_phi, phi_e_min, phi_e_max_plot, kNBins2D_phi, phi_g_min, phi_g_max_plot);
 
+    // ---- p_t_acc テンプレート（Eg sideband）----
+    TH1D* hTShapeDensity = new TH1D("hTShapeDensity",
+                                    "ACC time-shape from Eg-sideband;t [ns];density [arb/ns]",
+                                    kNBins_t_shape, kTAllMin, kTAllMax);
+
     // 誤差伝播のため（raw/TSB）
     hRawEe->Sumw2();   hRawEg->Sumw2();   hRawt->Sumw2();    hRawPhiE->Sumw2(); hRawPhiG->Sumw2(); hRawThEg->Sumw2();
     hTSBEe->Sumw2();   hTSBEg->Sumw2();   hTSBPhiE->Sumw2(); hTSBPhiG->Sumw2(); hTSBThEg->Sumw2();
+    hTShapeDensity->Sumw2();
 
     // 読み込み
     std::ifstream fin(infile);
@@ -333,6 +490,7 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
     long long n_parsed = 0;
     long long n_aw     = 0;
     long long n_tsb    = 0;
+    long long n_tshape_ctrl = 0;
 
     std::string line;
     while (std::getline(fin, line)) {
@@ -366,6 +524,14 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
         const double phi_e_plot = phi_e_disc;
         const double phi_g_plot = phi_g_disc;
         const double theta_eg = std::fabs(phi_e_plot - phi_g_plot);
+
+        // Eg sideband から p_t_acc を取得:
+        // (Ee,theta)は解析窓内、Egは解析窓外、tはt_all内。
+        if (AnalysisWindow_InESB_Eg(analysis_window, ev.Ee, ev.Eg, theta_eg, ev.t,
+                                    kEgAllMin, kEgAllMax, kTAllMin, kTAllMax)) {
+            ++n_tshape_ctrl;
+            hTShapeDensity->Fill(ev.t);
+        }
 
         // AW (4D window)
         if (AnalysisWindow_In4D(analysis_window, ev.Ee, ev.Eg, ev.t, theta_eg)) {
@@ -411,32 +577,50 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
 
     const double w_win = analysis_window.t_max - analysis_window.t_min;
     const double w_tsb = AnalysisWindow_TimeSidebandWidth(analysis_window, kTAllMin, kTAllMax);
-    const double s = (w_tsb > 0.0) ? (w_win / w_tsb) : 0.0;
+    const double s_geom = (w_tsb > 0.0) ? (w_win / w_tsb) : 0.0;
 
-    const double nacc_pred = s * (double)n_tsb;
-    const double nacc_err  = (n_tsb > 0 && s > 0.0) ? (s * std::sqrt((double)n_tsb)) : 0.0;
+    ConvertHistCountsToDensity(hTShapeDensity);
+    const double tshape_aw_mass =
+        IntegrateHistDensityRange(hTShapeDensity, analysis_window.t_min, analysis_window.t_max);
+    const double tshape_tsb_mass =
+        IntegrateHistDensityTimeSideband(hTShapeDensity, kTAllMin, kTAllMax);
+    const bool has_tshape = (tshape_aw_mass > 0.0 && tshape_tsb_mass > 0.0 &&
+                             std::isfinite(tshape_aw_mass) && std::isfinite(tshape_tsb_mass));
+    const double s_tshape = has_tshape ? (tshape_aw_mass / tshape_tsb_mass) : 0.0;
+    const double s_eff = has_tshape ? s_tshape : s_geom;
+
+    const double nacc_pred = s_eff * (double)n_tsb;
+    const double nacc_err  = (n_tsb > 0 && s_eff > 0.0) ? (s_eff * std::sqrt((double)n_tsb)) : 0.0;
 
     // ターミナル出力（要求事項）
     Info("plot_data_hist_accsub", "ACC prediction in AW : N_acc_pred = %.6g +/- %.6g", nacc_pred, nacc_err);
+    Info("plot_data_hist_accsub", "time scale: s_geom=%.6g, s_tshape(EgSB)=%.6g (has_tshape=%d)",
+         s_geom, s_tshape, has_tshape ? 1 : 0);
 
     // ---- ACC予測ヒスト（TSBからスケール or 解析的に作る）----
-    TH1D* hAccEe   = (TH1D*)hTSBEe->Clone("hAccEe");     hAccEe->Scale(s);
-    TH1D* hAccEg   = (TH1D*)hTSBEg->Clone("hAccEg");     hAccEg->Scale(s);
-    TH1D* hAccPhiE = (TH1D*)hTSBPhiE->Clone("hAccPhiE"); hAccPhiE->Scale(s);
-    TH1D* hAccPhiG = (TH1D*)hTSBPhiG->Clone("hAccPhiG"); hAccPhiG->Scale(s);
-    TH1D* hAccThEg = (TH1D*)hTSBThEg->Clone("hAccThEg"); hAccThEg->Scale(s);
+    TH1D* hAccEe   = (TH1D*)hTSBEe->Clone("hAccEe");     hAccEe->Scale(s_eff);
+    TH1D* hAccEg   = (TH1D*)hTSBEg->Clone("hAccEg");     hAccEg->Scale(s_eff);
+    TH1D* hAccPhiE = (TH1D*)hTSBPhiE->Clone("hAccPhiE"); hAccPhiE->Scale(s_eff);
+    TH1D* hAccPhiG = (TH1D*)hTSBPhiG->Clone("hAccPhiG"); hAccPhiG->Scale(s_eff);
+    TH1D* hAccThEg = (TH1D*)hTSBThEg->Clone("hAccThEg"); hAccThEg->Scale(s_eff);
 
-    // t は pedestal一様で作る
-    TH1D* hAcct = MakeAccPredT_FromTSB(hRawt, n_tsb, w_tsb);
+    TH1D* hAcct = nullptr;
+    TH2D* hAcc_ThT = nullptr;
+    TH2D* hAcc_TEe = nullptr;
+    if (has_tshape) {
+        hAcct = MakeAccPredT_FromTemplate(hRawt, hTShapeDensity, n_tsb, tshape_tsb_mass);
+        hAcc_ThT = MakeAccPred2D_ThT_FromTSB(hRaw_ThT, hTSBThEg, hTShapeDensity, tshape_tsb_mass);
+        hAcc_TEe = MakeAccPred2D_TEe_FromTSB(hRaw_TEe, hTSBEe, hTShapeDensity, tshape_tsb_mass);
+    } else {
+        hAcct = MakeAccPredT_FromTSB(hRawt, n_tsb, w_tsb);
+        hAcc_ThT = MakeAccPred2D_ThT_UniformFromTSB(hRaw_ThT, hTSBThEg, w_tsb);
+        hAcc_TEe = MakeAccPred2D_TEe_UniformFromTSB(hRaw_TEe, hTSBEe, w_tsb);
+    }
 
-    TH2D* hAcc_EeEg = (TH2D*)hTSB_EeEg->Clone("hAcc_EeEg"); hAcc_EeEg->Scale(s);
-    TH2D* hAcc_ThEe = (TH2D*)hTSB_ThEe->Clone("hAcc_ThEe"); hAcc_ThEe->Scale(s);
-    TH2D* hAcc_ThEg = (TH2D*)hTSB_ThEg->Clone("hAcc_ThEg"); hAcc_ThEg->Scale(s);
-    TH2D* hAcc_PePg = (TH2D*)hTSB_PePg->Clone("hAcc_PePg"); hAcc_PePg->Scale(s);
-
-    // tを含む2Dは外積で作る
-    TH2D* hAcc_ThT = MakeAccPred2D_ThT_FromTSB(hRaw_ThT, hTSBThEg, w_tsb);
-    TH2D* hAcc_TEe = MakeAccPred2D_TEe_FromTSB(hRaw_TEe, hTSBEe, w_tsb);
+    TH2D* hAcc_EeEg = (TH2D*)hTSB_EeEg->Clone("hAcc_EeEg"); hAcc_EeEg->Scale(s_eff);
+    TH2D* hAcc_ThEe = (TH2D*)hTSB_ThEe->Clone("hAcc_ThEe"); hAcc_ThEe->Scale(s_eff);
+    TH2D* hAcc_ThEg = (TH2D*)hTSB_ThEg->Clone("hAcc_ThEg"); hAcc_ThEg->Scale(s_eff);
+    TH2D* hAcc_PePg = (TH2D*)hTSB_PePg->Clone("hAcc_PePg"); hAcc_PePg->Scale(s_eff);
 
     // ---- 差し引き後（sig+rmd）----
     TH1D* hSubEe   = (TH1D*)hRawEe->Clone("hSubEe");       hSubEe->Add(hAccEe,   -1.0);
@@ -461,8 +645,11 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
     TCanvas c0("c0", "meta", 1200, 800);
     c0.cd();
     DrawMetaPage(infile, outpdf.Data(),
-                 n_lines, n_parsed, n_aw, n_tsb,
-                 kTAllMin, kTAllMax, w_win, w_tsb, s, nacc_pred, nacc_err);
+                 n_lines, n_parsed, n_aw, n_tsb, n_tshape_ctrl,
+                 kTAllMin, kTAllMax, kEgAllMin, kEgAllMax,
+                 w_win, w_tsb,
+                 s_geom, tshape_aw_mass, tshape_tsb_mass, s_eff,
+                 nacc_pred, nacc_err);
 
     // ---- ページ2：1D（青:折れ線 + 水色誤差帯、赤:薄い点のみ）----
     auto Draw1DOverlay = [](TH1D* hSub, TH1D* hRaw){
@@ -519,6 +706,6 @@ void plot_data_hist_accsub(const char* infile = "data/data.dat")
     c2.Print(Form("%s]", outpdf.Data()));
 
     Info("plot_data_hist_accsub", "wrote: %s (3 pages)", outpdf.Data());
-    Info("plot_data_hist_accsub", "lines=%lld, parsed=%lld, AW=%lld, TSB=%lld, s=%.6g",
-         n_lines, n_parsed, n_aw, n_tsb, s);
+    Info("plot_data_hist_accsub", "lines=%lld, parsed=%lld, AW=%lld, TSB=%lld, EgSB_tshape=%lld, s_eff=%.6g",
+         n_lines, n_parsed, n_aw, n_tsb, n_tshape_ctrl, s_eff);
 }

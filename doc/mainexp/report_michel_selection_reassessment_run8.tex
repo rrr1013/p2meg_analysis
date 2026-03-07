@@ -1,0 +1,257 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{longtable}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\geometry{margin=22mm}
+
+\title{p2MEG run8 における Michel 崩壊選別の再検証\\
+問題点の同定・補正解析・最終作業点の提案}
+\author{p2MEG 解析レポート}
+\date{2026年2月28日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本レポートでは、run8 データに対してこれまで行ってきた Michel 崩壊（$\mu^+ \to e^+ \nu_e \bar{\nu}_\mu$）選別考察の問題点を明示し、
+その問題点を補正する追加解析を実行した。
+主な問題点は、(1) 同一データでの条件最適化と評価による過学習リスク、
+(2) PS--NaI 対応の非対称性、
+(3) 偶発成分の見積りが単純 sideband に依存していた点である。
+これを補うために、side ごとの同側対応（PS\_A$\leftrightarrow$NaI\_A, PS\_B$\leftrightarrow$NaI\_B）を固定し、
+even/odd split による疑似交差検証と event-mixing 法による偶発見積りを導入した。
+その結果、再現性を保ちつつ prompt 優勢を強める作業点として
+PS\_A$\ge 43.9$ counts, PS\_B$\ge 35.7$ counts, $|dt|\le 20$ samples, $E_{\mathrm{sum}}\ge 15000$ ADC$\times$samples,
+かつ side 内 single-PS/single-module 条件を採用できることを示した。
+この作業点で prompt/delay は 2.29、A/B バランスは 0.44、sideband 純度 proxy は 0.885 となった。
+さらに event-mixing で正規化した偶発成分を差し引くと、prompt excess は delay excess の約 5.2 倍であり、
+選別後データが偶発主導ではなく Michel 由来成分を優勢に含むことを支持する。
+\end{abstract}
+
+\section{目的と背景}
+本研究の目的は、run8 の実データから
+「Michel 崩壊由来事象が支配的（dominant）になる選別条件」を、
+第三者が追試可能な形で同定することである。
+
+本実験系では、中心付近で停止した $\mu^+$ から放出された $e^+$ が
+まずプラスチックシンチレータ（PS）を通過し、その後 NaI シンチレータ（NaI）へ入射してエネルギーを与える。
+トリガーは PS\_A または PS\_B のヒットで与えられるため、
+原理的には A 側と B 側の双方に Michel 由来事象が含まれる。
+したがって、選別が適切であれば prompt 成分の増大とともに A/B の極端な非対称は緩和されるはずである。
+
+\section{用語と記号の定義}
+本レポートで用いる略語・記号を表\ref{tab:def}に定義する。
+未定義略語は使わない。
+
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\caption{本レポートで使う用語の定義}\label{tab:def}\\
+\toprule
+用語・記号 & 定義 \\
+\midrule
+\endfirsthead
+\toprule
+用語・記号 & 定義 \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+PS & プラスチックシンチレータ。時刻情報を与える検出器。PS\_A, PS\_B の2チャネル。 \\
+NaI & ヨウ化ナトリウムシンチレータ。エネルギー情報を与える検出器。NaI\_A1, NaI\_A2, NaI\_B1, NaI\_B2 の4チャネル。 \\
+side & 幾何的に対応する検出器組。A side は (PS\_A, NaI\_A1, NaI\_A2)、B side は (PS\_B, NaI\_B1, NaI\_B2)。 \\
+module pulse & 同一 side 内の NaI 2チャネル対応ペア（A1--A2 または B1--B2）から作る代表パルス。 \\
+$t_{\mathrm{PS}}$ & 選別条件を満たす PS 候補時刻（本解析では最早時刻を採用）。 \\
+$t_{\mathrm{mod}}$ & module pulse の代表時刻。 \\
+$dt$ & 時間差。$dt=t_{\mathrm{mod}}-t_{\mathrm{PS}}$（sample 単位、1 sample = 4 ns）。 \\
+prompt 窓 & 本来の同時事象が多いと期待される $|dt| \le w$ の窓。 \\
+delay 窓 & ビーム時間構造や偶発が入りやすい窓。本解析では $110 \le |dt| \le 170$ samples を指標に使用。 \\
+sideband & 偶発見積り用の窓。主に $80 \le |dt| \le 160$（SB1）と $200 \le |dt| \le 280$（SB2）。 \\
+$E_{\mathrm{sum}}$ & module pulse の NaI 和積分（ADC$\times$sample 単位）。 \\
+single-PS 条件 & side 内で PS 閾値超え候補がちょうど1本。 \\
+single-module 条件 & side 内で NaI module pulse がちょうど1本。 \\
+purity proxy & sideband から背景を線形外挿して作る prompt 純度の近似値。 \\
+event-mixing & 異なる事象間で $t_{\mathrm{PS}}$ と $t_{\mathrm{mod}}$ を組み合わせ、偶発背景分布を作る手法。 \\
+\end{longtable}
+
+\section{従来考察の問題点}
+従来の探索結果（閾値スキャンを含む）には有用な情報がある一方、次の問題が残っていた。
+
+\subsection{同一データ最適化の過学習リスク}
+同じ run8 データで cut の探索と性能評価を同時に行うと、
+偶然の揺らぎに過剰適合した条件を「最適」と誤認しうる。
+特に複数パラメータ（PS 閾値、$dt$ 窓、エネルギー窓、single 条件）を広く走査した場合、
+look-elsewhere 的なバイアスが増える。
+
+\subsection{A/B 非対称の未解決}
+従来の高スコア条件は prompt 収量自体は大きいが、A 側が支配的で B 側が極端に小さいケースを含んでいた。
+この非対称が残る条件は、Michel 支配の主張に対して説得力が弱い。
+
+\subsection{偶発見積りの単純化}
+sideband 外挿のみでは、$dt$ 分布の形状依存（ビーム時間構造・繰り返し成分）を十分扱えない。
+偶発起源の寄与を別手段で検証する必要がある。
+
+\section{補正解析の設計}
+上記問題を補うため、次の設計で再解析した。
+
+\subsection{同側対応の固定}
+PS\_A は NaI\_A module、PS\_B は NaI\_B module と対応させ、
+cross-side の対応は許さない。
+これにより幾何学的整合性を保つ。
+
+\subsection{疑似交差検証（even/odd split）}
+事象番号の偶奇でデータを分割し、
+片側で最適化した cut をもう片側で評価する。
+すなわち
+\begin{enumerate}
+  \item even で最適化 $\to$ odd で評価
+  \item odd で最適化 $\to$ even で評価
+\end{enumerate}
+を行い、再現性を確認する。
+
+\subsection{event-mixing による偶発検証}
+同じ side の別イベント同士で $(t_{\mathrm{PS}}, t_{\mathrm{mod}})$ を組み替えて混合分布を作り、
+遠側 sideband で正規化して real 分布と比較する。
+これにより、prompt 余剰が偶発のみで説明できるかを直接検証する。
+
+\subsection{探索範囲とロバスト条件}
+探索パラメータは以下とした。
+\begin{itemize}
+  \item PS スケール: $s_A \in \{0.35,0.40,0.45,0.50\}$, $s_B \in \{0.20,0.25,0.30,0.35\}$
+  \item prompt 窓: $w \in \{16,20,24\}$ samples
+  \item $E_{\mathrm{sum}}$ 下限: $\{15000,30000,45000\}$ ADC$\times$sample
+  \item single-PS = ON, single-module = ON
+\end{itemize}
+さらに過度な条件を除くため、
+$N_{\mathrm{prompt}}\ge 700$, purity(SB1)$\ge0.80$, prompt/delay$\ge1.80$, side balance$\ge0.30$
+を満たす点のみを候補とした。
+
+\section{再解析結果}
+\subsection{split 再現性}
+再解析マクロ（\texttt{check/reassess\_michel\_selection\_run8.C}）の出力より、
+最適化結果は次の通りであった。
+
+\begin{table}[htbp]
+\centering
+\caption{split 学習・評価の定量結果（run8）}
+\label{tab:split}
+\begin{tabular}{lcccccc}
+\toprule
+設定 & $N_{\mathrm{prompt}}$ & A/B & prompt/delay & purity(SB1) & balance \\
+\midrule
+train-even best & 426 & 302/124 & 2.60 & 0.897 & 0.411 \\
+even$\to$odd 評価 & 381 & 257/124 & 2.03 & 0.871 & 0.482 \\
+train-odd best & 367 & 243/124 & 1.95 & 0.893 & 0.510 \\
+odd$\to$even 評価 & 397 & 278/119 & 2.42 & 0.912 & 0.428 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+学習・評価を入れ替えても、prompt/delay が常に 2 前後以上で維持され、
+side balance も 0.4 程度を保った。
+これは「特定 split にのみ効く cut」ではないことを示す。
+
+\subsection{最終採用作業点}
+再現性と実用性を優先し、even 側で得た最適点を最終作業点として固定した。
+
+\begin{align}
+\text{PS\_A threshold} &= 125.5 \times 0.35 = 43.925 \ \mathrm{counts}, \\
+\text{PS\_B threshold} &= 178.5 \times 0.20 = 35.700 \ \mathrm{counts}, \\
+|dt| &\le 20 \ \text{samples} \ (80\ \mathrm{ns}), \\
+E_{\mathrm{sum}} &\ge 15000 \ \mathrm{ADC\times sample}, \\
+\text{single-PS} &= \text{ON},\quad \text{single-module}=\text{ON}.
+\end{align}
+
+全データ適用時の指標は以下である。
+\begin{itemize}
+  \item $N_{\mathrm{prompt}}=807$（A=559, B=248）
+  \item prompt/delay = 2.293
+  \item purity(SB1) = 0.885
+  \item side balance = 0.444
+\end{itemize}
+
+従来のデフォルト条件（scaleA=1, scaleB=1, $|dt|\le20$, $E$下限なし, single 条件なし）では
+balance が 0.058 と極端に小さかったため、
+本作業点は A/B 再現性の点で明確に改善している。
+
+\subsection{event-mixing 検証}
+同作業点で event-mixing を行い、遠側 sideband 正規化後に比較した。
+
+\begin{itemize}
+  \item real prompt: 810
+  \item mixed prompt (scaled): 256.6
+  \item prompt excess: 553.4
+  \item real delay: 355
+  \item mixed delay (scaled): 248.6
+  \item delay excess: 106.4
+  \item prompt excess / delay excess = 5.20
+\end{itemize}
+
+すなわち、偶発成分で正規化しても prompt に大きな余剰が残り、
+その余剰は delay 余剰より約 5 倍大きい。
+この結果は「選別後の中心成分が偶発のみで説明される」という仮説に反する。
+
+\subsection{図}
+再解析で作成した主要図を図\ref{fig:dtmix}、図\ref{fig:energy}に示す。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=2]{mainexp/reassess_michel_selection_run8.pdf}
+  \caption{再解析の主要結果。左: real と event-mixing（正規化後）の $dt$ 分布。右: split 再現性指標。}
+  \label{fig:dtmix}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=3]{mainexp/reassess_michel_selection_run8.pdf}
+  \caption{再解析でのエネルギー比較と最終 PS 閾値位置。}
+  \label{fig:energy}
+\end{figure}
+
+\section{考察}
+\subsection{今回の改善点}
+本再解析により、従来考察の弱点だった
+「過学習」「A/B 非対称」「偶発見積りの単純化」に対して、
+それぞれ独立の対策を導入し、定量的改善を確認した。
+
+\subsection{物理的解釈}
+prompt/delay の増大、A/B バランスの改善、event-mixing 差分での prompt excess 優位は、
+選別後サンプルが
+「PS と同時な NaI 応答（Michel 由来を含む）を優先し、偶発を抑制している」
+という解釈と整合する。
+
+\subsection{残る制限}
+ただし、以下の制限は残る。
+\begin{enumerate}
+  \item エネルギー軸が未較正（ADC$\times$sample）であり、Michel endpoint との直接比較は未実施。
+  \item event-mixing は偶発近似として有効だが、ビーム周期構造を完全に再現する保証はない。
+  \item run8 単独解析であり、角度設定・run 間一貫性の検証が今後必要。
+\end{enumerate}
+
+\section{結論}
+本再解析は、従来考察の主要問題点を定量的に補正し、
+Michel 崩壊由来事象を優勢に含むと主張できる作業点を提示した。
+推奨作業点は
+\[
+\mathrm{PS_A}\ge 43.925,\ \mathrm{PS_B}\ge 35.700,\ |dt|\le20,\ E_{\mathrm{sum}}\ge15000,
+\]
+かつ single-PS/single-module 条件である。
+
+この作業点で
+prompt/delay = 2.293、purity(SB1)=0.885、A/B balance=0.444、
+さらに event-mixing 差分で prompt excess/delay excess = 5.20 を得た。
+以上より、少なくとも run8 において
+「偶発優勢」ではなく「Michel 成分を主要に含む選別」が実現できていると結論する。
+
+\section*{再現情報}
+本レポートの主要数値は次コマンドの標準出力から取得した。
+\begin{verbatim}
+root -l -b -q 'check/reassess_michel_selection_run8.C'
+\end{verbatim}
+図は次ファイルに保存される。
+\begin{verbatim}
+doc/mainexp/reassess_michel_selection_run8.pdf
+\end{verbatim}
+
+\end{document}

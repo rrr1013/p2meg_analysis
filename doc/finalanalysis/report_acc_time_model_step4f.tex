@@ -1,0 +1,345 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{siunitx}
+\geometry{margin=22mm}
+
+\title{p2MEG 最終解析における ACC 時間構造のデータ駆動モデル化\\
+step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt の検討}
+\author{p2MEG 解析レポート}
+\date{2026年3月6日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+最終解析用再構成データ
+\texttt{data/finaldata/step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt}
+を用いて、ACC（accidental）事象の時間構造をデータ駆動で評価した。
+当初想定していた
+\(
+p_{\mathrm{acc}}(x)=p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)\times p_t(t)
+\)
+かつ \(p_t(t)=\) 一様
+という仮定は、実データの時間分布から成立しない。
+そこで、まず \(E_\gamma\) ごとの時間分布 \(p_t(t|E_\gamma)\) を broad な対称関数でフィットし、
+各 \(E_\gamma\) bin について
+\(
+R_i = N_i(\mathrm{AW}) / N_i(\mathrm{TSB})
+\)
+を求めた。
+次に、この \(R_i\) を timing sideband (TSB) の実測事象数に掛けて
+解析窓 (AW) 内の ACC 数を予測した。
+その結果、現在の解析窓
+\(
+20\le E_e\le 80\;\mathrm{MeV},
+20\le E_\gamma\le 80\;\mathrm{MeV},
+-50\le t\le 50\;\mathrm{ns},
+1.7\le \theta_{eg}\le \pi
+\)
+では、観測事象数 \(18\) に対し
+\(
+N_{\mathrm{ACC,pred}} = 17.85 \pm 2.82
+\)
+となり、統計誤差と簡易モデル不定性の範囲で
+現状の解析窓はほぼ全て ACC で説明できることが分かった。
+\end{abstract}
+
+\section{目的}
+本解析の目的は、最終 5D データだけを用いて ACC 時間構造をできる限り定量化し、
+最終解析に使う background 見積りの現実的な基礎を与えることである。
+
+今回利用できた情報は最終再構成後の
+\[
+(E_e,\; E_\gamma,\; t,\; \phi_e,\; \phi_\gamma)
+\]
+のみであり、再構成アルゴリズムや event-by-event の共通時間原点は不明であった。
+したがって、raw レベルの hit mixing や厳密な event mixing は行えない。
+その代わりに、「全データの大部分は ACC である」という仮定の下で、
+時間分布そのものを broad な ACC 構造として扱い、
+\(E_\gamma\) ごとの依存性を取り込む方針を採用した。
+
+\section{問題設定}
+全データのヒストグラムから、次の 2 点が問題であることが分かっていた。
+
+\begin{enumerate}
+  \item \(t\) 分布は一様ではなく、\(t=0\) 付近に幅 \(\mathcal{O}(100\,\mathrm{ns})\) の broad peak を持つ。
+  \item \(N(\mathrm{AW})/N(\mathrm{TSB})\) は \(E_\gamma\) に依存する。
+\end{enumerate}
+
+このため、従来の
+\[
+N_{\mathrm{ACC}}(\mathrm{AW})
+=
+\frac{W_{\mathrm{AW}}}{W_{\mathrm{TSB}}} N_{\mathrm{TSB}}
+\]
+という単純スケーリングは不適切である。
+
+\section{入力データと選別}
+\subsection{入力ファイル}
+解析対象は
+\[
+\texttt{data/finaldata/step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt}
+\]
+である。
+5 列は
+\[
+E_e,\;E_\gamma,\;t,\;\phi_e,\;\phi_\gamma
+\]
+であり、単位はそれぞれ MeV, MeV, ns, rad, rad とした。
+
+\subsection{角度と解析窓}
+角度は
+\[
+\theta_{eg} = |\phi_e-\phi_\gamma|
+\]
+で定義した。
+今回の解析で用いた最終解析窓はコード設定
+\texttt{include/p2meg/AnalysisWindow.h}
+に合わせて
+\begin{align}
+20 &\le E_e \le 80 \;\mathrm{MeV},\\
+20 &\le E_\gamma \le 80 \;\mathrm{MeV},\\
+-50 &\le t \le 50 \;\mathrm{ns},\\
+1.7 &\le \theta_{eg} \le \pi
+\end{align}
+とした。
+TSB は
+\[
+t\in[-500,500]\;\mathrm{ns}
+\quad\text{かつ}\quad
+t\notin[-50,50]\;\mathrm{ns}
+\]
+で定義した。
+
+\section{ACC 時間構造のモデル化}
+\subsection{基本方針}
+再構成アルゴリズムが不明なため、prompt 核の厳密形ではなく、
+全データの時間分布を broad な ACC 構造として smooth に近似した。
+特に \(E_\gamma\) 依存が強いため、\(E_\gamma\) を
+\[
+[0,10],\ [10,20],\ [20,30],\ [30,40],\ [40,50],\ [50,80]\ \mathrm{MeV}
+\]
+の bin に分けて時間分布を作成した。
+
+\subsection{フィット関数}
+各 \(E_\gamma\) bin に対して、\(|t|<20\;\mathrm{ns}\) を blind core とし、
+その外側の分布を次の対称関数でフィットした。
+\begin{equation}
+f_i(t)=A_i\exp\left(-\frac{t^2}{2\sigma_i^2}\right)+C_i.
+\end{equation}
+ここで \(A_i\) は振幅、\(\sigma_i\) は幅、\(C_i\) は pedestal である。
+
+blind core の縁だけを拾う不自然に鋭い peak を避けるため、
+\[
+\sigma \ge 20\ \mathrm{ns}
+\]
+を下限として課した。
+これは signal/RMD の prompt 核を記述するためではなく、
+あくまでビーム起源の broad ACC 構造だけを見るための制約である。
+
+\subsection{フィットの目視確認}
+フィット結果は
+\texttt{doc/finalanalysis/fit\_acc\_time\_by\_eg\_step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.pdf}
+に保存した。
+代表として \(E_\gamma=0\text{--}10\), \(10\text{--}20\), \(20\text{--}30\), \(30\text{--}40\) MeV の結果を
+図\ref{fig:fitpages} に示す。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.9\linewidth,page=2]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{3mm}
+  \includegraphics[width=0.9\linewidth,page=3]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{\(E_\gamma=0\text{--}10\) MeV および \(10\text{--}20\) MeV の時間分布フィット。灰色帯は blind core (\(|t|<20\) ns)。}
+  \label{fig:fitpages}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.9\linewidth,page=4]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{3mm}
+  \includegraphics[width=0.9\linewidth,page=5]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{\(E_\gamma=20\text{--}30\) MeV および \(30\text{--}40\) MeV の時間分布フィット。}
+  \label{fig:fitpages2}
+\end{figure}
+
+目視では、
+\begin{itemize}
+  \item \(0\text{--}10\) MeV では broad peak を明確に再現している。
+  \item \(10\text{--}20\) MeV と \(20\text{--}30\) MeV でも不自然な狭い中心 peak は抑えられた。
+  \item \(30\text{--}40\) MeV は統計が薄く、ほぼ flat に近いが破綻はしていない。
+  \item \(40\) MeV 以上は統計が小さすぎて、定量的にはほぼ参考値である。
+\end{itemize}
+と判断した。
+
+\section{\(R_i = N_i(\mathrm{AW}) / N_i(\mathrm{TSB})\) の導出}
+各 \(E_\gamma\) bin について、フィット関数から
+\begin{equation}
+R_i^{\mathrm{fit}} =
+\frac{
+\int_{-50}^{50} f_i(t)\,dt
+}{
+\int_{-500}^{-50} f_i(t)\,dt
++
+\int_{50}^{500} f_i(t)\,dt
+}
+\end{equation}
+を定義した。
+比較のため、生データからの
+\[
+R_i^{\mathrm{data}} = N_i(\mathrm{AW}) / N_i(\mathrm{TSB})
+\]
+も併記した。
+
+結果を表\ref{tab:rvalues} に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{\(E_\gamma\) bin ごとの \(R_i\) の比較}
+\label{tab:rvalues}
+\begin{tabular}{cccccc}
+\toprule
+\(E_\gamma\) [MeV] & entries & \(N_{\mathrm{AW}}\) & \(N_{\mathrm{TSB}}\) & \(R_i^{\mathrm{data}}\) & \(R_i^{\mathrm{fit}}\) \\
+\midrule
+0--10  & 331 & 111 & 220 & 0.5045 & 0.5501 \\
+10--20 &  92 &  21 &  71 & 0.2958 & 0.2079 \\
+20--30 &  79 &  16 &  63 & 0.2540 & 0.2384 \\
+30--40 &  23 &   1 &  22 & 0.0455 & 0.1135 \\
+40--50 &   2 &   1 &   1 & 1.0000 & 0.1136 \\
+50--80 &   2 &   0 &   2 & 0.0000 & 0.1114 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+最終解析窓では \(E_\gamma \ge 20\) MeV しか使わないため、
+実際に寄与するのは主に
+\(20\text{--}30\) MeV, \(30\text{--}40\) MeV, \(40\text{--}50\) MeV, \(50\text{--}80\) MeV
+の4 bin である。
+
+\section{TSB からの ACC 数予測}
+\subsection{定義}
+各 \(E_\gamma\) bin について、
+\begin{equation}
+N_{\mathrm{ACC,pred},i}(\mathrm{AW})
+=
+R_i^{\mathrm{fit}} N_i(\mathrm{TSB})
+\end{equation}
+で ACC 事象数を予測した。
+総和は
+\begin{equation}
+N_{\mathrm{ACC,pred}}(\mathrm{AW})
+=
+\sum_i N_{\mathrm{ACC,pred},i}(\mathrm{AW})
+\end{equation}
+とした。
+
+\subsection{誤差の付け方}
+現在のデータだけで厳密な系統誤差は定義できないため、
+各 bin で次の 2 成分を足し合わせた。
+\begin{enumerate}
+  \item TSB 計数の Poisson 統計誤差
+  \[
+  \sigma_{\mathrm{stat},i}
+  =
+  R_i^{\mathrm{fit}}\sqrt{N_i(\mathrm{TSB})}
+  \]
+  \item smooth fit と実測比の差を使った簡易モデル不定性
+  \[
+  \sigma_{\mathrm{model},i}
+  =
+  N_i(\mathrm{TSB})
+  \left|R_i^{\mathrm{fit}}-R_i^{\mathrm{data}}\right|
+  \]
+\end{enumerate}
+したがって、
+\begin{equation}
+\sigma_i^2
+=
+\sigma_{\mathrm{stat},i}^2+\sigma_{\mathrm{model},i}^2
+\end{equation}
+とした。
+全体誤差は bin 間独立近似の下で二乗和平方根を取った。
+
+\subsection{結果}
+結果を図\ref{fig:predacc} に示す。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{3mm}
+  \includegraphics[width=0.95\linewidth,page=2]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{TSB からの ACC 数予測。上: 全体 summary。下: \(E_\gamma\) bin ごとの AW 観測数と ACC 予測数。}
+  \label{fig:predacc}
+\end{figure}
+
+数値は次の通りである。
+\begin{align}
+N_{\mathrm{AW,obs}} &= 18,\\
+N_{\mathrm{ACC,pred}} &= 17.85 \pm 2.82,\\
+N_{\mathrm{AW,obs}} - N_{\mathrm{ACC,pred}} &= 0.15.
+\end{align}
+
+bin ごとの主な内訳は
+\begin{itemize}
+  \item \(20\text{--}30\) MeV: \(16\) observed に対し \(15.02 \pm 2.13\) predicted
+  \item \(30\text{--}40\) MeV: \(1\) observed に対し \(2.50 \pm 1.59\) predicted
+  \item \(40\text{--}50\) MeV: \(1\) observed に対し \(0.11 \pm 0.89\) predicted
+  \item \(50\text{--}80\) MeV: \(0\) observed に対し \(0.22 \pm 0.27\) predicted
+\end{itemize}
+である。
+
+\section{考察}
+\subsection{今回の結論}
+現在の最終解析窓では、観測された AW 事象数は
+データ駆動で求めた ACC 予測と整合している。
+少なくとも event count のレベルでは、
+「現時点で見えている事象はほぼ全て ACC で説明できる」
+というのが最も保守的で妥当な結論である。
+
+\subsection{この結果の意味}
+今回の結果は「信号が全く無いことの証明」ではない。
+しかし、
+\[
+N_{\mathrm{AW,obs}} - N_{\mathrm{ACC,pred}}
+= 0.15
+\]
+であり、その大きさは今回付けた誤差 \(\pm 2.82\) より十分小さい。
+したがって、現在の解析窓で統計的に有意な excess を主張することはできない。
+
+\subsection{限界}
+本解析には次の制約がある。
+\begin{enumerate}
+  \item 再構成アルゴリズムと event-level 時間原点が不明であり、
+  raw に戻った厳密な hit mixing ができない。
+  \item 誤差評価のうち \(\sigma_{\mathrm{model}}\) は簡易的な proxy であり、
+  厳密な系統誤差ではない。
+  \item \(E_\gamma \ge 40\) MeV の bin は統計が少なく、\(R_i\) は不安定である。
+\end{enumerate}
+
+\subsection{次にやるべきこと}
+今後の優先順位は次の通りである。
+\begin{enumerate}
+  \item \(E_\gamma\) だけでなく \(\theta_{eg}\) 依存も含めた
+  \(R(E_\gamma,\theta)\) を調べる。
+  \item Eg 依存スケールで TSB を重み付きにした差し引きヒストグラムを作り、
+  residual の形状を確認する。
+  \item もし再構成情報が将来得られるなら、raw あるいは singles レベルで
+  ACC 時間構造を作り直す。
+\end{enumerate}
+
+\section{まとめ}
+最終 5D データのみを用いて ACC 時間構造をデータ駆動で評価した。
+blind core を除いた \(E_\gamma\) ごとの時間分布を smooth な対称関数でフィットし、
+それに基づいて \(R_i = N_i(\mathrm{AW})/N_i(\mathrm{TSB})\) を求めた。
+この \(R_i\) を使って TSB から AW 内の ACC 数を予測した結果、
+\[
+N_{\mathrm{ACC,pred}} = 17.85 \pm 2.82
+\]
+となり、観測 \(18\) 事象と整合した。
+従って、現時点では現在の最終解析窓の事象は
+ACC でほぼ説明できると結論するのが妥当である。
+
+\end{document}

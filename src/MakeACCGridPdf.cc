@@ -1,6 +1,7 @@
 // src/MakeACCGridPdf.cc
 #include "p2meg/MakeACCGridPdf.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <sstream>
@@ -11,6 +12,7 @@
 #include "TFile.h"
 #include "TNamed.h"
 #include "TParameter.h"
+#include "TH1.h"
 #include "TH2.h"
 #include "THn.h"
 #include "TAxis.h"
@@ -29,11 +31,19 @@
 // ---- 4D格子ビニング（Ee, Eg, phi_e, phi_g）----
 static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
+static constexpr int kNBins_tShape = 400;
 
 // ---- TSB の全時間範囲（基本案）----
 // 実データの取得レンジに合わせて変更すること。
-static constexpr double kTAllMin = -10.0; // [ns]
-static constexpr double kTAllMax =  10.0; // [ns]
+static constexpr double kTAllMin = -500.0; // [ns]
+static constexpr double kTAllMax =  500.0; // [ns]
+
+// ---- 最終解析用 Eg 条件付き time template のカテゴリ ----
+// 低エネルギー側 [0,20) は診断用とみなし、ACC PDF の時間項には使わない。
+static constexpr int kNAccTimeEgBins = 2;
+static constexpr double kAccTimeEgEdges[kNAccTimeEgBins + 1] = {
+    20.0, 30.0, 80.0
+};
 
 // ---- 因子化後の平滑化設定（E軸方向のみ）----
 // 物理カットではなく、TSB 統計の疎さによる「穴」を埋めるための数値的平滑化。
@@ -158,6 +168,61 @@ static void SmoothAlongEPerPhi(TH2D& h, int radius_bins, double sigma_bins) {
   }
 }
 
+// 1Dヒストを count/bin から density[count/ns] へ変換する
+static void ConvertCountsToDensity1D(TH1D& h) {
+  const int nb = h.GetXaxis()->GetNbins();
+  for (int ib = 1; ib <= nb; ++ib) {
+    const double w = h.GetXaxis()->GetBinWidth(ib);
+    if (!(w > 0.0) || !Math_IsFinite(w)) {
+      h.SetBinContent(ib, 0.0);
+      h.SetBinError(ib, 0.0);
+      continue;
+    }
+    h.SetBinContent(ib, h.GetBinContent(ib) / w);
+    h.SetBinError(ib, h.GetBinError(ib) / w);
+  }
+}
+
+// piecewise-constant 密度を区間積分する
+static double IntegrateDensityRange1D(const TH1D& h, double x_min, double x_max) {
+  if (!Math_IsFinite(x_min) || !Math_IsFinite(x_max)) return 0.0;
+  if (!(x_max > x_min)) return 0.0;
+
+  const int nb = h.GetXaxis()->GetNbins();
+  double sum = 0.0;
+  for (int ib = 1; ib <= nb; ++ib) {
+    const double lo = h.GetXaxis()->GetBinLowEdge(ib);
+    const double hi = lo + h.GetXaxis()->GetBinWidth(ib);
+    const double ov = std::min(hi, x_max) - std::max(lo, x_min);
+    if (!(ov > 0.0)) continue;
+    const double dens = h.GetBinContent(ib);
+    if (dens > 0.0 && Math_IsFinite(dens)) sum += dens * ov;
+  }
+  return (sum > 0.0 && Math_IsFinite(sum)) ? sum : 0.0;
+}
+
+// TSB 積分（t_all 内かつ解析窓外）
+static double IntegrateTimeSidebandDensity1D(const TH1D& h,
+                                             double t_all_min,
+                                             double t_all_max) {
+  const double left = IntegrateDensityRange1D(h, t_all_min, analysis_window.t_min);
+  const double right = IntegrateDensityRange1D(h, analysis_window.t_max, t_all_max);
+  const double s = left + right;
+  return (s > 0.0 && Math_IsFinite(s)) ? s : 0.0;
+}
+
+static int FindAccTimeEgBin(double Eg) {
+  if (!Math_IsFinite(Eg)) return -1;
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    const double lo = kAccTimeEgEdges[i];
+    const double hi = kAccTimeEgEdges[i + 1];
+    if ((Eg >= lo && Eg < hi) || (i == kNAccTimeEgBins - 1 && Eg >= lo && Eg <= hi)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 // 4Dヒストを「密度」に変換し、指定した total_mass で正規化する。
 // density4 = (C / total_mass) / (dEe * dEg)
 //  - phi は離散変数として扱うため、phi のビン幅は正規化に含めない
@@ -242,10 +307,14 @@ static double CheckNormalizationEeEg(const THnD& h) {
 
 static std::string BuildMetaString(long n_total, long n_finite,
                                    long n_in_window, long n_tsb,
-                                   long n_fill, double total_mass,
+                                   long n_fill, long n_tshape_fill,
+                                   double total_mass,
                                    double norm_check, int N_phi_e, int N_phi_g,
                                    double t_all_min, double t_all_max,
-                                   double w_tsb) {
+                                   double w_tsb,
+                                   double tshape_aw_mass,
+                                   double tshape_tsb_mass,
+                                   double s_tshape) {
   const double dphi_e = Detector_PhiStep(detres.phi_e_min, detres.phi_e_max, N_phi_e);
   const double dphi_g = Detector_PhiStep(detres.phi_g_min, detres.phi_g_max, N_phi_g);
 
@@ -267,6 +336,11 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "window: t=[" << analysis_window.t_min << "," << analysis_window.t_max << "] ns\n";
   oss << "t_all: [" << t_all_min << "," << t_all_max << "] ns\n";
   oss << "TSB: t in [t_all] and outside window (width=" << w_tsb << " ns)\n";
+  oss << "tshape: Eg-conditional templates for final analysis bins\n";
+  oss << "tshape Eg bins: [20,30], [30,80] MeV\n";
+  oss << "tshape_AW_mass=" << tshape_aw_mass << "\n";
+  oss << "tshape_TSB_mass=" << tshape_tsb_mass << "\n";
+  oss << "tshape_scale_AW_over_TSB=" << s_tshape << "\n";
   oss << "window: theta=[" << analysis_window.theta_min << "," << analysis_window.theta_max
       << "] rad (theta_eg=|phi_e-phi_g|)\n";
   oss << "normalization: sum_{phi_e,phi_g} integral dEe dEg p4 = 1\n";
@@ -275,9 +349,10 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "events_in_window=" << n_in_window << "\n";
   oss << "events_time_sideband=" << n_tsb << "\n";
   oss << "filled_entries=" << n_fill << "\n";
+  oss << "tshape_filled_entries=" << n_tshape_fill << "\n";
   oss << "raw_mass=" << total_mass << "\n";
   oss << "norm_check_EeEg=" << norm_check << "\n";
-  oss << "saved keys: <key>\n";
+  oss << "saved keys: <key>, <key>_tshape, <key>_tshape_egbin*\n";
   return oss.str();
 }
 
@@ -339,11 +414,24 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   hE.GetYaxis()->Set(N_phi_e + 1, phi_edges_e.data());
   hG.GetYaxis()->Set(N_phi_g + 1, phi_edges_g.data());
 
+  // 後方互換用の全 Eg 時間テンプレート（Eg in analysis window）
+  TH1D hTShape("acc_tshape_tmp", "ACC time-shape (all Eg in analysis window);t [ns];density [arb/ns]",
+               kNBins_tShape, kTAllMin, kTAllMax);
+  hTShape.Sumw2();
+  TH1D hTShapeEg[kNAccTimeEgBins] = {
+      TH1D("acc_tshape_egbin0_tmp", "ACC time-shape Eg[20,30];t [ns];density [arb/ns]",
+           kNBins_tShape, kTAllMin, kTAllMax),
+      TH1D("acc_tshape_egbin1_tmp", "ACC time-shape Eg[30,80];t [ns];density [arb/ns]",
+           kNBins_tShape, kTAllMin, kTAllMax)
+  };
+  for (int i = 0; i < kNAccTimeEgBins; ++i) hTShapeEg[i].Sumw2();
+
   long n_total = 0;
   long n_finite = 0;
   long n_in_window = 0;
   long n_tsb = 0;
   long n_fill = 0;
+  long n_tshape_fill = 0;
 
   const double w_tsb = AnalysisWindow_TimeSidebandWidth(analysis_window, kTAllMin, kTAllMax);
 
@@ -370,6 +458,17 @@ int MakeACCGridPdf(const std::vector<Event>& events,
     const double phi_g_disc = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max, N_phi_g);
     const double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
+    if (t >= kTAllMin && t <= kTAllMax &&
+        Ee >= analysis_window.Ee_min && Ee <= analysis_window.Ee_max &&
+        theta_eg >= analysis_window.theta_min && theta_eg <= analysis_window.theta_max) {
+      const int ieg = FindAccTimeEgBin(Eg);
+      if (ieg >= 0) {
+        hTShapeEg[ieg].Fill(t);
+        hTShape.Fill(t);
+        ++n_tshape_fill;
+      }
+    }
+
     if (!AnalysisWindow_In3D(analysis_window, Ee, Eg, theta_eg)) continue;
     ++n_in_window;
 
@@ -389,7 +488,26 @@ int MakeACCGridPdf(const std::vector<Event>& events,
             << " finite=" << n_finite
             << " in_window=" << n_in_window
             << " time_sideband=" << n_tsb
-            << " filled=" << n_fill << "\n";
+            << " filled=" << n_fill
+            << " tshape_filled=" << n_tshape_fill << "\n";
+
+  ConvertCountsToDensity1D(hTShape);
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    ConvertCountsToDensity1D(hTShapeEg[i]);
+  }
+  const double tshape_aw_mass =
+      IntegrateDensityRange1D(hTShape, analysis_window.t_min, analysis_window.t_max);
+  const double tshape_tsb_mass =
+      IntegrateTimeSidebandDensity1D(hTShape, kTAllMin, kTAllMax);
+  const double s_tshape =
+      (tshape_tsb_mass > 0.0) ? (tshape_aw_mass / tshape_tsb_mass) : 0.0;
+
+  if (!(tshape_aw_mass > 0.0) || !Math_IsFinite(tshape_aw_mass) ||
+      !(tshape_tsb_mass > 0.0) || !Math_IsFinite(tshape_tsb_mass)) {
+    std::cerr << "[MakeACCGridPdf] t-shape mass is not positive (AW="
+              << tshape_aw_mass << ", TSB=" << tshape_tsb_mass << ")\n";
+    return 2;
+  }
 
   // ---- 2D 因子の密度化・正規化・平滑化 ----
   const double massE = SumAllBins2(hE);
@@ -485,10 +603,20 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   h.SetName(key);
   h.Write(key);
 
+  TH1D hTShapeOut = hTShape;
+  hTShapeOut.SetName((std::string(key) + "_tshape").c_str());
+  hTShapeOut.Write();
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    TH1D hTShapeEgOut = hTShapeEg[i];
+    hTShapeEgOut.SetName((std::string(key) + "_tshape_egbin" + std::to_string(i)).c_str());
+    hTShapeEgOut.Write();
+  }
+
   const std::string meta = BuildMetaString(n_total, n_finite, n_in_window,
-                                           n_tsb, n_fill, total_mass,
+                                           n_tsb, n_fill, n_tshape_fill, total_mass,
                                            norm_check, N_phi_e, N_phi_g,
-                                           kTAllMin, kTAllMax, w_tsb);
+                                           kTAllMin, kTAllMax, w_tsb,
+                                           tshape_aw_mass, tshape_tsb_mass, s_tshape);
   TNamed meta_obj((std::string(key) + "_meta").c_str(), meta.c_str());
   meta_obj.Write();
 
@@ -528,6 +656,15 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   TParameter<double> par_Eg_max((std::string(key) + "_Eg_max").c_str(), analysis_window.Eg_max);
   par_Eg_max.Write();
 
+  TParameter<double> par_tshape_aw((std::string(key) + "_tshape_aw_mass").c_str(), tshape_aw_mass);
+  par_tshape_aw.Write();
+
+  TParameter<double> par_tshape_tsb((std::string(key) + "_tshape_tsb_mass").c_str(), tshape_tsb_mass);
+  par_tshape_tsb.Write();
+
+  TParameter<double> par_tshape_scale((std::string(key) + "_tshape_scale").c_str(), s_tshape);
+  par_tshape_scale.Write();
+
   TH2I hmask((std::string(key) + "_phi_mask").c_str(),
              "phi mask;phi_e index;phi_g index",
              N_phi_e + 1, -0.5, N_phi_e + 0.5,
@@ -542,7 +679,7 @@ int MakeACCGridPdf(const std::vector<Event>& events,
 
   fout.Close();
 
-  std::cout << "[MakeACCGridPdf] saved (4D): " << out_filepath
-            << " (key=" << key << ")\n";
+  std::cout << "[MakeACCGridPdf] saved (4D+tshape): " << out_filepath
+            << " (key=" << key << ", " << key << "_tshape)\n";
   return 0;
 }

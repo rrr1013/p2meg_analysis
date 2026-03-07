@@ -14,7 +14,7 @@
 // 解析窓: include/p2meg/AnalysisWindow.h の analysis_window を使用。
 //        解析窓内に入ったイベントのみをヒストに入れる。
 //
-// 出力: doc/data_hist_<入力ファイル名(拡張子除く)>.pdf（3ページ）
+// 出力: doc/finalanalysis/data_hist_<入力ファイル名(拡張子除く)>.pdf（3ページ）
 //   1ページ目: メタ情報
 //   2ページ目: 1D (Ee, Eg, t, phi_detector_e, phi_detector_g, theta_eg)
 //   3ページ目: 2D (Ee,Eg), (theta_eg,t), (t,Ee), (theta_eg,Ee), (theta_eg,Eg), (phi_e,phi_g)
@@ -46,7 +46,7 @@ R__ADD_INCLUDE_PATH(./include)
 #include "p2meg/MathUtils.h"
 
 // ---- 解析窓カットを外して素の分布を見る場合は、下のコメントアウトを外す ----
- #define P2MEG_PLOT_ALLDATA
+// #define P2MEG_PLOT_ALLDATA
 
 // ---- 固定ビン数（必要ならここだけ調整）----
 static constexpr int kNBins_E   = 120; // Ee, Eg
@@ -83,11 +83,11 @@ static TString MakeOutputPdfPath(const char* infile)
     Ssiz_t dot = base.Last('.');
     if (dot != kNPOS) base.Remove(dot);       // e.g. xxx
 
-    gSystem->mkdir("doc", /*recursive=*/true);
+    gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
 #ifdef P2MEG_PLOT_ALLDATA
-    return Form("doc/data_hist_%s_alldata.pdf", base.Data());
+    return Form("doc/finalanalysis/data_hist_%s_alldata.pdf", base.Data());
 #else
-    return Form("doc/data_hist_%s.pdf", base.Data());
+    return Form("doc/finalanalysis/data_hist_%s.pdf", base.Data());
 #endif
 }
 
@@ -124,7 +124,7 @@ static void DrawMetaPage(const char* infile,
     lat.SetTextSize(0.030);
     lat.DrawLatex(0.08, 0.47, "Ee [MeV]    : [0, 70]");
     lat.DrawLatex(0.08, 0.42, "Eg [MeV]    : [0, 70]");
-    lat.DrawLatex(0.08, 0.37, "t  [ns]     : [-10, 10]");
+    lat.DrawLatex(0.08, 0.37, "t  [ns]     : [-500, 500]");
     lat.DrawLatex(0.08, 0.32, Form("theta_eg [rad] : [%.6g, %.6g]", th_plot_min, th_plot_max));
 #else
     lat.DrawLatex(0.05, 0.52, "Analysis window:");
@@ -160,8 +160,8 @@ void plot_data_hist(const char* infile = "data/data.dat")
     const double Ee_max = 70.0;
     const double Eg_min = 0.0;
     const double Eg_max = 70.0;
-    const double t_min  = -10.0;
-    const double t_max  = 10.0;
+    const double t_min  = -500.0;
+    const double t_max  = 500.0;
 #else
     const double Ee_min = analysis_window.Ee_min;
     const double Ee_max = analysis_window.Ee_max;
@@ -200,6 +200,9 @@ void plot_data_hist(const char* infile = "data/data.dat")
         }
 #endif
     }
+    // ROOT の [low, high) ビン仕様で下端値も落ちないよう、下端にも端点補正を入れる
+    // （物理カットではなく数値端点の救済）
+    const double th_plot_min_axis = -Math_AxisMaxInclusive(-th_plot_min);
     const double th_plot_max_axis = Math_AxisMaxInclusive(th_plot_max);
 
     // ---- 1D ----
@@ -211,23 +214,23 @@ void plot_data_hist(const char* infile = "data/data.dat")
     TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
                            kNBins_phi, phi_g_min, phi_g_max_plot);
     TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
-                           kNBins_th, th_plot_min, th_plot_max_axis);
+                           kNBins_th, th_plot_min_axis, th_plot_max_axis);
 
     // ---- 2D ----
     TH2D* h_EeEg = new TH2D("h_EeEg", "(Ee, Eg);Ee [MeV];Eg [MeV]",
                             kNBins2D_E, Ee_min, Ee_max, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_ThT  = new TH2D("h_ThT", "(theta_{eg}, t);theta_{eg} [rad];t [ns]",
-                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_t,  t_min,  t_max);
+                            kNBins2D_th, th_plot_min_axis, th_plot_max_axis, kNBins2D_t,  t_min,  t_max);
 
     TH2D* h_TEe  = new TH2D("h_TEe", "(t, Ee);t [ns];Ee [MeV]",
                             kNBins2D_t,  t_min,  t_max, kNBins2D_E, Ee_min, Ee_max);
 
     TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
-                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Ee_min, Ee_max);
+                            kNBins2D_th, th_plot_min_axis, th_plot_max_axis, kNBins2D_E, Ee_min, Ee_max);
 
     TH2D* h_ThEg = new TH2D("h_ThEg", "(theta_{eg}, Eg);theta_{eg} [rad];Eg [MeV]",
-                            kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Eg_min, Eg_max);
+                            kNBins2D_th, th_plot_min_axis, th_plot_max_axis, kNBins2D_E, Eg_min, Eg_max);
 
     TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
                             kNBins2D_phi, phi_e_min, phi_e_max_plot, kNBins2D_phi, phi_g_min, phi_g_max_plot);
@@ -275,13 +278,15 @@ void plot_data_hist(const char* infile = "data/data.dat")
             continue;
         }
 
+        // 受理判定と同じ離散格子で theta_eg を作る。
+        // 入力値の丸め誤差（例: 6桁小数）で 60/120/180 度ピークが崩れるのを避ける。
         const double phi_e_disc = Detector_PhiGridPoint(idx_e, detres.phi_e_min, detres.phi_e_max,
                                                         Math_GetNPhiE(detres));
         const double phi_g_disc = Detector_PhiGridPoint(idx_g, detres.phi_g_min, detres.phi_g_max,
                                                         Math_GetNPhiG(detres));
-        const double phi_e_plot = phi_e_disc;
-        const double phi_g_plot = phi_g_disc;
-        double theta_eg = std::fabs(phi_e_plot - phi_g_plot);
+        const double phi_e_plot = ev.phi_detector_e;
+        const double phi_g_plot = ev.phi_detector_g;
+        const double theta_eg = std::fabs(phi_e_disc - phi_g_disc);
 
 #ifndef P2MEG_PLOT_ALLDATA
         if (!AnalysisWindow_In4D(analysis_window, ev.Ee, ev.Eg, ev.t, theta_eg)) {

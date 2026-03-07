@@ -1,0 +1,219 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{longtable}
+\usepackage{amsmath}
+\geometry{margin=22mm}
+
+\title{p2MEG run8 における Michel 崩壊事象選別の検証レポート}
+\author{p2MEG 解析メモ}
+\date{2026年2月23日（更新版）}
+
+\begin{document}
+\maketitle
+
+\section{このレポートの目的}
+このレポートの目的は、run8 データに対して実施した時間相関解析とエネルギー解析について、
+「どのようなヒストグラムを作り、そこからどの値を採用し、その判断がなぜ妥当と言えるか」を、
+解析を知らない読者にも追える順序で説明することである。
+
+本レポートでは、特に次の問いに答える。
+\begin{enumerate}
+  \item プラスチックシンチレータ（PS）の振幅しきい値は、なぜその値にしたのか。
+  \item NaI 2チャネルの対応条件 $|\Delta t_{12}|\le 30$ samples は妥当か。
+  \item 事象時間差 $\Delta t$ に3つの山が立つ理由は何か。
+  \item NaI 時刻差分布の中心がガウシアンより尖ったカスプ状に見える理由は何か。
+  \item そのとき「ダークノイズだけを見ている」のか、それとも別の要因があるのか。
+\end{enumerate}
+
+\section{実験・解析で使う用語（先に定義）}
+本文で使う略語と記号を、ここで先に定義する。
+
+\begin{longtable}{p{0.32\linewidth}p{0.62\linewidth}}
+プラスチックシンチレータ（PS） & 速い時刻情報を与える検出器。PS\_A と PS\_B の2チャネルを用いる。 \\
+ヨウ化ナトリウムシンチレータ（NaI） & エネルギー情報を与える検出器。NaI\_A1, NaI\_A2, NaI\_B1, NaI\_B2 の4チャネルを用いる。 \\
+デジタイザ事象 & 波形を1000サンプルずつ切り出した1単位。 \\
+サンプル & 時間ビンの単位。1サンプル = 4 ns。 \\
+$ t_{\mathrm{PS}} $ & PS候補のうち、選別条件を満たした候補の中で最も早い時刻。 \\
+$ t_{\mathrm{mod}} $ & NaIモジュール時刻。対応した2チャネル時刻の平均値。 \\
+$ \Delta t $ & 事象時間差。$\Delta t=t_{\mathrm{mod}}-t_{\mathrm{PS}}$。 \\
+$ \Delta t_{12} $ & NaI 2チャネルの時刻差（例: $t_{A2}-t_{A1}$）。 \\
+低エネルギー比率 $f_{\mathrm{low}}$ & $f_{\mathrm{low}}=N(0,20000)/N(0,200000)$。 \\
+\end{longtable}
+
+\section{解析の全体手順}
+解析は次の順で実施した。
+\begin{enumerate}
+  \item PS振幅ヒストグラムを作る。
+  \item ヒストグラムの谷位置から PS 振幅しきい値を決める。
+  \item そのしきい値で事象を選別し、NaI パルスを分解・積分する。
+  \item NaI 2チャネル対応条件を課してモジュール時刻と積分値を作る。
+  \item $\Delta t$ ヒストグラムとエネルギーヒストグラムを作り、選別条件の影響を比較する。
+  \item NaI 時刻差ヒストグラムを独立に作り、$|\Delta t_{12}|\le30$ の妥当性を確認する。
+\end{enumerate}
+
+以降の各節では、値の決定を「ヒストグラム作成→観察→採用値」の順で説明する。
+
+\section{PS振幅しきい値をどう決めたか}
+\subsection{作ったヒストグラム}
+まず PS\_A と PS\_B について、全事象のパルス振幅ヒストグラムを作った。
+図\ref{fig:ps-threshold}がその結果である。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{mainexp/plot_ps_threshold_validation_run8.pdf}
+  \caption{PS振幅ヒストグラム。黒: 採用しきい値、緑: 谷位置、紫: 主ピーク位置。}
+  \label{fig:ps-threshold}
+\end{figure}
+
+\subsection{観察と採用値}
+この図では、低振幅側の成分と主ピークの間に谷がある。
+その谷位置を境界とするのが、低振幅ノイズ寄与を抑えながら主ピーク側を保持する最も単純な選択である。
+
+この基準により、採用したしきい値は次の値になった。
+\begin{itemize}
+  \item PS\_A: 125.5 ADC counts
+  \item PS\_B: 178.5 ADC counts
+\end{itemize}
+
+このとき、しきい値以上に残る割合は
+PS\_Aで36.3\%（32175/88685）、PS\_Bで51.4\%（3047/5924）であった。
+すなわち「低振幅側を切るが、主ピーク側は残す」という意図に合う。
+
+\section{事象時間差 $\Delta t$ の3ピークをどう読むか}
+\subsection{作ったヒストグラム}
+PSしきい値を固定した後、
+$\Delta t=t_{\mathrm{mod}}-t_{\mathrm{PS}}$ を作った結果を図\ref{fig:dt}に示す。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{mainexp/report_michel_ps_analysis_run8.pdf}
+  \caption{事象時間差 $\Delta t$ の分布。}
+  \label{fig:dt}
+\end{figure}
+
+\subsection{観察結果}
+A/Bともに、0付近の山（即時側）に加えて、
+正側遅延（約129 samples）と負側（約-160 samples）に山が見える。
+Aの領域積分は、負側1618、即時3208、遅延1580である。
+
+また、PS選別後の「2本目時刻−1本目時刻」分布を作ると、
+ピークは 139 samples になる（図\ref{fig:ps-gap}）。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\linewidth,page=3]{mainexp/report_michel_ps_analysis_run8.pdf}
+  \caption{選別後PSの「2本目時刻−1本目時刻」分布。}
+  \label{fig:ps-gap}
+\end{figure}
+
+この 139 samples が $\Delta t$ の遅延側ピーク 129 samples に近いことは、
+「同一事象内の繰り返し時間構造」が遅延側ピーク形成に寄与していることを示唆する。
+
+\section{NaIエネルギー分布がなぜ変わるか}
+\subsection{作ったヒストグラム}
+図\ref{fig:ecomp}は、
+単一チャネル積分、2チャネル対応和、時間相関条件付き分布を比較したものである。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=4]{mainexp/report_michel_ps_analysis_run8.pdf}
+  \caption{モジュールAのエネルギー分布（左: 絶対事象数、右: 正規化形状）。}
+  \label{fig:ecomp}
+\end{figure}
+
+\subsection{観察と解釈}
+低エネルギー比率は
+\begin{itemize}
+  \item NaI\_A1単独: 0.475
+  \item A1+A2対応和（PS条件なし）: 0.111
+  \item A1+A2対応和 + 即時条件: 0.0787
+\end{itemize}
+と下がる。
+
+この変化は、次の順に説明できる。
+\begin{enumerate}
+  \item 2チャネル同時成立条件により、片側のみの低振幅偶発が落ちる。
+  \item 和（$I_{A1}+I_{A2}$）を使うことで分布が高エネルギー側へ寄る。
+  \item さらに時間相関条件で偶発対応が減る。
+\end{enumerate}
+
+単独比率の独立近似では $0.475\times0.517\approx0.246$ だが、
+実測対応和は 0.111 とさらに小さい。
+これは対応条件が低エネルギー偶発を強く抑制していることと整合する。
+
+\section{NaI 対応条件 $|\Delta t_{12}|\le30$ をどう決めたか}
+\subsection{作ったヒストグラム}
+この値を決めるために、
+NaI 2チャネル時刻差分布を独立に作った（図\ref{fig:pairdt}）。
+上段は符号付き、下段は絶対値である。
+下段では、全組み合わせ（灰）と最近傍対応（青）を重ねている。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{mainexp/study_nai_pair_timediff_120deg_run8.pdf}
+  \caption{NaI 2チャネル時刻差分布。}
+  \label{fig:pairdt}
+\end{figure}
+
+\subsection{観察}
+受理ペア（実際に $|\Delta t_{12}|\le30$ で採用される組）の統計は以下である。
+\begin{itemize}
+  \item A受理ペア（n=18807）: 中央値5.56、90\%点21.36、95\%点25.28 samples
+  \item B受理ペア（n=3257）: 中央値2.39、90\%点17.94、95\%点23.14 samples
+\end{itemize}
+
+つまり受理ペアの大半は 25 samples 未満にあり、
+30 samples 近傍に大量の境界事象が積み上がってはいない。
+
+\subsection{採用値の判断}
+もし上限を20にすると、Aで約11.6\%、Bで約7.8\%の受理ペアを追加で失う。
+一方で30は95\%点より十分外側にあり、中心成分を保持しながら遠距離対応を除去できる。
+したがって run8 では $|\Delta t_{12}|\le30$ を採用するのが妥当である。
+
+\section{カスプ形状の原因考察（ダークノイズだけか？）}
+\subsection{結論を先に書く}
+\textbf{カスプ形状が見えることだけで、直ちに「実際のMichel陽電子を見ておらず、ダークノイズのみを見ている」とは結論できない。}
+
+\subsection{なぜカスプになるか}
+今回の分布は、単一パルスの時間分解能を直接見たものではない。
+次の操作を含むため、中心が尖りやすい。
+\begin{itemize}
+  \item 最近傍選択（最小距離）で対応を決める。
+  \item 1事象内に複数パルスが存在し、真の対応と偶発対応が混在する。
+\end{itemize}
+
+この効果を確認するため、最近傍対応と全組み合わせを比較した。
+Aモジュールでは
+\begin{itemize}
+  \item 最近傍対応: $|\Delta t_{12}|\le10$ が 28.6\%
+  \item 全組み合わせ: $|\Delta t_{12}|\le10$ が 15.3\%
+\end{itemize}
+であり、最近傍選択そのものが0付近への集中を強めることが分かる。
+
+\subsection{ダークノイズ寄与の位置づけ}
+ダークノイズや低振幅偶発が裾成分に寄与する可能性は高い。
+しかし、中心カスプの形成要因はそれだけではなく、
+対応アルゴリズム（最近傍選択）と多パルス事象構造の寄与が本質的に含まれる。
+
+したがって本解析での保守的結論は、
+「中心カスプはアルゴリズム要因と物理イベント要因の重ね合わせであり、
+その上にノイズ寄与が加わる」である。
+
+\section{最終まとめ}
+\begin{enumerate}
+  \item PSしきい値は、振幅ヒストグラムの谷位置を使うことでデータ駆動で決定できる。
+  \item $\Delta t$ の3ピークは、事象内時間構造と基準時刻定義の影響で説明できる。
+  \item NaIエネルギー分布の主変化は、PS有無単独ではなく、2チャネル対応と時間相関条件で生じる。
+  \item NaI対応条件 $|\Delta t_{12}|\le30$ は、run8では保持率と誤対応抑制のバランスが良い。
+  \item カスプ形状は「ダークノイズのみ」の証拠ではなく、最近傍対応の統計効果を強く含む。
+\end{enumerate}
+
+\section*{出力ファイル}
+\begin{itemize}
+  \item 更新レポート: \texttt{doc/report\_michel\_ps\_tagged\_run8.pdf}
+  \item PSしきい値検証図: \texttt{doc/mainexp/plot\_ps\_threshold\_validation\_run8.pdf}
+  \item NaI時刻差検証図: \texttt{doc/mainexp/study\_nai\_pair\_timediff\_120deg\_run8.pdf}
+\end{itemize}
+
+\end{document}

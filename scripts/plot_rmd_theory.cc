@@ -4,10 +4,10 @@
 // plot_data_hist と同様の 1D/2D ヒストを PDF に出力する。
 //
 // 使い方:
-//   ./build/plot_rmd_theory 10000000 doc/rmd_theory.pdf
+//   ./build/plot_rmd_theory 10000000 doc/finalanalysis/rmd_theory.pdf
 //
 // 出力:
-//   doc/rmd_theory_hist.pdf（3ページ）
+//   doc/finalanalysis/rmd_theory_hist.pdf（3ページ）
 //    1) メタ情報
 //    2) 1D (Ee, Eg, phi_detector_e, phi_detector_g, theta_eg)
 //    3) 2D (Ee,Eg), (theta_eg,Ee), (theta_eg,Eg), (phi_e,phi_g)
@@ -189,7 +189,7 @@ static void DrawMetaPage(const char* outpdf,
 int main(int argc, char** argv)
 {
     long long n_samples = kDefaultSamples;
-    std::string outpdf = "doc/rmd_theory_hist.pdf";
+    std::string outpdf = "doc/finalanalysis/rmd_theory_hist.pdf";
 
     if (argc == 2) {
         long long tmp = 0;
@@ -212,7 +212,7 @@ int main(int argc, char** argv)
     }
 
     gStyle->SetOptStat(0);
-    gSystem->mkdir("doc", /*recursive=*/true);
+    gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
 
     const double Ee_min = analysis_window.Ee_min;
     const double Ee_max = analysis_window.Ee_max;

@@ -13,7 +13,7 @@
 //   - B_plus  : Run#2 で +側（cosθ>0）
 //   - B_minus : Run#1 で -側（cosθ<0）
 //
-// 出力: doc/michel_pol_check_<basename(A_plus)>.pdf（複数ページ）
+// 出力: doc/finalanalysis/michel_pol_check_<basename(A_plus)>.pdf（複数ページ）
 //   1) meta（入力/設定/統計/フィット結果）
 //   2) A_data(E) と A_th(E)=P_hat*K(E)
 //   3) K(E)
@@ -124,8 +124,8 @@ static TString PlotMichelPol_MakeOutputPdfPath(const char* path_A_plus)
     Ssiz_t dot = base.Last('.');
     if (dot != kNPOS) base.Remove(dot);
 
-    gSystem->mkdir("doc", /*recursive=*/true);
-    return Form("doc/michel_pol_check_%s.pdf", base.Data());
+    gSystem->mkdir("doc/finalanalysis", /*recursive=*/true);
+    return Form("doc/finalanalysis/michel_pol_check_%s.pdf", base.Data());
 }
 
 static void PlotMichelPol_DrawMetaPage(const char* outpdf,

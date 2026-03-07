@@ -1,12 +1,14 @@
 // src/ACCGridPdf.cc
 #include "p2meg/ACCGridPdf.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <string>
 
 #include "TFile.h"
 #include "TAxis.h"
+#include "TH1.h"
 #include "TH2.h"
 #include "THn.h"
 #include "TParameter.h"
@@ -24,6 +26,43 @@
 
 // 4D 格子
 static THnD* gHist = nullptr;
+// 時間テンプレート（density[count/ns]）
+static TH1D* gTimeShape = nullptr;
+static double gTimeShapeAwNorm = 0.0;
+static constexpr int kNAccTimeEgBins = 2;
+static constexpr double kAccTimeEgEdges[kNAccTimeEgBins + 1] = {
+    20.0, 30.0, 80.0
+};
+static TH1D* gTimeShapeEg[kNAccTimeEgBins] = {nullptr, nullptr};
+static double gTimeShapeEgAwNorm[kNAccTimeEgBins] = {0.0, 0.0};
+
+static int FindAccTimeEgBin(double Eg) {
+  if (!Math_IsFinite(Eg)) return -1;
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    const double lo = kAccTimeEgEdges[i];
+    const double hi = kAccTimeEgEdges[i + 1];
+    if ((Eg >= lo && Eg < hi) || (i == kNAccTimeEgBins - 1 && Eg >= lo && Eg <= hi)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static double IntegrateDensityRange1D(const TH1D& h, double x_min, double x_max) {
+  if (!Math_IsFinite(x_min) || !Math_IsFinite(x_max)) return 0.0;
+  if (!(x_max > x_min)) return 0.0;
+  const int nb = h.GetXaxis()->GetNbins();
+  double sum = 0.0;
+  for (int ib = 1; ib <= nb; ++ib) {
+    const double lo = h.GetXaxis()->GetBinLowEdge(ib);
+    const double hi = lo + h.GetXaxis()->GetBinWidth(ib);
+    const double ov = std::min(hi, x_max) - std::max(lo, x_min);
+    if (!(ov > 0.0)) continue;
+    const double dens = h.GetBinContent(ib);
+    if (dens > 0.0 && Math_IsFinite(dens)) sum += dens * ov;
+  }
+  return (sum > 0.0 && Math_IsFinite(sum)) ? sum : 0.0;
+}
 
 //============================================================
 // 公開関数
@@ -33,6 +72,12 @@ bool ACCGridPdf_Load(const char* filepath, const char* key) {
   if (!filepath || !key) return false;
 
   if (gHist) { delete gHist; gHist = nullptr; }
+  if (gTimeShape) { delete gTimeShape; gTimeShape = nullptr; }
+  gTimeShapeAwNorm = 0.0;
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    if (gTimeShapeEg[i]) { delete gTimeShapeEg[i]; gTimeShapeEg[i] = nullptr; }
+    gTimeShapeEgAwNorm[i] = 0.0;
+  }
 
   TFile f(filepath, "READ");
   if (f.IsZombie()) {
@@ -138,6 +183,72 @@ bool ACCGridPdf_Load(const char* filepath, const char* key) {
   }
 
   gHist = dynamic_cast<THnD*>(h->Clone());
+
+  bool has_eg_tshape = false;
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    const std::string key_tshape = std::string(key) + "_tshape_egbin" + std::to_string(i);
+    TObject* obj_t = f.Get(key_tshape.c_str());
+    if (!obj_t) continue;
+
+    TH1D* h_t = dynamic_cast<TH1D*>(obj_t);
+    if (!h_t) {
+      std::cerr << "[ACCGridPdf_Load] WARNING: " << key_tshape
+                << " is not TH1D. ignore this Eg template.\n";
+      continue;
+    }
+    gTimeShapeEg[i] = dynamic_cast<TH1D*>(h_t->Clone());
+    if (!gTimeShapeEg[i]) {
+      std::cerr << "[ACCGridPdf_Load] WARNING: clone failed for "
+                << key_tshape << ". ignore this Eg template.\n";
+      continue;
+    }
+    gTimeShapeEg[i]->SetDirectory(nullptr);
+    gTimeShapeEgAwNorm[i] =
+        IntegrateDensityRange1D(*gTimeShapeEg[i], analysis_window.t_min, analysis_window.t_max);
+    if (!(gTimeShapeEgAwNorm[i] > 0.0) || !Math_IsFinite(gTimeShapeEgAwNorm[i])) {
+      std::cerr << "[ACCGridPdf_Load] WARNING: invalid AW norm for "
+                << key_tshape << " (norm=" << gTimeShapeEgAwNorm[i]
+                << "). ignore this Eg template.\n";
+      delete gTimeShapeEg[i];
+      gTimeShapeEg[i] = nullptr;
+      gTimeShapeEgAwNorm[i] = 0.0;
+      continue;
+    }
+    has_eg_tshape = true;
+  }
+
+  {
+    const std::string key_tshape = std::string(key) + "_tshape";
+    TObject* obj_t = f.Get(key_tshape.c_str());
+    if (obj_t) {
+      TH1D* h_t = dynamic_cast<TH1D*>(obj_t);
+      if (!h_t) {
+        std::cerr << "[ACCGridPdf_Load] WARNING: " << key_tshape
+                  << " is not TH1D. fallback to uniform pt.\n";
+      } else {
+        gTimeShape = dynamic_cast<TH1D*>(h_t->Clone());
+        if (!gTimeShape) {
+          std::cerr << "[ACCGridPdf_Load] WARNING: clone failed for "
+                    << key_tshape << ". fallback to uniform pt.\n";
+        } else {
+          gTimeShape->SetDirectory(nullptr);
+          gTimeShapeAwNorm =
+              IntegrateDensityRange1D(*gTimeShape, analysis_window.t_min, analysis_window.t_max);
+          if (!(gTimeShapeAwNorm > 0.0) || !Math_IsFinite(gTimeShapeAwNorm)) {
+            std::cerr << "[ACCGridPdf_Load] WARNING: invalid AW norm for "
+                      << key_tshape << " (norm=" << gTimeShapeAwNorm
+                      << "). fallback to uniform pt.\n";
+            delete gTimeShape;
+            gTimeShape = nullptr;
+            gTimeShapeAwNorm = 0.0;
+          }
+        }
+      }
+    } else if (!has_eg_tshape) {
+      std::cerr << "[ACCGridPdf_Load] INFO: " << key_tshape
+                << " not found. fallback to uniform pt.\n";
+    }
+  }
   f.Close();
 
   if (!gHist) {
@@ -192,10 +303,36 @@ double ACCGridPdf(double Ee, double Eg, double t,
   const double p4 = Hist_InterpEeEg4(*gHist, Ee, Eg, bin_pe, bin_pg);
   if (!(p4 > 0.0) || !Math_IsFinite(p4)) return 0.0;
 
-  // 時間因子（解析窓内一様）
-  const double dt = analysis_window.t_max - analysis_window.t_min;
-  if (!(dt > 0.0) || !Math_IsFinite(dt)) return 0.0;
-  const double pt = 1.0 / dt;
+  // 時間因子:
+  //  - key_tshape があればデータ駆動テンプレートを優先
+  //  - 無ければ解析窓内一様へフォールバック
+  double pt = 0.0;
+  const int ieg = FindAccTimeEgBin(Eg);
+  TH1D* h_tshape = nullptr;
+  double aw_norm = 0.0;
+  if (ieg >= 0 && ieg < kNAccTimeEgBins &&
+      gTimeShapeEg[ieg] && gTimeShapeEgAwNorm[ieg] > 0.0 &&
+      Math_IsFinite(gTimeShapeEgAwNorm[ieg])) {
+    h_tshape = gTimeShapeEg[ieg];
+    aw_norm = gTimeShapeEgAwNorm[ieg];
+  } else if (gTimeShape && gTimeShapeAwNorm > 0.0 && Math_IsFinite(gTimeShapeAwNorm)) {
+    h_tshape = gTimeShape;
+    aw_norm = gTimeShapeAwNorm;
+  }
+
+  if (h_tshape && aw_norm > 0.0 && Math_IsFinite(aw_norm)) {
+    const TAxis* axT = h_tshape->GetXaxis();
+    if (!axT) return 0.0;
+    const int ib = axT->FindBin(t);
+    if (ib < 1 || ib > axT->GetNbins()) return 0.0;
+    const double dens = h_tshape->GetBinContent(ib);
+    if (!(dens > 0.0) || !Math_IsFinite(dens)) return 0.0;
+    pt = dens / aw_norm;
+  } else {
+    const double dt = analysis_window.t_max - analysis_window.t_min;
+    if (!(dt > 0.0) || !Math_IsFinite(dt)) return 0.0;
+    pt = 1.0 / dt;
+  }
 
   const double pdf = p4 * pt;
   if (!(pdf > 0.0) || !Math_IsFinite(pdf)) return 0.0;

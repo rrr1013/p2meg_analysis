@@ -750,3 +750,95 @@ FitResult FitNLL(
 
 - 出力:
   - 戻り値: フィット結果（`FitResult`）
+
+### FitNLLFixedSignal
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: signal yield `N_sig` を固定し、他の背景 yield を profile fit で再最適化します。μ→eγ upper limit 計算で各仮説値 `s=N_sig` に対する条件付き最尤点を求めるために使います。
+
+- シグネチャ
+```cpp
+FitResult FitNLLFixedSignal(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const FitConfig& cfg,
+    double N_sig_fixed
+);
+```
+
+- 入力:
+  - `events`: 解析窓内のイベント配列（`Event`）。
+  - `components`: PDF成分の配列（`PdfComponent`）。先頭成分を signal (`N_sig`) とみなします。
+  - `cfg`: 最小化設定（`FitConfig`）。`start_yields` は `components` と同じ長さが必要です。
+  - `N_sig_fixed`: 固定する signal yield 仮説値 `s`。単位は期待事象数。
+
+- 出力:
+  - 戻り値: 条件付き最尤フィット結果（`FitResult`）。失敗時は `status!=0` を返します。
+
+### GenerateToyDatasetFromModel
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 最終解析で使う PDF 成分から直接 toy pseudo-experiment を 1 本生成します。各成分の事象数には Poisson fluctuation を入れます。
+
+- シグネチャ
+```cpp
+bool GenerateToyDatasetFromModel(
+    const std::vector<PdfComponent>& components,
+    const std::vector<double>& mean_yields,
+    const ToyGeneratorConfig& cfg,
+    unsigned long long toy_index,
+    std::vector<Event>& out_events,
+    std::vector<double>* out_generated_yields = nullptr
+);
+```
+
+- 入力:
+  - `components`: toy 生成に使う PDF 成分配列（`PdfComponent`）。
+  - `mean_yields`: 各成分の平均期待事象数。`components` と同じ順序・同じ長さで与えます。
+  - `cfg`: toy 生成設定（`ToyGeneratorConfig`）。seed や棄却法の `pmax` 推定条件を含みます。
+  - `toy_index`: 同じ seed で複数 toy を区別するための通し番号。
+  - `out_events`: 生成した toy イベント列を返す出力先。
+  - `out_generated_yields`: 各成分で実際に Poisson 生成された事象数を受け取る任意出力。
+
+- 出力:
+  - 戻り値: toy 生成に成功したら `true`、入力不正やサンプリング失敗なら `false`。
+
+### EvaluateUpperLimitPoint
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 signal 仮説値 `s` 1点に対して、`q(s)=-2ln lambda(s)` の観測値と toy 分布を比較し、90% C.L. などの受容判定を返します。
+
+- シグネチャ
+```cpp
+UpperLimitPointResult EvaluateUpperLimitPoint(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const UpperLimitPointConfig& cfg
+);
+```
+
+- 入力:
+  - `events`: 実データのイベント列（`Event`）。
+  - `components`: 尤度に使う PDF 成分配列（`PdfComponent`）。
+  - `cfg`: 仮説値 `N_sig_test`、toy 本数、信頼水準、fit 設定をまとめた点ごとの設定。
+
+- 出力:
+  - 戻り値: その `s` 点における `q_obs(s)`、toy からの `p_value`、受容判定、実データの free/profile fit を含む結果構造体（`UpperLimitPointResult`）。
+
+### EvaluateUpperLimitScan
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: signal 仮説値 `s` を複数点走査し、受容された最大の `N_sig` を `N_sig^90` として返します。`N_mu_eff` が与えられていれば `BR_90` へも変換します。
+
+- シグネチャ
+```cpp
+UpperLimitScanResult EvaluateUpperLimitScan(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const UpperLimitScanConfig& cfg
+);
+```
+
+- 入力:
+  - `events`: 実データのイベント列（`Event`）。
+  - `components`: 尤度評価と toy 生成に使う PDF 成分配列（`PdfComponent`）。
+  - `cfg`: `N_sig` の走査点、toy 本数、`N_mu_eff`、fit 設定、乱数設定をまとめた scan 設定。
+
+- 出力:
+  - 戻り値: 通常 fit、各走査点の結果、`N_sig_90`、`BR_90` をまとめた結果構造体（`UpperLimitScanResult`）。
