@@ -1,0 +1,226 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{url}
+\geometry{margin=20mm}
+
+\title{ACC 時間項 \(p_t(t)\) の扱いに関する補足ノート\\
+AW 除外時に \(\int_{\mathrm{AW}} \mathrm{tshape}\,dt = 0\) となる理由}
+\author{p2MEG 解析メモ}
+\date{2026年3月8日}
+
+\begin{document}
+\maketitle
+
+\section{このノートの目的}
+本ノートの目的は、現在の ACC PDF で時間項がどのように扱われているか、
+特に
+\begin{quote}
+「今回は 4D AW 内事象を time template からも除外したため、
+保存された tshape の AW 内積分は 0 になった」
+\end{quote}
+という文の意味を、図を使って具体的に説明することである。
+
+\section{まず結論}
+今のコードでは、ACC の時間テンプレート \texttt{tshape} は
+\[
+E_e \in \mathrm{AW},\quad
+\theta_{eg}\in \mathrm{AW},\quad
+E_\gamma \in [20,30]\ \text{or}\ [30,80]\ \mathrm{MeV}
+\]
+の事象から作る。
+ただし、さらに
+\[
+(E_e,E_\gamma,\theta_{eg},t)\in \mathrm{AW}
+\]
+の事象は埋めない。
+
+今回の \(E_\gamma\) template bin は \([20,30]\) と \([30,80]\) MeV なので、
+これはどちらも最終解析窓の \(E_\gamma\in[20,80]\) MeV の中に入っている。
+したがって、time template に対して AW 除外をかけると、
+実質的には
+\[
+t\in[-50,50]\ \mathrm{ns}
+\]
+の領域に事象が全く入らなくなる。
+
+その結果、保存された \texttt{tshape} は TSB にだけ中身を持ち、
+AW では 0 になる。
+ゆえに
+\[
+\int_{-50}^{50} \mathrm{tshape}(t)\,dt = 0
+\]
+となる。
+
+\section{コード上で何をしているか}
+\subsection{time template を埋める条件}
+\texttt{src/MakeACCGridPdf.cc} では、time template は概念的に次の条件で埋めている。
+\begin{enumerate}
+  \item \(t \in [-500,500]\) ns
+  \item \(E_e\) は AW 内
+  \item \(\theta_{eg}\) は AW 内
+  \item \(E_\gamma\) は time template 用カテゴリ \([20,30]\) または \([30,80]\) MeV
+  \item ただし 4D AW 内 \((E_e,E_\gamma,\theta_{eg},t)\in\mathrm{AW}\) は除外
+\end{enumerate}
+
+最後の条件のため、今の template は
+\[
+t \in [-500,-50)\cup(50,500]
+\]
+にしか実質的に事象を持たない。
+
+\subsection{なぜ AW 積分が 0 になるのか}
+\texttt{tshape} は parametric fit 関数ではなく、単なる 1D ヒストグラム密度である。
+したがって、AW に一度も fill されていないなら、
+AW 内の各 bin content は 0 である。
+
+従って、
+\[
+\int_{-50}^{50} \mathrm{tshape}(t)\,dt
+\]
+をヒストグラム密度として積分すると 0 になる。
+
+ここで重要なのは、
+\begin{quote}
+``TSB にだけデータがあるので、そこから自動で AW に滑らかに延長してくれる''
+\end{quote}
+わけではない点である。
+今の \texttt{MakeACCGridPdf} は time template に対しては
+そのような関数外挿をしておらず、単に TSB だけ埋まったヒストを保存している。
+
+\section{ACCGridPdf 側で何が起きるか}
+\texttt{src/ACCGridPdf.cc} では、ロード時に
+\[
+\mathrm{AW\ norm}
+=
+\int_{\mathrm{AW}} \mathrm{tshape}(t)\,dt
+\]
+を計算し、この値で AW 内の時間 PDF を正規化しようとする。
+
+しかし今回の \texttt{tshape} ではこの積分が 0 なので、
+\begin{enumerate}
+  \item Eg ごとの \texttt{tshape\_egbin*} を無効
+  \item 全体 \texttt{tshape} も無効
+  \item 最後に AW 内一様分布 \(1/(t_{\max}-t_{\min})\) へフォールバック
+\end{enumerate}
+となる。
+
+したがって、今の ACC PDF の時間項は最終的に
+\[
+p_t(t)=\frac{1}{100\ \mathrm{ns}}
+\qquad
+(-50 \le t \le 50\ \mathrm{ns})
+\]
+である。
+
+\section{なぜこうしたのか}
+これは
+\begin{quote}
+``AW の事象を ACC モデルに使わない''
+\end{quote}
+という方針を徹底した結果である。
+
+もし AW 内時間形状もヒストグラムとして持ちたいなら、次のどちらかが必要になる。
+\begin{enumerate}
+  \item AW 内事象を template に入れる
+  \item AW は入れずに、TSB を関数で fit して AW に外挿する
+\end{enumerate}
+
+今の ACC PDF 生成器は 2 番目をまだ実装していない。
+だから、AW を除外したままではヒストグラム template は AW で 0 になり、
+結果として一様時間にフォールバックする。
+
+\section{図で見る}
+\subsection{ACC 予測の図}
+まず、TSB から AW 内 ACC 数を予測した結果を図\ref{fig:pred1}に示す。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.96\linewidth,page=1]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{3mm}
+  \includegraphics[width=0.96\linewidth,page=2]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{TSB から AW 内 ACC 数を外挿した図。}
+  \label{fig:pred1}
+\end{figure}
+
+\subsection{時間 fit の図}
+AW 除外後の時間分布 fit を図\ref{fig:fitall}に示す。
+これらの図で使っている \(t\) ヒストグラムには、4D AW 内事象は入っていない。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.96\linewidth,page=2]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.96\linewidth,page=3]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{\(E_\gamma=[0,10]\), \([10,20]\) MeV の時間 fit。}
+  \label{fig:fitall}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.96\linewidth,page=4]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.96\linewidth,page=5]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{\(E_\gamma=[20,30]\), \([30,80]\) MeV の時間 fit。}
+  \label{fig:fitall2}
+\end{figure}
+
+\subsection{ACC PDF 本体の図}
+現在の \texttt{acc\_grid.root} を可視化したものを図\ref{fig:accgridmeta}と図\ref{fig:accgridshape}に示す。
+meta page に
+\begin{quote}
+\texttt{t shape: uniform fallback in AW}
+\end{quote}
+と出ているのが、今回の議論の直接の証拠である。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.96\linewidth,page=1]{acc_grid_hist_step4f_doubleonly_awexcluded.pdf}
+  \caption{ACC PDF 可視化の meta page。\texttt{t shape: uniform fallback in AW} と表示されている。}
+  \label{fig:accgridmeta}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.96\linewidth,page=2]{acc_grid_hist_step4f_doubleonly_awexcluded.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.96\linewidth,page=3]{acc_grid_hist_step4f_doubleonly_awexcluded.pdf}
+  \caption{ACC 4D PDF の 1D/2D 可視化。ここで見えている形状は 4D の \(p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)\) に由来する。時間項そのものは AW 内一様へフォールバックしている。}
+  \label{fig:accgridshape}
+\end{figure}
+
+\section{実務的な理解}
+今回の実装を一言で言えば、
+\begin{quote}
+ACC のエネルギー・角度形状は TSB だけで作った。
+時間形状も AW を使わずに作ろうとしたが、ヒストグラム法では AW に中身が残らないので、
+最終的には時間一様に戻った。
+\end{quote}
+ということである。
+
+つまり、今の尤度 fit で使っている ACC PDF は
+\[
+p_{\mathrm{acc}}(x)
+=
+p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)\times \mathrm{const.}
+\]
+であり、時間構造を AW 内で能動的に学習した PDF にはまだなっていない。
+
+\section{次にもし改善するなら}
+AW を見ずに時間項もデータ駆動で持ち込みたいなら、
+次の方法が自然である。
+\begin{enumerate}
+  \item 今の \texttt{fit\_acc\_time\_by\_eg.C} のように TSB を関数 fit する
+  \item その fitted function を \texttt{acc\_grid.root} に関数パラメータまたは AW 正規化済みヒストとして保存する
+  \item \texttt{ACCGridPdf} 側でその関数を使って \(p_t(t|E_\gamma)\) を評価する
+\end{enumerate}
+
+そうすれば、
+\begin{quote}
+AW 内事象を使わず、かつ AW 内で 0 にならない時間項
+\end{quote}
+を作ることができる。
+
+\end{document}

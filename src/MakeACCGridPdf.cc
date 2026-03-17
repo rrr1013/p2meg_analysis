@@ -2,6 +2,7 @@
 #include "p2meg/MakeACCGridPdf.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <iostream>
 #include <sstream>
@@ -16,8 +17,11 @@
 #include "TH2.h"
 #include "THn.h"
 #include "TAxis.h"
+#include "TF1.h"
+#include "TFitResultPtr.h"
 
 #include "p2meg/AnalysisWindow.h"
+#include "p2meg/AccTimeFit.h"
 #include "p2meg/AnalysisWindowUtils.h"
 #include "p2meg/AngleUtils.h"
 #include "p2meg/DetectorResolution.h"
@@ -32,6 +36,7 @@
 static constexpr int kNBins_Ee = 40;
 static constexpr int kNBins_Eg = 40;
 static constexpr int kNBins_tShape = 400;
+static constexpr double kBlindCoreNs = 20.0; // [ns]
 
 // ---- TSB の全時間範囲（基本案）----
 // 実データの取得レンジに合わせて変更すること。
@@ -49,10 +54,27 @@ static constexpr double kAccTimeEgEdges[kNAccTimeEgBins + 1] = {
 // 物理カットではなく、TSB 統計の疎さによる「穴」を埋めるための数値的平滑化。
 static constexpr int    kSmoothRadiusBins = 2;   // 近傍の半径（ビン単位）
 static constexpr double kSmoothSigmaBins  = 1.0; // ガウス重みの幅（ビン単位）
-
 //============================================================
 // 内部補助
 //============================================================
+
+static double GetBlindCoreNsFromEnv() {
+  const char* s = std::getenv("P2MEG_ACC_BLIND_CORE_NS");
+  if (!s) return kBlindCoreNs;
+  char* endptr = nullptr;
+  const double v = std::strtod(s, &endptr);
+  if (endptr == s || !Math_IsFinite(v) || !(v > 0.0)) return kBlindCoreNs;
+  return v;
+}
+
+static double GetSigmaMinNsFromEnv() {
+  const char* s = std::getenv("P2MEG_ACC_SIGMA_MIN_NS");
+  if (!s) return 20.0;
+  char* endptr = nullptr;
+  const double v = std::strtod(s, &endptr);
+  if (endptr == s || !Math_IsFinite(v) || !(v > 0.0)) return 20.0;
+  return v;
+}
 
 // 2D( E, phi ) の全ビン総和（カウントの総和）
 static double SumAllBins2(const TH2D& h) {
@@ -211,6 +233,53 @@ static double IntegrateTimeSidebandDensity1D(const TH1D& h,
   return (s > 0.0 && Math_IsFinite(s)) ? s : 0.0;
 }
 
+// TSB 由来の raw ヒストグラムを fit し、その関数から全時間域の density ヒストを作る
+static int BuildFitBasedTimeTemplate(const TH1D& h_raw,
+                                     TH1D& h_fit_out,
+                                     int& fit_status_out,
+                                     double& chi2_ndf_out,
+                                     double pars_out[3]) {
+  fit_status_out = -999;
+  chi2_ndf_out = 0.0;
+  pars_out[0] = 0.0;
+  pars_out[1] = 0.0;
+  pars_out[2] = 0.0;
+
+  TH1D* h_tmp = dynamic_cast<TH1D*>(h_raw.Clone("acc_time_fit_input_tmp"));
+  if (!h_tmp) return 1;
+
+  AccTimeFitResult fitres{};
+  const double blind_core_ns = GetBlindCoreNsFromEnv();
+  const double sigma_min_ns = GetSigmaMinNsFromEnv();
+  const int fit_ret =
+      AccTimeFit_Run(*h_tmp, -blind_core_ns, blind_core_ns,
+                     sigma_min_ns, 400.0, fitres);
+  delete h_tmp;
+
+  fit_status_out = fitres.fit_status;
+  chi2_ndf_out = fitres.chi2_ndf;
+  pars_out[0] = fitres.A;
+  pars_out[1] = fitres.sigma;
+  pars_out[2] = fitres.C;
+  if (fit_ret != 0) return fit_ret;
+  return AccTimeFit_FillDensityHistogramFromResult(h_fit_out, fitres);
+}
+
+// 4D 解析窓 (Ee, Eg, theta_eg, t) の内側かどうか
+//  - 物理的な signal-like 領域を time template 学習から除外するために使う
+static bool IsInsideFullAnalysisWindow(double Ee, double Eg,
+                                       double theta_eg, double t) {
+  if (!Math_IsFinite(Ee) || !Math_IsFinite(Eg) ||
+      !Math_IsFinite(theta_eg) || !Math_IsFinite(t)) {
+    return false;
+  }
+  if (Ee < analysis_window.Ee_min || Ee > analysis_window.Ee_max) return false;
+  if (Eg < analysis_window.Eg_min || Eg > analysis_window.Eg_max) return false;
+  if (theta_eg < analysis_window.theta_min || theta_eg > analysis_window.theta_max) return false;
+  if (t < analysis_window.t_min || t > analysis_window.t_max) return false;
+  return true;
+}
+
 static int FindAccTimeEgBin(double Eg) {
   if (!Math_IsFinite(Eg)) return -1;
   for (int i = 0; i < kNAccTimeEgBins; ++i) {
@@ -308,6 +377,8 @@ static double CheckNormalizationEeEg(const THnD& h) {
 static std::string BuildMetaString(long n_total, long n_finite,
                                    long n_in_window, long n_tsb,
                                    long n_fill, long n_tshape_fill,
+                                   long n_tshape_fit_success,
+                                   double blind_core_ns,
                                    double total_mass,
                                    double norm_check, int N_phi_e, int N_phi_g,
                                    double t_all_min, double t_all_max,
@@ -337,6 +408,8 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "t_all: [" << t_all_min << "," << t_all_max << "] ns\n";
   oss << "TSB: t in [t_all] and outside window (width=" << w_tsb << " ns)\n";
   oss << "tshape: Eg-conditional templates for final analysis bins\n";
+  oss << "tshape source: fit function (1 Gaussian + constant) from TSB-only data\n";
+  oss << "tshape blind core: |t|<" << blind_core_ns << " ns\n";
   oss << "tshape Eg bins: [20,30], [30,80] MeV\n";
   oss << "tshape_AW_mass=" << tshape_aw_mass << "\n";
   oss << "tshape_TSB_mass=" << tshape_tsb_mass << "\n";
@@ -350,6 +423,7 @@ static std::string BuildMetaString(long n_total, long n_finite,
   oss << "events_time_sideband=" << n_tsb << "\n";
   oss << "filled_entries=" << n_fill << "\n";
   oss << "tshape_filled_entries=" << n_tshape_fill << "\n";
+  oss << "tshape_fit_success=" << n_tshape_fit_success << "\n";
   oss << "raw_mass=" << total_mass << "\n";
   oss << "norm_check_EeEg=" << norm_check << "\n";
   oss << "saved keys: <key>, <key>_tshape, <key>_tshape_egbin*\n";
@@ -415,16 +489,28 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   hG.GetYaxis()->Set(N_phi_g + 1, phi_edges_g.data());
 
   // 後方互換用の全 Eg 時間テンプレート（Eg in analysis window）
-  TH1D hTShape("acc_tshape_tmp", "ACC time-shape (all Eg in analysis window);t [ns];density [arb/ns]",
+  TH1D hTShapeRaw("acc_tshape_raw_tmp", "ACC raw time-shape (all Eg in analysis window);t [ns];density [arb/ns]",
                kNBins_tShape, kTAllMin, kTAllMax);
-  hTShape.Sumw2();
-  TH1D hTShapeEg[kNAccTimeEgBins] = {
-      TH1D("acc_tshape_egbin0_tmp", "ACC time-shape Eg[20,30];t [ns];density [arb/ns]",
+  hTShapeRaw.Sumw2();
+  TH1D hTShapeEgRaw[kNAccTimeEgBins] = {
+      TH1D("acc_tshape_egbin0_raw_tmp", "ACC raw time-shape Eg[20,30];t [ns];density [arb/ns]",
            kNBins_tShape, kTAllMin, kTAllMax),
-      TH1D("acc_tshape_egbin1_tmp", "ACC time-shape Eg[30,80];t [ns];density [arb/ns]",
+      TH1D("acc_tshape_egbin1_raw_tmp", "ACC raw time-shape Eg[30,80];t [ns];density [arb/ns]",
            kNBins_tShape, kTAllMin, kTAllMax)
   };
-  for (int i = 0; i < kNAccTimeEgBins; ++i) hTShapeEg[i].Sumw2();
+  TH1D hTShape("acc_tshape_tmp", "ACC fit-based time-shape (all Eg in analysis window);t [ns];density [arb/ns]",
+               kNBins_tShape, kTAllMin, kTAllMax);
+  TH1D hTShapeEg[kNAccTimeEgBins] = {
+      TH1D("acc_tshape_egbin0_tmp", "ACC fit-based time-shape Eg[20,30];t [ns];density [arb/ns]",
+           kNBins_tShape, kTAllMin, kTAllMax),
+      TH1D("acc_tshape_egbin1_tmp", "ACC fit-based time-shape Eg[30,80];t [ns];density [arb/ns]",
+           kNBins_tShape, kTAllMin, kTAllMax)
+  };
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    hTShapeEgRaw[i].Sumw2();
+    hTShapeEg[i].Sumw2();
+  }
+  hTShape.Sumw2();
 
   long n_total = 0;
   long n_finite = 0;
@@ -432,6 +518,8 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   long n_tsb = 0;
   long n_fill = 0;
   long n_tshape_fill = 0;
+  long n_tshape_aw_excluded = 0;
+  long n_tshape_fit_success = 0;
 
   const double w_tsb = AnalysisWindow_TimeSidebandWidth(analysis_window, kTAllMin, kTAllMax);
 
@@ -463,9 +551,13 @@ int MakeACCGridPdf(const std::vector<Event>& events,
         theta_eg >= analysis_window.theta_min && theta_eg <= analysis_window.theta_max) {
       const int ieg = FindAccTimeEgBin(Eg);
       if (ieg >= 0) {
-        hTShapeEg[ieg].Fill(t);
-        hTShape.Fill(t);
-        ++n_tshape_fill;
+        if (!IsInsideFullAnalysisWindow(Ee, Eg, theta_eg, t)) {
+          hTShapeEgRaw[ieg].Fill(t);
+          hTShapeRaw.Fill(t);
+          ++n_tshape_fill;
+        } else {
+          ++n_tshape_aw_excluded;
+        }
       }
     }
 
@@ -489,22 +581,50 @@ int MakeACCGridPdf(const std::vector<Event>& events,
             << " in_window=" << n_in_window
             << " time_sideband=" << n_tsb
             << " filled=" << n_fill
-            << " tshape_filled=" << n_tshape_fill << "\n";
+            << " tshape_filled=" << n_tshape_fill
+            << " tshape_aw_excluded=" << n_tshape_aw_excluded << "\n";
 
-  ConvertCountsToDensity1D(hTShape);
+  ConvertCountsToDensity1D(hTShapeRaw);
   for (int i = 0; i < kNAccTimeEgBins; ++i) {
-    ConvertCountsToDensity1D(hTShapeEg[i]);
+    ConvertCountsToDensity1D(hTShapeEgRaw[i]);
   }
+
+  int fit_status_all = -999;
+  double chi2_ndf_all = 0.0;
+  double pars_all[3] = {0.0, 0.0, 0.0};
+  if (BuildFitBasedTimeTemplate(hTShapeRaw, hTShape, fit_status_all, chi2_ndf_all, pars_all) == 0) {
+    ++n_tshape_fit_success;
+  } else {
+    std::cerr << "[MakeACCGridPdf] fit-based global tshape build failed\n";
+    return 2;
+  }
+  for (int i = 0; i < kNAccTimeEgBins; ++i) {
+    int fit_status_eg = -999;
+    double chi2_ndf_eg = 0.0;
+    double pars_eg[3] = {0.0, 0.0, 0.0};
+    if (BuildFitBasedTimeTemplate(hTShapeEgRaw[i], hTShapeEg[i], fit_status_eg, chi2_ndf_eg, pars_eg) == 0) {
+      ++n_tshape_fit_success;
+    } else {
+      std::cerr << "[MakeACCGridPdf] fit-based Eg tshape build failed for bin " << i << "\n";
+      return 2;
+    }
+  }
+
   const double tshape_aw_mass =
       IntegrateDensityRange1D(hTShape, analysis_window.t_min, analysis_window.t_max);
   const double tshape_tsb_mass =
       IntegrateTimeSidebandDensity1D(hTShape, kTAllMin, kTAllMax);
   const double s_tshape =
       (tshape_tsb_mass > 0.0) ? (tshape_aw_mass / tshape_tsb_mass) : 0.0;
+  const double blind_core_ns = GetBlindCoreNsFromEnv();
 
-  if (!(tshape_aw_mass > 0.0) || !Math_IsFinite(tshape_aw_mass) ||
-      !(tshape_tsb_mass > 0.0) || !Math_IsFinite(tshape_tsb_mass)) {
-    std::cerr << "[MakeACCGridPdf] t-shape mass is not positive (AW="
+  if (!(tshape_tsb_mass > 0.0) || !Math_IsFinite(tshape_tsb_mass)) {
+    std::cerr << "[MakeACCGridPdf] t-shape TSB mass is not positive (AW="
+              << tshape_aw_mass << ", TSB=" << tshape_tsb_mass << ")\n";
+    return 2;
+  }
+  if (!(tshape_aw_mass > 0.0) || !Math_IsFinite(tshape_aw_mass)) {
+    std::cerr << "[MakeACCGridPdf] t-shape AW mass is not positive even after fit (AW="
               << tshape_aw_mass << ", TSB=" << tshape_tsb_mass << ")\n";
     return 2;
   }
@@ -613,7 +733,7 @@ int MakeACCGridPdf(const std::vector<Event>& events,
   }
 
   const std::string meta = BuildMetaString(n_total, n_finite, n_in_window,
-                                           n_tsb, n_fill, n_tshape_fill, total_mass,
+                                           n_tsb, n_fill, n_tshape_fill, n_tshape_fit_success, blind_core_ns, total_mass,
                                            norm_check, N_phi_e, N_phi_g,
                                            kTAllMin, kTAllMax, w_tsb,
                                            tshape_aw_mass, tshape_tsb_mass, s_tshape);

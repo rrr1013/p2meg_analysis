@@ -50,7 +50,7 @@ struct DetectorResolutionConst {
 };
 
 inline constexpr DetectorResolutionConst detres{
-    10,  // sigma_t  [ns]
+    2,  // sigma_t  [ns]
     9,    // N_theta  （0..pi を 9 分割 → 20 度刻み）
     0, // t_mean [ns]
     -0.6,    // P_mu

@@ -8,6 +8,7 @@
 #include <memory>
 #include <numeric>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "Math/Factory.h"
@@ -37,6 +38,18 @@ struct AllowedPhiCell {
     double area;   // [rad^2] proposal の面積重み
 };
 
+struct CachedNLLData {
+    std::size_t n_events;
+    std::size_t n_comp;
+    std::vector<double> pk;  // row-major: pk[i*n_comp + k]
+};
+
+struct ToyProposal {
+    std::vector<AllowedPhiCell> cells;
+    std::vector<double> weights;
+    bool valid;
+};
+
 static unsigned long long MixSeed(unsigned long long seed, unsigned long long salt)
 {
     unsigned long long z = seed + 0x9e3779b97f4a7c15ULL + salt;
@@ -54,6 +67,31 @@ static FitResult MakeFailedFitResult(std::size_t npar)
     out.yields_hat.assign(npar, 0.0);
     out.yields_err.clear();
     return out;
+}
+
+static bool SamplePositiveGaussian(double mean,
+                                   double sigma,
+                                   std::mt19937_64& rng,
+                                   double& sampled_out)
+{
+    sampled_out = 0.0;
+    if (!std::isfinite(mean) || !(mean > 0.0)) return false;
+    if (!std::isfinite(sigma) || sigma <= 0.0) {
+        sampled_out = mean;
+        return true;
+    }
+
+    std::normal_distribution<double> gaus(mean, sigma);
+    for (int itry = 0; itry < 10000; ++itry) {
+        const double v = gaus(rng);
+        if (std::isfinite(v) && v > 0.0) {
+            sampled_out = v;
+            return true;
+        }
+    }
+
+    sampled_out = mean;
+    return true;
 }
 
 static bool BuildAllowedPhiCells(std::vector<AllowedPhiCell>& cells,
@@ -102,40 +140,52 @@ static bool BuildAllowedPhiCells(std::vector<AllowedPhiCell>& cells,
     return (!cells.empty() && total_area > 0.0 && std::isfinite(total_area));
 }
 
+static bool BuildToyProposal(ToyProposal& proposal)
+{
+    proposal.cells.clear();
+    proposal.weights.clear();
+    proposal.valid = false;
+
+    double total_area = 0.0;
+    if (!BuildAllowedPhiCells(proposal.cells, total_area)) return false;
+    if (!(total_area > 0.0)) return false;
+
+    proposal.weights.reserve(proposal.cells.size());
+    for (const auto& cell : proposal.cells) proposal.weights.push_back(cell.area);
+    proposal.valid = !proposal.weights.empty();
+    return proposal.valid;
+}
+
 static bool ProposeUniformEvent(std::mt19937_64& rng,
-                                const std::vector<AllowedPhiCell>& cells,
+                                const ToyProposal& proposal,
                                 Event& ev_out)
 {
-    if (cells.empty()) return false;
+    if (!proposal.valid || proposal.cells.empty() || proposal.weights.empty()) return false;
 
     const double dEe = analysis_window.Ee_max - analysis_window.Ee_min;
     const double dEg = analysis_window.Eg_max - analysis_window.Eg_min;
     const double dt  = analysis_window.t_max  - analysis_window.t_min;
     if (!(dEe > 0.0) || !(dEg > 0.0) || !(dt > 0.0)) return false;
 
-    std::vector<double> weights;
-    weights.reserve(cells.size());
-    for (const auto& cell : cells) weights.push_back(cell.area);
-
     std::uniform_real_distribution<double> uEe(analysis_window.Ee_min, analysis_window.Ee_max);
     std::uniform_real_distribution<double> uEg(analysis_window.Eg_min, analysis_window.Eg_max);
     std::uniform_real_distribution<double> uT(analysis_window.t_min, analysis_window.t_max);
-    std::discrete_distribution<std::size_t> uCell(weights.begin(), weights.end());
+    std::discrete_distribution<std::size_t> uCell(proposal.weights.begin(), proposal.weights.end());
 
     const std::size_t idx = uCell(rng);
-    if (idx >= cells.size()) return false;
+    if (idx >= proposal.cells.size()) return false;
 
     ev_out.Ee = uEe(rng);
     ev_out.Eg = uEg(rng);
     ev_out.t  = uT(rng);
-    ev_out.phi_detector_e = cells[idx].phi_e;
-    ev_out.phi_detector_g = cells[idx].phi_g;
+    ev_out.phi_detector_e = proposal.cells[idx].phi_e;
+    ev_out.phi_detector_g = proposal.cells[idx].phi_g;
     return true;
 }
 
 static double EstimatePMax(const PdfComponent& component,
                            std::mt19937_64& rng,
-                           const std::vector<AllowedPhiCell>& cells,
+                           const ToyProposal& proposal,
                            int scan_trials,
                            double safety)
 {
@@ -144,7 +194,7 @@ static double EstimatePMax(const PdfComponent& component,
     double pmax = 0.0;
     for (int i = 0; i < scan_trials; ++i) {
         Event ev{};
-        if (!ProposeUniformEvent(rng, cells, ev)) continue;
+        if (!ProposeUniformEvent(rng, proposal, ev)) continue;
         double p = component.eval ? component.eval(ev, component.ctx) : 0.0;
         if (!std::isfinite(p) || p < 0.0) p = 0.0;
         if (p > pmax) pmax = p;
@@ -158,28 +208,35 @@ static double EstimatePMax(const PdfComponent& component,
 static bool GenerateEventsForComponent(const PdfComponent& component,
                                        long long n_events,
                                        std::mt19937_64& rng,
-                                       const std::vector<AllowedPhiCell>& cells,
+                                       const ToyProposal& proposal,
                                        const ToyGeneratorConfig& cfg,
+                                       double& pmax_cache,
                                        std::vector<Event>& out_events)
 {
     out_events.clear();
     if (n_events <= 0) return true;
-    if (cells.empty()) return false;
+    if (!proposal.valid) return false;
 
-    std::mt19937_64 rng_scan(MixSeed(cfg.seed, static_cast<unsigned long long>(n_events + 11)));
     double safety = cfg.pmax_safety;
     if (!(safety > 1.0) || !std::isfinite(safety)) safety = 5.0;
     double update = cfg.pmax_update;
     if (!(update > 1.0) || !std::isfinite(update)) update = 1.2;
 
-    double pmax = EstimatePMax(component, rng_scan, cells, cfg.pmax_scan_trials, safety);
+    if (!(pmax_cache > 0.0) || !std::isfinite(pmax_cache)) {
+        const unsigned long long salt =
+            static_cast<unsigned long long>(n_events + 11) ^
+            static_cast<unsigned long long>(std::hash<std::string>{}(component.name ? component.name : ""));
+        std::mt19937_64 rng_scan(MixSeed(cfg.seed, salt));
+        pmax_cache = EstimatePMax(component, rng_scan, proposal, cfg.pmax_scan_trials, safety);
+    }
+    double pmax = pmax_cache;
 
     out_events.reserve(static_cast<std::size_t>(n_events));
     std::uniform_real_distribution<double> u01(0.0, 1.0);
 
     while (static_cast<long long>(out_events.size()) < n_events) {
         Event ev{};
-        if (!ProposeUniformEvent(rng, cells, ev)) return false;
+        if (!ProposeUniformEvent(rng, proposal, ev)) return false;
 
         double p = component.eval ? component.eval(ev, component.ctx) : 0.0;
         if (!std::isfinite(p) || p <= 0.0) continue;
@@ -191,6 +248,7 @@ static bool GenerateEventsForComponent(const PdfComponent& component,
 
         if (p > pmax) {
             pmax = p * update;
+            pmax_cache = pmax;
         }
 
         const double accept_prob = p / pmax;
@@ -204,11 +262,70 @@ static bool GenerateEventsForComponent(const PdfComponent& component,
     return true;
 }
 
-static FitResult FitNLLWithFixedMask(const std::vector<Event>& events,
-                                     const std::vector<PdfComponent>& components,
-                                     const FitConfig& cfg,
-                                     const std::vector<bool>& fixed_mask,
-                                     const std::vector<double>& fixed_values)
+static bool BuildCachedNLLData(const std::vector<Event>& events,
+                               const std::vector<PdfComponent>& components,
+                               CachedNLLData& cache)
+{
+    cache.n_events = events.size();
+    cache.n_comp = components.size();
+    cache.pk.clear();
+
+    if (cache.n_comp == 0) return false;
+
+    cache.pk.resize(cache.n_events * cache.n_comp, 0.0);
+    for (std::size_t i = 0; i < cache.n_events; ++i) {
+        for (std::size_t k = 0; k < cache.n_comp; ++k) {
+            const auto& comp = components[k];
+            double p = comp.eval ? comp.eval(events[i], comp.ctx) : 0.0;
+            if (!std::isfinite(p) || p < 0.0) p = 0.0;
+            cache.pk[i * cache.n_comp + k] = p;
+        }
+    }
+
+    return true;
+}
+
+static double NLLFromCache(const CachedNLLData& cache,
+                           const std::vector<double>& yields)
+{
+    static constexpr double p_min = 1e-300;
+    static constexpr double penalty = 1e100;
+
+    if (cache.n_comp == 0) return penalty;
+    if (yields.size() != cache.n_comp) return penalty;
+
+    double Ntot = 0.0;
+    for (double Nk : yields) {
+        if (!std::isfinite(Nk)) return penalty;
+        Ntot += Nk;
+    }
+    if (!(Ntot > 0.0)) return penalty;
+
+    double nll = Ntot;
+    for (std::size_t i = 0; i < cache.n_events; ++i) {
+        double pi = 0.0;
+        const std::size_t row = i * cache.n_comp;
+        for (std::size_t k = 0; k < cache.n_comp; ++k) {
+            pi += yields[k] * cache.pk[row + k];
+        }
+
+        if (!(pi > 0.0) || !std::isfinite(pi)) return penalty;
+        if (pi < p_min) pi = p_min;
+        nll -= std::log(pi);
+    }
+
+    const double c = ConstraintNLL(yields);
+    if (!std::isfinite(c)) return penalty;
+    nll += c;
+
+    return nll;
+}
+
+static FitResult FitNLLWithFixedMaskCached(const CachedNLLData& cache,
+                                           const std::vector<PdfComponent>& components,
+                                           const FitConfig& cfg,
+                                           const std::vector<bool>& fixed_mask,
+                                           const std::vector<double>& fixed_values)
 {
     const std::size_t npar = components.size();
     FitResult out = MakeFailedFitResult(npar);
@@ -232,7 +349,7 @@ static FitResult FitNLLWithFixedMask(const std::vector<Event>& events,
 
     if (free_indices.empty()) {
         out.yields_hat = start_full;
-        out.nll_min = NLL(events, components, out.yields_hat);
+        out.nll_min = NLLFromCache(cache, out.yields_hat);
         out.status = std::isfinite(out.nll_min) ? 0 : 2;
         out.yields_err.assign(npar, 0.0);
         return out;
@@ -250,7 +367,7 @@ static FitResult FitNLLWithFixedMask(const std::vector<Event>& events,
         for (std::size_t j = 0; j < free_indices.size(); ++j) {
             yields[free_indices[j]] = x[j];
         }
-        return NLL(events, components, yields);
+        return NLLFromCache(cache, yields);
     };
 
     ROOT::Math::Functor functor(fcn, static_cast<unsigned int>(free_indices.size()));
@@ -295,6 +412,15 @@ static FitResult FitNLLWithFixedMask(const std::vector<Event>& events,
     return out;
 }
 
+static FitResult FitNLLCached(const CachedNLLData& cache,
+                              const std::vector<PdfComponent>& components,
+                              const FitConfig& cfg)
+{
+    std::vector<bool> fixed_mask(components.size(), false);
+    std::vector<double> fixed_values(components.size(), 0.0);
+    return FitNLLWithFixedMaskCached(cache, components, cfg, fixed_mask, fixed_values);
+}
+
 FitResult FitNLLFixedSignal(const std::vector<Event>& events,
                             const std::vector<PdfComponent>& components,
                             const FitConfig& cfg,
@@ -310,7 +436,9 @@ FitResult FitNLLFixedSignal(const std::vector<Event>& events,
     fixed_mask[0] = true;
     fixed_values[0] = N_sig_fixed;
 
-    return FitNLLWithFixedMask(events, components, cfg, fixed_mask, fixed_values);
+    CachedNLLData cache;
+    if (!BuildCachedNLLData(events, components, cache)) return out;
+    return FitNLLWithFixedMaskCached(cache, components, cfg, fixed_mask, fixed_values);
 }
 
 double EvaluateProfileLikelihoodQ(const std::vector<Event>& events,
@@ -321,7 +449,14 @@ double EvaluateProfileLikelihoodQ(const std::vector<Event>& events,
                                   FitResult& fit_free_out,
                                   FitResult& fit_prof_out)
 {
-    fit_free_out = FitNLL(events, components, free_fit_cfg);
+    CachedNLLData cache;
+    if (!BuildCachedNLLData(events, components, cache)) {
+        fit_free_out = MakeFailedFitResult(components.size());
+        fit_prof_out = MakeFailedFitResult(components.size());
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    fit_free_out = FitNLLCached(cache, components, free_fit_cfg);
     if (fit_free_out.status != 0 || !std::isfinite(fit_free_out.nll_min)) {
         fit_prof_out = MakeFailedFitResult(components.size());
         return std::numeric_limits<double>::quiet_NaN();
@@ -335,7 +470,12 @@ double EvaluateProfileLikelihoodQ(const std::vector<Event>& events,
         prof_cfg.start_yields[0] = N_sig_fixed;
     }
 
-    fit_prof_out = FitNLLFixedSignal(events, components, prof_cfg, N_sig_fixed);
+    std::vector<bool> fixed_mask(components.size(), false);
+    std::vector<double> fixed_values(components.size(), 0.0);
+    fixed_mask[0] = true;
+    fixed_values[0] = N_sig_fixed;
+    fit_prof_out = FitNLLWithFixedMaskCached(cache, components, prof_cfg,
+                                             fixed_mask, fixed_values);
     if (fit_prof_out.status != 0 || !std::isfinite(fit_prof_out.nll_min)) {
         return std::numeric_limits<double>::quiet_NaN();
     }
@@ -346,26 +486,99 @@ double EvaluateProfileLikelihoodQ(const std::vector<Event>& events,
     return q;
 }
 
+ProfileLikelihoodQScanResult EvaluateProfileLikelihoodQScan(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const FitConfig& free_fit_cfg,
+    const FitConfig& prof_fit_cfg,
+    const std::vector<double>& N_sig_scan)
+{
+    ProfileLikelihoodQScanResult out;
+    out.fit_free = MakeFailedFitResult(components.size());
+    out.points.clear();
+
+    CachedNLLData cache;
+    if (!BuildCachedNLLData(events, components, cache)) {
+        return out;
+    }
+
+    out.fit_free = FitNLLCached(cache, components, free_fit_cfg);
+    if (out.fit_free.status != 0 || !std::isfinite(out.fit_free.nll_min)) {
+        return out;
+    }
+
+    std::vector<double> prof_start = out.fit_free.yields_hat;
+    if (prof_start.size() != components.size()) {
+        prof_start = prof_fit_cfg.start_yields;
+    }
+
+    for (double N_sig_fixed : N_sig_scan) {
+        ProfileLikelihoodQPoint point;
+        point.N_sig_test = N_sig_fixed;
+        point.q_value = std::numeric_limits<double>::quiet_NaN();
+        point.fit_prof = MakeFailedFitResult(components.size());
+
+        if (!std::isfinite(N_sig_fixed) || N_sig_fixed < 0.0) {
+            out.points.push_back(point);
+            continue;
+        }
+
+        FitConfig prof_cfg = prof_fit_cfg;
+        if (prof_cfg.start_yields.size() == components.size()) {
+            prof_cfg.start_yields = prof_start;
+        }
+        if (prof_cfg.start_yields.size() == components.size()) {
+            prof_cfg.start_yields[0] = N_sig_fixed;
+        }
+
+        std::vector<bool> fixed_mask(components.size(), false);
+        std::vector<double> fixed_values(components.size(), 0.0);
+        fixed_mask[0] = true;
+        fixed_values[0] = N_sig_fixed;
+
+        point.fit_prof = FitNLLWithFixedMaskCached(cache, components, prof_cfg,
+                                                   fixed_mask, fixed_values);
+        if (point.fit_prof.status == 0 && std::isfinite(point.fit_prof.nll_min)) {
+            double q = 2.0 * (point.fit_prof.nll_min - out.fit_free.nll_min);
+            if (std::isfinite(q)) {
+                if (q < 0.0) q = 0.0;
+                point.q_value = q;
+                prof_start = point.fit_prof.yields_hat;
+            }
+        }
+
+        out.points.push_back(point);
+    }
+
+    return out;
+}
+
 bool GenerateToyDatasetFromModel(const std::vector<PdfComponent>& components,
                                  const std::vector<double>& mean_yields,
                                  const ToyGeneratorConfig& cfg,
                                  unsigned long long toy_index,
                                  std::vector<Event>& out_events,
+                                 std::vector<double>* io_pmax_cache,
                                  std::vector<double>* out_generated_yields)
 {
     out_events.clear();
     if (components.empty()) return false;
     if (mean_yields.size() != components.size()) return false;
 
-    std::vector<AllowedPhiCell> cells;
-    double total_phi_area = 0.0;
-    if (!BuildAllowedPhiCells(cells, total_phi_area)) return false;
-    if (!(total_phi_area > 0.0)) return false;
+    ToyProposal proposal;
+    if (!BuildToyProposal(proposal)) return false;
 
     std::mt19937_64 rng(MixSeed(cfg.seed, toy_index + 1ULL));
 
     std::vector<double> generated(mean_yields.size(), 0.0);
     std::vector<Event> all_events;
+    std::vector<double> local_pmax_cache;
+    if (!io_pmax_cache) {
+        local_pmax_cache.assign(components.size(), 0.0);
+        io_pmax_cache = &local_pmax_cache;
+    } else if (io_pmax_cache->size() != components.size()) {
+        io_pmax_cache->assign(components.size(), 0.0);
+    }
 
     for (std::size_t k = 0; k < components.size(); ++k) {
         const double mean = mean_yields[k];
@@ -379,7 +592,8 @@ bool GenerateToyDatasetFromModel(const std::vector<PdfComponent>& components,
         generated[k] = static_cast<double>(n_gen);
 
         std::vector<Event> comp_events;
-        if (!GenerateEventsForComponent(components[k], n_gen, rng, cells, cfg, comp_events)) {
+        if (!GenerateEventsForComponent(components[k], n_gen, rng, proposal, cfg,
+                                        (*io_pmax_cache)[k], comp_events)) {
             return false;
         }
         all_events.insert(all_events.end(), comp_events.begin(), comp_events.end());
@@ -423,12 +637,13 @@ UpperLimitPointResult EvaluateUpperLimitPoint(const std::vector<Event>& events,
     if (mean_yields.size() != components.size()) return out;
 
     int n_ge = 0;
+    std::vector<double> pmax_cache(components.size(), 0.0);
     for (int itoy = 0; itoy < cfg.n_toys; ++itoy) {
         std::vector<Event> toy_events;
         std::vector<double> toy_generated_yields;
         if (!GenerateToyDatasetFromModel(components, mean_yields, cfg.toy_cfg,
                                          static_cast<unsigned long long>(itoy),
-                                         toy_events, &toy_generated_yields)) {
+                                         toy_events, &pmax_cache, &toy_generated_yields)) {
             continue;
         }
 
@@ -505,6 +720,152 @@ UpperLimitScanResult EvaluateUpperLimitScan(const std::vector<Event>& events,
 
     if (std::isfinite(out.N_mu_eff) && out.N_mu_eff > 0.0) {
         out.BR_90 = out.N_sig_90 / out.N_mu_eff;
+    }
+
+    return out;
+}
+
+UpperLimitBRPointResult EvaluateUpperLimitBRPoint(const std::vector<Event>& events,
+                                                  const std::vector<PdfComponent>& components,
+                                                  const UpperLimitBRPointConfig& cfg)
+{
+    UpperLimitBRPointResult out;
+    out.BR_test = cfg.BR_test;
+    out.N_sig_test_nominal = 0.0;
+    out.q_obs = std::numeric_limits<double>::quiet_NaN();
+    out.p_value = 0.0;
+    out.acceptance_threshold = 0.1;
+    out.accepted = false;
+    out.n_toys_requested = cfg.n_toys;
+    out.n_toys_valid = 0;
+    out.fit_free_obs = MakeFailedFitResult(components.size());
+    out.fit_prof_obs = MakeFailedFitResult(components.size());
+
+    if (cfg.cl > 0.0 && cfg.cl < 1.0 && std::isfinite(cfg.cl)) {
+        out.acceptance_threshold = 1.0 - cfg.cl;
+    }
+
+    if (!std::isfinite(cfg.BR_test) || cfg.BR_test < 0.0) return out;
+    if (!std::isfinite(cfg.norm_cfg.N_mu_eff_nom) || !(cfg.norm_cfg.N_mu_eff_nom > 0.0)) {
+        return out;
+    }
+    if (!std::isfinite(cfg.norm_cfg.N_mu_eff_sigma) || cfg.norm_cfg.N_mu_eff_sigma < 0.0) {
+        return out;
+    }
+
+    out.N_sig_test_nominal = cfg.BR_test * cfg.norm_cfg.N_mu_eff_nom;
+    if (!std::isfinite(out.N_sig_test_nominal) || out.N_sig_test_nominal < 0.0) return out;
+
+    out.q_obs = EvaluateProfileLikelihoodQ(events, components,
+                                           cfg.free_fit_cfg, cfg.prof_fit_cfg,
+                                           out.N_sig_test_nominal,
+                                           out.fit_free_obs, out.fit_prof_obs);
+    if (!std::isfinite(out.q_obs)) {
+        return out;
+    }
+
+    const std::vector<double>& prof_mean_yields = out.fit_prof_obs.yields_hat;
+    if (prof_mean_yields.size() != components.size()) return out;
+
+    int n_ge = 0;
+    std::vector<double> pmax_cache(components.size(), 0.0);
+    for (int itoy = 0; itoy < cfg.n_toys; ++itoy) {
+        std::mt19937_64 rng_norm(
+            MixSeed(cfg.toy_cfg.seed,
+                    static_cast<unsigned long long>(0xB0000000ULL + static_cast<unsigned long long>(itoy))));
+
+        double N_mu_eff_toy = cfg.norm_cfg.N_mu_eff_nom;
+        if (!SamplePositiveGaussian(cfg.norm_cfg.N_mu_eff_nom,
+                                    cfg.norm_cfg.N_mu_eff_sigma,
+                                    rng_norm,
+                                    N_mu_eff_toy)) {
+            continue;
+        }
+
+        std::vector<double> mean_yields = prof_mean_yields;
+        mean_yields[0] = cfg.BR_test * N_mu_eff_toy;
+        if (!std::isfinite(mean_yields[0]) || mean_yields[0] < 0.0) continue;
+
+        std::vector<Event> toy_events;
+        std::vector<double> toy_generated_yields;
+        if (!GenerateToyDatasetFromModel(components, mean_yields, cfg.toy_cfg,
+                                         static_cast<unsigned long long>(itoy),
+                                         toy_events, &pmax_cache, &toy_generated_yields)) {
+            continue;
+        }
+
+        if (toy_events.empty()) continue;
+
+        FitConfig free_cfg = cfg.free_fit_cfg;
+        if (free_cfg.start_yields.size() == components.size()) {
+            free_cfg.start_yields = toy_generated_yields;
+            const double nsum =
+                std::accumulate(free_cfg.start_yields.begin(), free_cfg.start_yields.end(), 0.0);
+            if (!(nsum > 0.0)) {
+                for (double& v : free_cfg.start_yields) v = 1.0;
+            }
+        }
+
+        FitConfig prof_cfg = cfg.prof_fit_cfg;
+        if (prof_cfg.start_yields.size() == components.size()) {
+            prof_cfg.start_yields = toy_generated_yields;
+            if (!prof_cfg.start_yields.empty()) {
+                prof_cfg.start_yields[0] = out.N_sig_test_nominal;
+            }
+        }
+
+        FitResult fit_free_toy;
+        FitResult fit_prof_toy;
+        const double q_toy = EvaluateProfileLikelihoodQ(toy_events, components,
+                                                        free_cfg, prof_cfg,
+                                                        out.N_sig_test_nominal,
+                                                        fit_free_toy, fit_prof_toy);
+        if (!std::isfinite(q_toy)) continue;
+
+        ++out.n_toys_valid;
+        if (q_toy >= out.q_obs) ++n_ge;
+    }
+
+    if (out.n_toys_valid > 0) {
+        out.p_value = static_cast<double>(n_ge) /
+                      static_cast<double>(out.n_toys_valid);
+        out.accepted = (out.p_value >= out.acceptance_threshold);
+    }
+
+    return out;
+}
+
+UpperLimitBRScanResult EvaluateUpperLimitBRScan(const std::vector<Event>& events,
+                                                const std::vector<PdfComponent>& components,
+                                                const UpperLimitBRScanConfig& cfg)
+{
+    UpperLimitBRScanResult out;
+    out.fit_free_obs = MakeFailedFitResult(components.size());
+    out.points.clear();
+    out.BR_90 = 0.0;
+    out.N_sig_90_nominal = 0.0;
+    out.norm_cfg = cfg.norm_cfg;
+
+    out.fit_free_obs = FitNLL(events, components, cfg.free_fit_cfg);
+
+    for (std::size_t i = 0; i < cfg.BR_scan.size(); ++i) {
+        UpperLimitBRPointConfig pcfg;
+        pcfg.BR_test = cfg.BR_scan[i];
+        pcfg.n_toys = cfg.n_toys_per_point;
+        pcfg.cl = cfg.cl;
+        pcfg.free_fit_cfg = cfg.free_fit_cfg;
+        pcfg.prof_fit_cfg = cfg.prof_fit_cfg;
+        pcfg.toy_cfg = cfg.toy_cfg;
+        pcfg.toy_cfg.seed = MixSeed(cfg.toy_cfg.seed, static_cast<unsigned long long>(i + 1001));
+        pcfg.norm_cfg = cfg.norm_cfg;
+
+        UpperLimitBRPointResult pres = EvaluateUpperLimitBRPoint(events, components, pcfg);
+        out.points.push_back(pres);
+
+        if (pres.accepted && std::isfinite(pres.BR_test) && pres.BR_test > out.BR_90) {
+            out.BR_90 = pres.BR_test;
+            out.N_sig_90_nominal = pres.N_sig_test_nominal;
+        }
     }
 
     return out;

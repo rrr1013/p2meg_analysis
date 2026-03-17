@@ -1,0 +1,28 @@
+==================== Input ====================
+datafile             = data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt
+events_used          = 18
+skipped_non5         = 0
+skipped_outside_win  = 1560
+N_mu_eff_nom         = 1708.778834
+N_mu_eff_sigma       = 25.89154932
+scan_points          = 1
+n_toys_per_point     = 10000
+seed                 = 970002
+===============================================
+==================== Best Fit =================
+status   = 0
+nll_min  = 271.8102312
+N_sig_hat = 1.057778487e-08
+N_rmd_hat = 1.657337196
+N_acc_hat = 15.32538077
+===============================================
+==================== Scan =====================
+# BR  N_sig_nom  q_obs  p_value  accepted  valid_toys  N_rmd_prof  N_acc_prof
+0.0007102040816 1.213581702 2.427164814 0.1132 1 10000 1.657613771 15.32503434
+===============================================
+==================== Limit ====================
+BR_90             = 0.0007102040816
+N_sig_90_nominal  = 1.213581702
+===============================================
+note: current BR upper limit randomises only N_mu_eff in toy generation
+      and otherwise uses the existing ConstraintNLL(yields).

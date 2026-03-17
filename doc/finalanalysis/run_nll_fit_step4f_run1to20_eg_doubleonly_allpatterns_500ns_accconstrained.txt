@@ -1,0 +1,15 @@
+[run_nll_fit] loaded events: 1578 from data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt
+[run_nll_fit] skipped non-5-column lines: 0
+[run_nll_fit] events in analysis window: 18 / 1578
+ 6 6 6
+[run_nll_fit][zero-pi] events with pi<=0: 0 / 18
+==================== Fit Result ====================
+status   = 0
+nll_min  = 193.707
+N_sig_hat = 3.92424e-09
+N_rmd_hat = 2.71061
+N_acc_hat = 14.4691
+err_sig   = 0.732064
+err_rmd   = 2.56391
+err_acc   = 4.92958
+====================================================

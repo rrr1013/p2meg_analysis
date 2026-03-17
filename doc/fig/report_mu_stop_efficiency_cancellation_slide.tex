@@ -1,0 +1,128 @@
+\documentclass[uplatex,dvipdfmx,12pt]{jsarticle}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{bm}
+\geometry{paperwidth=320mm,paperheight=180mm,margin=10mm}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+\begin{center}
+{\LARGE p2MEGにおける停止ミューオン数正規化}\\[2mm]
+{\large Michel高エネルギー窓で規格化すると $e$ 側効率が打ち消される}
+\end{center}
+
+\vspace{2mm}
+
+\begin{minipage}[t]{0.47\linewidth}
+\large
+\textbf{1. 定義}\\[1mm]
+run $j$ ごとに
+\[
+N^{\mathrm{sig}}_j = N^{\mathrm{eff}}_{\mu,j}\,\mathcal{B},
+\qquad
+\mathcal{B}\equiv \mathrm{BR}(\mu\to e\gamma)
+\]
+\[
+\Rightarrow\quad
+\mathrm{BR}(\mu\to e\gamma)=\frac{N^{\mathrm{sig}}}{N^{\mathrm{eff}}_\mu},
+\qquad
+N^{\mathrm{eff}}_\mu=\sum_j N^{\mathrm{eff}}_{\mu,j}
+\]
+
+\vspace{2mm}
+\textbf{2. Michel高エネルギー窓で停止数を求める}\\[1mm]
+\[
+N^{\mathrm{data}}_{j,\mathrm{HE}}
+=
+N^{\mathrm{stop}}_{\mu,j}\,
+\kappa^{\mathrm{Michel}}_j\,
+\eta_{e,j}
+\]
+\[
+\kappa^{\mathrm{Michel}}_j
+=
+\frac{N^{\mathrm{Michel,MC}}_{j,\mathrm{HE}}}{N^{\mathrm{stop,MC}}_{\mu,j}}
+\]
+\[
+\Rightarrow\quad
+N^{\mathrm{stop}}_{\mu,j}
+=
+N^{\mathrm{data}}_{j,\mathrm{HE}}
+\frac{1}{\kappa^{\mathrm{Michel}}_j}
+\frac{1}{\eta_{e,j}}
+\]
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.49\linewidth}
+\large
+\textbf{3. signal有効停止ミューオン数}\\[1mm]
+\[
+N^{\mathrm{eff}}_{\mu,j}
+=
+N^{\mathrm{stop}}_{\mu,j}\,
+\kappa^{\mathrm{sig}}_j\,
+\eta_{e,j}\,
+\eta_{\gamma,j}
+\]
+\[
+\kappa^{\mathrm{sig}}_j
+=
+\frac{N^{\mathrm{sig,MC}}_j}{N^{\mathrm{stop,MC}}_{\mu,j}}
+\]
+
+\vspace{1mm}
+\colorbox{yellow!15}{
+\parbox{0.94\linewidth}{
+\[
+N^{\mathrm{eff}}_{\mu,j}
+=
+N^{\mathrm{data}}_{j,\mathrm{HE}}
+\frac{1}{\kappa^{\mathrm{Michel}}_j}
+\frac{1}{\eta_{e,j}}
+\kappa^{\mathrm{sig}}_j
+\eta_{e,j}
+\eta_{\gamma,j}
+\]
+\[
+\Longrightarrow\qquad
+\bm{
+N^{\mathrm{eff}}_{\mu,j}
+=
+N^{\mathrm{data}}_{j,\mathrm{HE}}
+\frac{\kappa^{\mathrm{sig}}_j}{\kappa^{\mathrm{Michel}}_j}
+\eta_{\gamma,j}
+}
+\]
+\centering
+\large $e$ 側効率 $\eta_{e,j}$ が打ち消し合う
+}}
+
+\vspace{4mm}
+\textbf{4. 全runを合算した最終式}\\[1mm]
+\[
+\boxed{
+N^{\mathrm{eff}}_\mu
+=
+\sum_j
+N^{\mathrm{data}}_{j,\mathrm{HE}}
+\frac{\kappa^{\mathrm{sig}}_j}{\kappa^{\mathrm{Michel}}_j}
+\eta_{\gamma,j}
+}
+\]
+\[
+\boxed{
+\mathrm{BR}(\mu\to e\gamma)=\frac{N^{\mathrm{sig}}}{N^{\mathrm{eff}}_\mu}
+}
+\]
+\end{minipage}
+
+\vfill
+\begin{flushright}
+\large
+要点: Michel高エネルギー窓で規格化すると、未知の $e$ 検出効率に依らず
+$N^{\mathrm{eff}}_\mu$ を定義できる。
+\end{flushright}
+\end{document}

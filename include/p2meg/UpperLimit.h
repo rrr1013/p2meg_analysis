@@ -39,6 +39,11 @@ struct ToyGeneratorConfig {
     double pmax_update;       // 生成中に pmax 不足時の更新係数
 };
 
+struct NormalizationUncertaintyConfig {
+    double N_mu_eff_nom;    // 有効停止ミューオン数の公称値
+    double N_mu_eff_sigma;  // 有効停止ミューオン数の絶対誤差
+};
+
 struct UpperLimitPointConfig {
     double N_sig_test;        // 固定する signal yield 仮説値
     int n_toys;               // toy 本数
@@ -78,6 +83,58 @@ struct UpperLimitScanResult {
     double N_mu_eff;                           // 入力した有効停止ミューオン数
 };
 
+struct UpperLimitBRPointConfig {
+    double BR_test;                      // 固定する分岐比仮説値
+    int n_toys;                          // toy 本数
+    double cl;                           // 例: 0.90
+    FitConfig free_fit_cfg;              // 通常 fit 用初期値
+    FitConfig prof_fit_cfg;              // 固定 BR（=固定 N_sig_nom）profile fit 用初期値
+    ToyGeneratorConfig toy_cfg;
+    NormalizationUncertaintyConfig norm_cfg;
+};
+
+struct UpperLimitBRPointResult {
+    double BR_test;                 // 入力した分岐比仮説値
+    double N_sig_test_nominal;      // 公称 N_mu_eff に対応する signal yield 仮説値
+    double q_obs;                   // 実データの q(BR)
+    double p_value;                 // toy 分布に対する右側 p-value
+    double acceptance_threshold;    // 1 - CL
+    bool accepted;                  // p_value >= 1-CL なら true
+    int n_toys_requested;           // 要求 toy 数
+    int n_toys_valid;               // q_toy が有効に得られた toy 数
+    FitResult fit_free_obs;         // 実データ free fit
+    FitResult fit_prof_obs;         // 実データ fixed-BR profile fit
+};
+
+struct UpperLimitBRScanConfig {
+    std::vector<double> BR_scan;      // 走査する分岐比
+    int n_toys_per_point;             // 各点の toy 数
+    double cl;                        // 例: 0.90
+    FitConfig free_fit_cfg;           // 通常 fit 用初期値
+    FitConfig prof_fit_cfg;           // 固定 BR profile fit 用初期値
+    ToyGeneratorConfig toy_cfg;
+    NormalizationUncertaintyConfig norm_cfg;
+};
+
+struct UpperLimitBRScanResult {
+    FitResult fit_free_obs;                        // 実データ通常 fit
+    std::vector<UpperLimitBRPointResult> points;  // 各 BR 点の結果
+    double BR_90;                                 // 90% C.L. upper limit on BR
+    double N_sig_90_nominal;                      // BR_90 * N_mu_eff_nom
+    NormalizationUncertaintyConfig norm_cfg;      // 入力した normalisation 設定
+};
+
+struct ProfileLikelihoodQPoint {
+    double N_sig_test;     // 固定した signal yield 仮説値
+    double q_value;        // q = -2 ln lambda
+    FitResult fit_prof;    // fixed-N_sig profile fit
+};
+
+struct ProfileLikelihoodQScanResult {
+    FitResult fit_free;                        // 同一 dataset に対する free fit
+    std::vector<ProfileLikelihoodQPoint> points; // 各固定仮説値の結果
+};
+
 // N_sig を固定した profile fit
 //  - yields[0] = N_sig_fixed を固定し、残り成分を最小化する
 //  - 入力不正や最小化失敗時は status!=0 を返す
@@ -101,6 +158,17 @@ double EvaluateProfileLikelihoodQ(
     FitResult& fit_prof_out
 );
 
+// 同一 dataset に対して複数の N_sig_fixed をまとめて評価する
+//  - free fit は 1 回だけ行い、各 fixed-N_sig 点では cache を再利用する
+//  - 統計量 q の定義は EvaluateProfileLikelihoodQ と同じ
+ProfileLikelihoodQScanResult EvaluateProfileLikelihoodQScan(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const FitConfig& free_fit_cfg,
+    const FitConfig& prof_fit_cfg,
+    const std::vector<double>& N_sig_scan
+);
+
 // PDF から toy dataset を 1 本生成する
 //  - mean_yields[k] を平均とする Poisson fluctuation を各成分に入れる
 //  - out_generated_yields を与えた場合、実際に生成した各成分個数を返す
@@ -111,6 +179,7 @@ bool GenerateToyDatasetFromModel(
     const ToyGeneratorConfig& cfg,
     unsigned long long toy_index,
     std::vector<Event>& out_events,
+    std::vector<double>* io_pmax_cache = nullptr,
     std::vector<double>* out_generated_yields = nullptr
 );
 
@@ -130,6 +199,23 @@ UpperLimitScanResult EvaluateUpperLimitScan(
     const std::vector<Event>& events,
     const std::vector<PdfComponent>& components,
     const UpperLimitScanConfig& cfg
+);
+
+// 単一の BR 点について toy MC による受容判定を行う
+//  - q(BR) の固定 signal yield は BR * N_mu_eff_nom を使う
+//  - toy 生成時のみ N_mu_eff を Gaussian で揺らして normalisation uncertainty を入れる
+UpperLimitBRPointResult EvaluateUpperLimitBRPoint(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const UpperLimitBRPointConfig& cfg
+);
+
+// BR を走査して 90% C.L. upper limit を返す
+//  - accepted な点のうち最大の BR を BR_90 とする
+UpperLimitBRScanResult EvaluateUpperLimitBRScan(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const UpperLimitBRScanConfig& cfg
 );
 
 #endif // P2MEG_UPPER_LIMIT_H

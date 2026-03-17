@@ -1,0 +1,507 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{siunitx}
+\usepackage{url}
+\geometry{margin=20mm}
+
+\title{p2MEG 最終解析における ACC constraint 付き尤度解析\\
+step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt}
+\author{p2MEG 解析レポート}
+\date{2026年3月8日}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+最終 5D データ
+\texttt{data/finaldata/step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt}
+に対し、TSB から AW 内 ACC 数を見積もり、その結果を Gaussian constraint として
+尤度関数に導入した。
+
+今回の重要な更新点は、ACC PDF の時間項 \(p_t(t|E_\gamma)\) を
+TSB 事象の raw ヒストグラムから直接作るのではなく、
+TSB のみを使って fit した対称関数
+\[
+f(t)=A\exp\left(-\frac{t^2}{2\sigma^2}\right)+C
+\]
+を AW 内へ外挿して構成したことである。
+この fit は ACC 数見積もりに使ったものと
+\textbf{同じ仕様、同じ実装}を使い回している。
+これにより、AW 内事象を time template に使わずに、
+AW 内でも有限の時間 PDF を持つ ACC モデルを作ることができた。
+
+AW 内 ACC 数の見積もりは
+\[
+N_{\mathrm{ACC,pred}} = 10.13 \pm 8.75
+\]
+であり、これを Gaussian constraint として NLL に加えた。
+その結果、AW 内 18 事象に対し
+\begin{align}
+N_{\mathrm{sig}} &= 3.93\times 10^{-9},\\
+N_{\mathrm{rmd}} &= 2.71 \pm 2.56,\\
+N_{\mathrm{acc}} &= 14.47 \pm 4.93
+\end{align}
+を得た。
+現状では signal 成分は不要であり、観測事象は主として ACC と少量の RMD で説明される。
+\end{abstract}
+
+\section{目的}
+本レポートの目的は、次の一連の処理を 1 つにまとめて記録することである。
+\begin{enumerate}
+  \item TSB から AW 内 ACC 数を見積もる。
+  \item その結果を constraint として尤度関数へ入れる。
+  \item ACC PDF の時間項を、ACC 数見積もりと同じ fit 仕様で作る。
+  \item 変更後の ACC PDF を使って最尤解析を行う。
+  \item 手順、式、図、生成した PDF の作り方まで含めてまとめる。
+\end{enumerate}
+
+\section{入力データと解析窓}
+入力は
+\[
+\texttt{data/finaldata/step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt}
+\]
+である。
+各行は
+\[
+(E_e,\ E_\gamma,\ t,\ \phi_e,\ \phi_\gamma)
+\]
+の 5 変数を持つ。
+
+解析窓は
+\begin{align}
+20 &\le E_e \le 80 \ \mathrm{MeV},\\
+20 &\le E_\gamma \le 80 \ \mathrm{MeV},\\
+-50 &\le t \le 50 \ \mathrm{ns},\\
+1.7 &\le \theta_{eg} \le \pi
+\end{align}
+とした。
+ここで
+\[
+\theta_{eg}=|\phi_e-\phi_\gamma|
+\]
+である。
+
+また TSB は
+\[
+t\in[-500,500]\ \mathrm{ns}
+\quad\text{かつ}\quad
+t\notin[-50,50]\ \mathrm{ns}
+\]
+と定義した。
+
+\section{AW 内 ACC 数の見積もり}
+\subsection{見積もりの方針}
+AW 内 ACC 数の見積もりには
+\texttt{macros/fit\_acc\_time\_by\_eg.C}
+と
+\texttt{macros/predict\_acc\_from\_tsb\_by\_eg.C}
+を用いた。
+
+ここでは \(E_\gamma\) を
+\[
+[0,10],\ [10,20],\ [20,30],\ [30,80]\ \mathrm{MeV}
+\]
+の 4 bin に分け、
+各 bin ごとに時間分布を
+\[
+f_i(t)=A_i\exp\left(-\frac{t^2}{2\sigma_i^2}\right)+C_i
+\]
+で fit した。
+
+ただし fit に使う時間ヒストグラムには、4D 解析窓
+\[
+(E_e,E_\gamma,\theta_{eg},t)\in\mathrm{AW}
+\]
+の事象を入れない。
+したがって、時間形状は AW 外のデータだけで学習される。
+
+ここで使う fit の実装は
+\texttt{include/p2meg/AccTimeFit.h}
+に共通化した。
+\texttt{macros/fit\_acc\_time\_by\_eg.C} でも
+\texttt{src/MakeACCGridPdf.cc} でも、同じ
+\texttt{AccTimeFit\_Run(...)} を呼ぶ。
+したがって
+\begin{itemize}
+  \item model は \(A\exp(-t^2/2\sigma^2)+C\)
+  \item reject window は \(|t|<20\) ns
+  \item \(\sigma\) の下限は 20 ns
+\end{itemize}
+が両者で完全に一致している。
+
+\subsection{fit と外挿}
+\(|t|<20\) ns は blind core とし、
+\[
+\sigma_i \ge 20\ \mathrm{ns}
+\]
+を課した。
+fit 後、
+\begin{equation}
+R_i^{\mathrm{fit}}=
+\frac{\int_{-50}^{50} f_i(t)\,dt}
+{\int_{-500}^{-50} f_i(t)\,dt+\int_{50}^{500} f_i(t)\,dt}
+\end{equation}
+を定義した。
+
+また、生カウントから
+\[
+R_i^{\mathrm{data}} = \frac{N_i(\mathrm{AW})}{N_i(\mathrm{TSB})}
+\]
+も作った。
+
+最後に
+\begin{equation}
+N_{\mathrm{ACC,pred},i} = R_i^{\mathrm{fit}}N_i(\mathrm{TSB})
+\end{equation}
+で bin ごとの AW 内 ACC 数を予測し、全 bin を足して
+\[
+N_{\mathrm{ACC,pred}}(\mathrm{AW})
+\]
+を得た。
+
+\subsection{数値結果}
+今回の結果は
+\begin{align}
+N_{\mathrm{AW,obs}} &= 18,\\
+N_{\mathrm{ACC,pred}} &= 10.1275 \pm 8.7521,\\
+N_{\mathrm{AW,obs}} - N_{\mathrm{ACC,pred}} &= 7.8725
+\end{align}
+である。
+
+主要な bin の内訳は
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+\(E_\gamma\) [MeV] & \(N_{\mathrm{AW}}\) & \(N_{\mathrm{TSB}}\) & \(R_i^{\mathrm{fit}}\) & \(N_{\mathrm{ACC,pred},i}\) \\
+\midrule
+20--30 & 16 & 63 & 0.116662 & 7.3497 \\
+30--80 &  2 & 25 & 0.111111 & 2.7778 \\
+\bottomrule
+\end{tabular}
+\end{center}
+であった。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{3mm}
+  \includegraphics[width=0.95\linewidth,page=2]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{TSB から AW 内 ACC 数を予測した結果。}
+  \label{fig:predacc}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{ACC 時間 fit の meta page。入力、選別、blind core、4D AW 除外の条件をまとめた。}
+  \label{fig:fitaccmeta}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=2]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=3]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{\(E_\gamma=[0,10]\), \([10,20]\) MeV の時間 fit。}
+  \label{fig:fitacc12}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=4]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=5]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns.pdf}
+  \caption{\(E_\gamma=[20,30]\), \([30,80]\) MeV の時間 fit。}
+  \label{fig:fitacc34}
+\end{figure}
+
+\section{ACC PDF の作り方}
+\subsection{4D 形状 \(p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)\)}
+ACC PDF の 4D 本体は
+\texttt{src/MakeACCGridPdf.cc}
+で作った。
+手順は次の通りである。
+\begin{enumerate}
+  \item \((E_e,E_\gamma,\theta_{eg})\) が解析窓内の事象を選ぶ。
+  \item そのうち \(t\) が TSB にある事象だけを採用する。
+  \item \(h_E(E_e,\phi_e)\) と \(h_G(E_\gamma,\phi_\gamma)\) を作る。
+  \item \(E\) 軸方向のみ平滑化し、密度に正規化する。
+  \item
+  \[
+  p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)
+  \propto
+  p_E(E_e,\phi_e)\,p_G(E_\gamma,\phi_\gamma)
+  \]
+  として因子化した 4D 格子 PDF を作る。
+\end{enumerate}
+
+今回の生成では
+\begin{align}
+N_{\mathrm{events,total}} &= 1578,\\
+N_{\mathrm{in\ 3D\ window}} &= 106,\\
+N_{\mathrm{TSB}} &= 88
+\end{align}
+であり、4D PDF の形状情報は TSB の 88 事象のみから作られている。
+
+\subsection{時間項 \(p_t(t|E_\gamma)\) を fit 関数から作る}
+今回の更新点はここである。
+以前は time template \texttt{tshape} を raw ヒストグラムで保存していたため、
+4D AW 内事象を template からも除外すると、
+AW 内の bin content が 0 になり、
+\[
+\int_{\mathrm{AW}} \mathrm{tshape}(t)\,dt = 0
+\]
+となっていた。
+その結果、\texttt{ACCGridPdf\_Load} では時間項を正規化できず、
+AW 内一様分布へフォールバックしていた。
+
+今回はこの問題を避けるため、\texttt{MakeACCGridPdf.cc} の中で
+time template を次の手順で作るように変更した。
+\begin{enumerate}
+  \item raw の TSB-only 時間ヒストグラム \(h_t^{\mathrm{raw}}\) を作る。
+  \item 4D AW 内事象は \(h_t^{\mathrm{raw}}\) に入れない。
+  \item \(|t|<20\) ns の blind core を \textbf{fit から reject} する。
+  \item TSB 領域のみを用いて
+  \[
+  f(t)=A\exp\left(-\frac{t^2}{2\sigma^2}\right)+C
+  \]
+  を fit する。
+  \item 得られた \(f(t)\) を用いて、全時間域 \([-500,500]\) の各 bin に
+  \[
+  \frac{1}{\Delta t_{\mathrm{bin}}}
+  \int_{\mathrm{bin}} f(t)\,dt
+  \]
+  を入れ、fit-based template ヒストグラムを作る。
+\end{enumerate}
+
+ここで重要なのは、これは ACC 数見積もりで使った fit と
+\textbf{全く同じ仕様}だということである。
+すなわち、PDF 用だけ別の時間 model を導入したのではなく、
+ACC 数予測で採用した時間 model をそのまま
+\(p_t(t|E_\gamma)\) に再利用している。
+
+この方法では、AW 内 bin にデータを直接入れなくても、
+TSB fit の外挿により AW 内で有限の密度が得られる。
+したがって
+\[
+\int_{\mathrm{AW}} \mathrm{tshape}_{\mathrm{fit}}(t)\,dt > 0
+\]
+となり、\texttt{ACCGridPdf\_Load} は
+AW 内正規化済みの時間 PDF
+\[
+p_t(t|E_\gamma)=
+\frac{\mathrm{tshape}_{\mathrm{fit}}(t)}
+{\int_{\mathrm{AW}}\mathrm{tshape}_{\mathrm{fit}}(t)\,dt}
+\]
+を使えるようになる。
+
+ここで重要なのは、
+\begin{quote}
+AW 内で有限の密度を持つが、その値は AW データからではなく
+TSB fit の外挿から得ている
+\end{quote}
+という点である。
+
+\subsection{今回使った最終 ACC PDF}
+以上より、今回の尤度 fit で使った ACC PDF は
+\begin{equation}
+p_{\mathrm{acc}}(x)
+=
+p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)\times p_t(t|E_\gamma)
+\end{equation}
+であり、
+\begin{itemize}
+  \item 4D 形状 \(p_4\) は TSB 事象から構成
+  \item 時間項 \(p_t\) は TSB-only fit 関数から構成
+\end{itemize}
+という意味で、AW 内事象を直接学習に使っていない。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{acc_grid_hist_step4f_doubleonly_fitbased.pdf}
+  \caption{fit-based time template を持つ ACC PDF の meta page。}
+  \label{fig:accgridmeta}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=2]{acc_grid_hist_step4f_doubleonly_fitbased.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=3]{acc_grid_hist_step4f_doubleonly_fitbased.pdf}
+  \caption{ACC PDF の 1D/2D 可視化。\(t\) 分布も一様ではなく fit-based template 由来の形を持つ。}
+  \label{fig:accgridshape}
+\end{figure}
+
+\section{尤度関数と constraint}
+\subsection{NLL}
+尤度 fit は
+\texttt{scripts/run\_nll\_fit.cc}
+で行った。
+解析窓内 18 事象だけを使い、signal, RMD, ACC の 3 成分で fit した。
+
+NLL は
+\begin{equation}
+\mathrm{NLL}
+=
+\left(\sum_k N_k\right)
+-\sum_i \log\left(\sum_k N_k p_k(x_i)\right)
++\mathrm{ConstraintNLL}(N_k)
+\end{equation}
+である。
+
+\subsection{ACC constraint}
+\texttt{src/ConstraintNLL.cc}
+に
+\[
+N_{\mathrm{acc}} = 10.1275 \pm 8.75205
+\]
+の Gaussian constraint を入れた。
+したがって ACC 制約項は
+\begin{equation}
+\mathrm{Constraint}_{\mathrm{acc}}
+=
+\frac{1}{2}
+\left(
+\frac{N_{\mathrm{acc}}-10.1275}{8.75205}
+\right)^2
+\end{equation}
+である。
+
+signal と RMD には従来通り広い constraint を残し、
+実質的には自由に動けるようにした。
+
+\section{制約付き最尤解析の結果}
+\subsection{結果}
+新しい fit-based ACC 時間項を使って
+\texttt{run\_nll\_fit} を実行した結果、
+\begin{align}
+\mathrm{status} &= 0,\\
+\mathrm{NLL}_{\min} &= 193.71,\\
+N_{\mathrm{sig}} &= 3.92803\times 10^{-9},\\
+N_{\mathrm{rmd}} &= 2.71048 \pm 2.56384,\\
+N_{\mathrm{acc}} &= 14.4692 \pm 4.92959
+\end{align}
+を得た。
+
+\begin{table}[htbp]
+\centering
+\caption{ACC constraint 付き尤度 fit の結果}
+\label{tab:nllresult}
+\begin{tabular}{lc}
+\toprule
+量 & 値 \\
+\midrule
+解析窓内事象数 & 18 \\
+fit status & 0 \\
+\(\mathrm{NLL}_{\min}\) & 193.71 \\
+\(N_{\mathrm{sig}}\) & \(3.92803\times 10^{-9}\) \\
+\(N_{\mathrm{rmd}}\) & \(2.71048 \pm 2.56384\) \\
+\(N_{\mathrm{acc}}\) & \(14.4692 \pm 4.92959\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{解釈}
+constraint の中心値 \(10.13\) 事象に対し、fit は
+\[
+N_{\mathrm{acc}}\simeq 14.47
+\]
+を選んだ。
+これは \(\pm 8.75\) の constraint 幅の中では十分許容される。
+残りは
+\[
+N_{\mathrm{rmd}}\simeq 2.71
+\]
+で補われ、signal は不要である。
+
+したがって、fit-based な ACC 時間項を使っても結論は変わらず、
+\begin{quote}
+現時点の AW 18 事象は、主として ACC と少量の RMD で説明できる
+\end{quote}
+と判断される。
+
+\section{実行手順}
+\subsection{ACC 数の見積もり}
+\begin{verbatim}
+root -l -b -q 'macros/fit_acc_time_by_eg.C(
+  "data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt")'
+
+root -l -b -q 'macros/predict_acc_from_tsb_by_eg.C(
+  "data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt")'
+\end{verbatim}
+
+\subsection{fit-based ACC PDF の生成}
+\begin{verbatim}
+./build/make_acc_grid_pdf \
+  data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt \
+  data/pdf_cache/acc_grid.root acc_grid
+\end{verbatim}
+
+\subsection{制約付き最尤解析}
+\begin{verbatim}
+./build/run_nll_fit \
+  data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt
+\end{verbatim}
+
+\subsection{ACC PDF 図の生成}
+\begin{verbatim}
+./build/plot_acc_grid_pdf \
+  data/pdf_cache/acc_grid.root acc_grid \
+  doc/finalanalysis/acc_grid_hist_step4f_doubleonly_fitbased.pdf
+\end{verbatim}
+
+\section{このレポート PDF の作り方}
+このレポート自身は
+\texttt{doc/finalanalysis/report\_acc\_constraint\_nll\_step4f.tex}
+として保存し、
+\begin{verbatim}
+cd doc/finalanalysis
+platex report_acc_constraint_nll_step4f.tex
+platex report_acc_constraint_nll_step4f.tex
+dvipdfmx report_acc_constraint_nll_step4f.dvi
+\end{verbatim}
+で PDF 化した。
+
+図としては
+\begin{itemize}
+  \item \texttt{fit\_acc\_time\_by\_eg\_*.pdf}
+  \item \texttt{predict\_acc\_from\_tsb\_by\_eg\_*.pdf}
+  \item \texttt{acc\_grid\_hist\_step4f\_doubleonly\_fitbased.pdf}
+\end{itemize}
+をそのまま埋め込んでいる。
+したがって、このレポート 1 本を開けば
+\begin{itemize}
+  \item ACC 数見積もりの fit 図
+  \item TSB からの AW 予測図
+  \item ACC PDF の可視化図
+  \item 制約付き尤度解析の結果
+\end{itemize}
+をまとめて確認できる。
+
+\section{まとめ}
+TSB から見積もった
+\[
+N_{\mathrm{ACC,pred}} = 10.13 \pm 8.75
+\]
+を Gaussian constraint として導入し、さらに ACC PDF の時間項を
+TSB-only fit 関数から構成するように変更した。
+このとき、PDF の時間 fit は ACC 数見積もりと同じ仕様・同じ実装を使った。
+
+その結果、
+\[
+N_{\mathrm{sig}}\simeq 0,\qquad
+N_{\mathrm{rmd}}\simeq 2.71,\qquad
+N_{\mathrm{acc}}\simeq 14.47
+\]
+を得た。
+
+したがって、時間項を fit-based に改善した後でも、
+現在の最終解析窓の事象は signal を必要とせず、
+ACC 優勢の描像と整合している。
+
+\end{document}

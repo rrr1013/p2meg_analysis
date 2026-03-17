@@ -1,0 +1,25 @@
+# Michel HE normalization for effective stopped muons
+# Formula implemented in this macro:
+#   N_mu_eff = N_HE_data * (N_sig_MC / N_mu_stop_MC_sig)
+#              / (N_HE_Michel_MC / N_mu_stop_MC_michel)
+#              * eta_gamma
+#            = N_HE_data * N_sig_MC * N_mu_stop_MC_michel
+#              / N_mu_stop_MC_sig / N_HE_Michel_MC * eta_gamma
+# Statistical uncertainty: sigma(N)=sqrt(N), Gaussian propagation.
+
+N_HE_data            6542
+N_mu_stop_MC_michel  1500000
+N_HE_Michel_MC       13652
+N_mu_stop_MC_sig     150000000
+N_sig_MC             356592
+eta_gamma            1
+sigma_eta_gamma      0
+
+kappa_michel         0.00910133333333
+sigma_kappa_michel   7.82481846511e-05
+kappa_sig            0.00237728
+sigma_kappa_sig      3.985750837e-06
+
+N_mu_eff             1708.77883387
+sigma_N_mu_eff       25.8915493204
+relative_sigma       0.0151520774996

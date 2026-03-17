@@ -1,0 +1,155 @@
+\documentclass[a4paper,11pt]{jsarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\geometry{margin=20mm}
+
+\title{p2MEG 最終解析における ACC constraint 付き尤度解析\\
+blind core = 50 ns, \(\sigma\) lower bound = 40 ns}
+\author{p2MEG 解析レポート}
+\date{2026年3月8日}
+
+\begin{document}
+\maketitle
+
+\section{概要}
+既存の ACC constraint 付き最尤解析と同じ手順を用い、
+\begin{itemize}
+  \item blind core を \(|t|<50\) ns
+  \item ACC 時間 fit の \(\sigma\) 下限を 40 ns
+\end{itemize}
+へ変更して再解析した。
+
+入力データは
+\texttt{data/finaldata/step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns.txt}
+である。
+
+\section{ACC 数見積もり}
+この条件で得られた AW 内 ACC 予測は
+\[
+N_{\mathrm{ACC,pred}} = 9.77789 \pm 9.09348
+\]
+であった。
+
+bin ごとの主結果は
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+\(E_\gamma\) [MeV] & \(N_{\mathrm{AW}}\) & \(N_{\mathrm{TSB}}\) & \(R_{\mathrm{fit}}\) & \(N_{\mathrm{ACC,pred}}\) \\
+\midrule
+20--30 & 16 & 63 & 0.111111 & 6.99999 \\
+30--80 &  2 & 25 & 0.111116 & 2.77790 \\
+\bottomrule
+\end{tabular}
+\end{center}
+である。
+
+低 \(E_\gamma\) 側の fit 比も
+\[
+R_{\mathrm{fit}}(0\text{--}10)=0.453044,\qquad
+R_{\mathrm{fit}}(10\text{--}20)=0.142221
+\]
+へ変化したが、これらの bin は \(N_{\mathrm{TSB}}=0\) のため、
+最終 AW 内 ACC 予測には寄与しない。
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \caption{blind core = 50 ns, \(\sigma\) 下限 = 40 ns での ACC 時間 fit の meta page。}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=2]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=3]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \caption{低 \(E_\gamma\) 側の fit。blind core と \(\sigma\) 下限の拡大により外挿形状が変化する。}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=4]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=5]{fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \caption{最終 ACC 制約に効く \(20\text{--}30\), \(30\text{--}80\) MeV bin の fit。}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=2]{predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind50ns_sigma40ns.pdf}
+  \caption{TSB から AW への ACC 予測。}
+\end{figure}
+
+\section{ACC PDF と最尤解析}
+ACC PDF の時間項 \(p_t\) も同じ
+\[
+|t|<50\ \mathrm{ns},\qquad \sigma \ge 40\ \mathrm{ns}
+\]
+の仕様で再生成した。
+
+そのうえで
+\[
+N_{\mathrm{acc}} = 9.77789 \pm 9.09348
+\]
+の Gaussian constraint を用いて尤度 fit を行った。
+
+結果は
+\begin{align}
+\mathrm{status} &= 0,\\
+\mathrm{NLL}_{\min} &= 193.718,\\
+N_{\mathrm{sig}} &= 1.73196\times 10^{-9},\\
+N_{\mathrm{rmd}} &= 2.71080 \pm 2.56419,\\
+N_{\mathrm{acc}} &= 14.4685 \pm 4.95849
+\end{align}
+であった。
+
+\begin{table}[htbp]
+\centering
+\caption{blind core = 50 ns, \(\sigma\) 下限 = 40 ns での ACC constraint 付き尤度 fit}
+\begin{tabular}{lc}
+\toprule
+量 & 値 \\
+\midrule
+解析窓内事象数 & 18 \\
+fit status & 0 \\
+\(\mathrm{NLL}_{\min}\) & 193.718 \\
+\(N_{\mathrm{sig}}\) & \(1.73196\times 10^{-9}\) \\
+\(N_{\mathrm{rmd}}\) & \(2.71080 \pm 2.56419\) \\
+\(N_{\mathrm{acc}}\) & \(14.4685 \pm 4.95849\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=1]{acc_grid_hist_step4f_doubleonly_fitbased_blind50ns_sigma40ns.pdf}
+  \caption{この条件で生成した ACC PDF の meta page。}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=0.95\linewidth,page=2]{acc_grid_hist_step4f_doubleonly_fitbased_blind50ns_sigma40ns.pdf}
+  \vspace{2mm}
+  \includegraphics[width=0.95\linewidth,page=3]{acc_grid_hist_step4f_doubleonly_fitbased_blind50ns_sigma40ns.pdf}
+  \caption{ACC PDF の可視化。}
+\end{figure}
+
+\section{まとめ}
+blind core = 50 ns のまま \(\sigma\) 下限を 40 ns へ上げると、
+ACC 制約は
+\[
+10.1275 \pm 8.75205 \rightarrow 9.77789 \pm 9.09348
+\]
+へわずかに変化した。
+しかし最尤結果は
+\[
+N_{\mathrm{sig}}\simeq 0,\qquad
+N_{\mathrm{rmd}}\simeq 2.71,\qquad
+N_{\mathrm{acc}}\simeq 14.47
+\]
+でほぼ不変であり、物理結論は変わらなかった。
+
+\end{document}
