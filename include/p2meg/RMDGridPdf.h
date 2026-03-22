@@ -38,6 +38,11 @@ bool RMDGridPdf_Load(const char* filepath, const char* key);
 // 現在ロード済みかどうか（デバッグ・安全用）
 bool RMDGridPdf_IsLoaded();
 
+// 現在ロード中の root ファイルと key を返す
+// 未ロード時は nullptr を返す
+const char* RMDGridPdf_LoadedFilepath();
+const char* RMDGridPdf_LoadedKey();
+
 // PDF 評価（ロード済みが前提）
 // 解析窓外は 0 を返す
 double RMDGridPdf(double Ee, double Eg, double t,

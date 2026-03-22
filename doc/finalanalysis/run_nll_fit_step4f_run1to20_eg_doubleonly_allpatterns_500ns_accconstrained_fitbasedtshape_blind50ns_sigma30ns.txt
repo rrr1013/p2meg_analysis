@@ -5,11 +5,11 @@
 [run_nll_fit][zero-pi] events with pi<=0: 0 / 18
 ==================== Fit Result ====================
 status   = 0
-nll_min  = 193.702
-N_sig_hat = 3.85564e-09
-N_rmd_hat = 2.70966
-N_acc_hat = 14.4867
-err_sig   = 0.732064
-err_rmd   = 2.56338
-err_acc   = 4.93515
+nll_min  = 316.986
+N_sig_hat = 1.33929e-08
+N_rmd_hat = 1.66221
+N_acc_hat = 15.3215
+err_sig   = 0.732073
+err_rmd   = 1.81592
+err_acc   = 4.95301
 ====================================================

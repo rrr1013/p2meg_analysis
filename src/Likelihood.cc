@@ -6,7 +6,7 @@
 // ============================================================
 // NLL 実装（拡張尤度）
 //
-// NLL = (Σ_k N_k) - Σ_i log( Σ_k N_k * p_k(x_i) ) + ConstraintNLL(yields)
+// NLL = (Σ_k N_k) - Σ_i log( Σ_k N_k * p_k(x_i) ) + log(N!) + ConstraintNLL(yields)
 //
 // 仕様:
 //  - N_sig を負にしてよい（境界なし）
@@ -60,6 +60,14 @@ double NLL(const std::vector<Event>& events,
 
         nll -= std::log(pi);
     }
+
+    // ---- 観測事象数 N に対する Poisson の定数項 log(N!) ----
+    // これは固定データセットに対して fit 位置を動かさないが、
+    // 拡張尤度の絶対値を正しく記録するために加える。
+    const double n_obs = static_cast<double>(events.size());
+    const double log_factorial = std::lgamma(n_obs + 1.0);
+    if (!std::isfinite(log_factorial)) return penalty;
+    nll += log_factorial;
 
     // ---- 制約項 ----
     const double c = ConstraintNLL(yields);

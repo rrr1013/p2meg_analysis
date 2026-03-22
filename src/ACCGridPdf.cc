@@ -26,6 +26,8 @@
 
 // 4D 格子
 static THnD* gHist = nullptr;
+static std::string gLoadedFilepath;
+static std::string gLoadedKey;
 // 時間テンプレート（density[count/ns]）
 static TH1D* gTimeShape = nullptr;
 static double gTimeShapeAwNorm = 0.0;
@@ -72,6 +74,8 @@ bool ACCGridPdf_Load(const char* filepath, const char* key) {
   if (!filepath || !key) return false;
 
   if (gHist) { delete gHist; gHist = nullptr; }
+  gLoadedFilepath.clear();
+  gLoadedKey.clear();
   if (gTimeShape) { delete gTimeShape; gTimeShape = nullptr; }
   gTimeShapeAwNorm = 0.0;
   for (int i = 0; i < kNAccTimeEgBins; ++i) {
@@ -257,11 +261,22 @@ bool ACCGridPdf_Load(const char* filepath, const char* key) {
     return false;
   }
 
+  gLoadedFilepath = filepath;
+  gLoadedKey = key;
+
   return true;
 }
 
 bool ACCGridPdf_IsLoaded() {
   return (gHist != nullptr);
+}
+
+const char* ACCGridPdf_LoadedFilepath() {
+  return gLoadedFilepath.empty() ? nullptr : gLoadedFilepath.c_str();
+}
+
+const char* ACCGridPdf_LoadedKey() {
+  return gLoadedKey.empty() ? nullptr : gLoadedKey.c_str();
 }
 
 double ACCGridPdf(double Ee, double Eg, double t,

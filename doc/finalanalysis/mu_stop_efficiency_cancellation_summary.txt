@@ -9,17 +9,17 @@
 
 N_HE_data            6542
 N_mu_stop_MC_michel  1500000
-N_HE_Michel_MC       13652
+N_HE_Michel_MC       13678
 N_mu_stop_MC_sig     150000000
-N_sig_MC             356592
+N_sig_MC             357173
 eta_gamma            1
 sigma_eta_gamma      0
 
-kappa_michel         0.00910133333333
-sigma_kappa_michel   7.82481846511e-05
-kappa_sig            0.00237728
-sigma_kappa_sig      3.985750837e-06
+kappa_michel         0.00911866666667
+sigma_kappa_michel   7.8323333043e-05
+kappa_sig            0.00238115333333
+sigma_kappa_sig      3.98900424043e-06
 
-N_mu_eff             1708.77883387
-sigma_N_mu_eff       25.8915493204
-relative_sigma       0.0151520774996
+N_mu_eff             1708.30952332
+sigma_N_mu_eff       25.876330787
+relative_sigma       0.0151473315776

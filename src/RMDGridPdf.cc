@@ -25,6 +25,8 @@
 
 // 4D 格子
 static THnD* gHist = nullptr;
+static std::string gLoadedFilepath;
+static std::string gLoadedKey;
 
 //============================================================
 // 窓内で正規化された時間ガウシアン（密度）
@@ -62,6 +64,8 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
   if (!filepath || !key) return false;
 
   if (gHist) { delete gHist; gHist = nullptr; }
+  gLoadedFilepath.clear();
+  gLoadedKey.clear();
 
   TFile f(filepath, "READ");
   if (f.IsZombie()) {
@@ -175,11 +179,22 @@ bool RMDGridPdf_Load(const char* filepath, const char* key) {
     return false;
   }
 
+  gLoadedFilepath = filepath;
+  gLoadedKey = key;
+
   return true;
 }
 
 bool RMDGridPdf_IsLoaded() {
   return (gHist != nullptr);
+}
+
+const char* RMDGridPdf_LoadedFilepath() {
+  return gLoadedFilepath.empty() ? nullptr : gLoadedFilepath.c_str();
+}
+
+const char* RMDGridPdf_LoadedKey() {
+  return gLoadedKey.empty() ? nullptr : gLoadedKey.c_str();
 }
 
 double RMDGridPdf(double Ee, double Eg, double t,

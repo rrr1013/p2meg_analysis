@@ -4,10 +4,15 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -18,6 +23,8 @@
 #include "p2meg/AnalysisWindow.h"
 #include "p2meg/DetectorResolution.h"
 #include "p2meg/MathUtils.h"
+#include "p2meg/RMDGridPdf.h"
+#include "p2meg/ACCGridPdf.h"
 
 // ============================================================
 // UpperLimit 実装
@@ -50,6 +57,24 @@ struct ToyProposal {
     bool valid;
 };
 
+struct ToyComponentPool {
+    std::string name;         // 成分名（sig/rmd/acc）
+    const void* ctx;          // Signal など ctx を持つ成分の識別
+    int target_size;          // 目標 pool サイズ
+    std::vector<Event> events; // 事前生成した 5D 事象
+};
+
+static std::vector<ToyComponentPool> gToyComponentPools;
+static const char* kToyPoolDir = "data/toy_cache";
+
+static bool UseYieldLowerBounds()
+{
+    const char* s = std::getenv("P2MEG_DISABLE_YIELD_BOUNDS");
+    if (!s) return true;
+    return !(s[0] == '1' || s[0] == 'y' || s[0] == 'Y' ||
+             s[0] == 't' || s[0] == 'T');
+}
+
 static unsigned long long MixSeed(unsigned long long seed, unsigned long long salt)
 {
     unsigned long long z = seed + 0x9e3779b97f4a7c15ULL + salt;
@@ -57,6 +82,185 @@ static unsigned long long MixSeed(unsigned long long seed, unsigned long long sa
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
     z = z ^ (z >> 31);
     return z;
+}
+
+static unsigned long long HashStringFNV1a64(const std::string& s)
+{
+    unsigned long long h = 1469598103934665603ULL;
+    for (unsigned char c : s) {
+        h ^= static_cast<unsigned long long>(c);
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static std::string HashToHex(unsigned long long h)
+{
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << h;
+    return oss.str();
+}
+
+static std::string FileTimestampToken(const char* filepath)
+{
+    if (!filepath || !filepath[0]) return "none";
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::file_time_type t = fs::last_write_time(filepath, ec);
+    if (ec) return "mtime_error";
+    return std::to_string(static_cast<long long>(t.time_since_epoch().count()));
+}
+
+static std::string BuildSignalPoolSignature(int target_size)
+{
+    const double E0 = 0.5 * kMassesPDG.m_mu;
+
+    std::ostringstream oss;
+    oss << std::setprecision(17);
+    oss << "component=sig\n";
+    oss << "target_size=" << target_size << "\n";
+    oss << "Ee_min=" << analysis_window.Ee_min << "\n";
+    oss << "Ee_max=" << analysis_window.Ee_max << "\n";
+    oss << "Eg_min=" << analysis_window.Eg_min << "\n";
+    oss << "Eg_max=" << analysis_window.Eg_max << "\n";
+    oss << "t_min=" << analysis_window.t_min << "\n";
+    oss << "t_max=" << analysis_window.t_max << "\n";
+    oss << "theta_min=" << analysis_window.theta_min << "\n";
+    oss << "theta_max=" << analysis_window.theta_max << "\n";
+    oss << "sigma_t=" << detres.sigma_t << "\n";
+    oss << "t_mean=" << detres.t_mean << "\n";
+    oss << "P_mu=" << detres.P_mu << "\n";
+    oss << "N_theta=" << detres.N_theta << "\n";
+    oss << "phi_e_min=" << detres.phi_e_min << "\n";
+    oss << "phi_e_max=" << detres.phi_e_max << "\n";
+    oss << "N_phi_e=" << detres.N_phi_e << "\n";
+    oss << "phi_g_min=" << detres.phi_g_min << "\n";
+    oss << "phi_g_max=" << detres.phi_g_max << "\n";
+    oss << "N_phi_g=" << detres.N_phi_g << "\n";
+    oss << "mass_mu=" << kMassesPDG.m_mu << "\n";
+    oss << "mass_e=" << kMassesPDG.m_e << "\n";
+    oss << "resp_e_lo=" << energy_response_offset_low_e(E0) << "\n";
+    oss << "resp_e_hi=" << energy_response_offset_high_e(E0) << "\n";
+    oss << "resp_g_lo=" << energy_response_offset_low_g(E0) << "\n";
+    oss << "resp_g_hi=" << energy_response_offset_high_g(E0) << "\n";
+    oss << "resp_e_pmax=" << energy_response_max_on_range_e(E0, analysis_window.Ee_min,
+                                                              analysis_window.Ee_max) << "\n";
+    oss << "resp_g_pmax=" << energy_response_max_on_range_g(E0, analysis_window.Eg_min,
+                                                              analysis_window.Eg_max) << "\n";
+    return oss.str();
+}
+
+static std::string BuildToyPoolSignature(const PdfComponent& component,
+                                         int target_size)
+{
+    const std::string name = component.name ? component.name : "";
+    if (name == "sig") return BuildSignalPoolSignature(target_size);
+
+    std::ostringstream oss;
+    oss << std::setprecision(17);
+    oss << "component=" << name << "\n";
+    oss << "target_size=" << target_size << "\n";
+    if (name == "rmd") {
+        oss << "filepath=" << (RMDGridPdf_LoadedFilepath() ? RMDGridPdf_LoadedFilepath() : "") << "\n";
+        oss << "key=" << (RMDGridPdf_LoadedKey() ? RMDGridPdf_LoadedKey() : "") << "\n";
+        oss << "mtime=" << FileTimestampToken(RMDGridPdf_LoadedFilepath()) << "\n";
+    } else if (name == "acc") {
+        oss << "filepath=" << (ACCGridPdf_LoadedFilepath() ? ACCGridPdf_LoadedFilepath() : "") << "\n";
+        oss << "key=" << (ACCGridPdf_LoadedKey() ? ACCGridPdf_LoadedKey() : "") << "\n";
+        oss << "mtime=" << FileTimestampToken(ACCGridPdf_LoadedFilepath()) << "\n";
+    } else {
+        oss << "ctx=" << reinterpret_cast<std::uintptr_t>(component.ctx) << "\n";
+    }
+    return oss.str();
+}
+
+static std::string BuildToyPoolFilepath(const PdfComponent& component,
+                                        int target_size)
+{
+    const std::string name = component.name ? component.name : "unknown";
+    const std::string sig = BuildToyPoolSignature(component, target_size);
+    const std::string hash = HashToHex(HashStringFNV1a64(sig));
+    std::ostringstream oss;
+    oss << kToyPoolDir << "/pool_" << name << "_n" << target_size
+        << "_" << hash << ".dat";
+    return oss.str();
+}
+
+static bool ParsePoolEventLine(const std::string& line, Event& ev_out)
+{
+    if (line.empty()) return false;
+    if (line[0] == '#') return false;
+
+    std::istringstream iss(line);
+    if (!(iss >> ev_out.Ee
+              >> ev_out.Eg
+              >> ev_out.t
+              >> ev_out.phi_detector_e
+              >> ev_out.phi_detector_g)) {
+        return false;
+    }
+    return std::isfinite(ev_out.Ee) &&
+           std::isfinite(ev_out.Eg) &&
+           std::isfinite(ev_out.t) &&
+           std::isfinite(ev_out.phi_detector_e) &&
+           std::isfinite(ev_out.phi_detector_g);
+}
+
+static bool LoadToyComponentPoolFromDisk(const PdfComponent& component,
+                                         int target_size,
+                                         ToyComponentPool& pool_out)
+{
+    const std::string filepath = BuildToyPoolFilepath(component, target_size);
+    std::ifstream fin(filepath);
+    if (!fin) return false;
+
+    std::vector<Event> events;
+    events.reserve(static_cast<std::size_t>(target_size));
+
+    std::string line;
+    while (std::getline(fin, line)) {
+        Event ev{};
+        if (!ParsePoolEventLine(line, ev)) continue;
+        events.push_back(ev);
+    }
+
+    if (static_cast<int>(events.size()) != target_size) return false;
+
+    pool_out.name = component.name ? component.name : "";
+    pool_out.ctx = component.ctx;
+    pool_out.target_size = target_size;
+    pool_out.events.swap(events);
+    return true;
+}
+
+static void SaveToyComponentPoolToDisk(const PdfComponent& component,
+                                       const ToyComponentPool& pool)
+{
+    if (pool.events.empty()) return;
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(kToyPoolDir, ec);
+    if (ec) return;
+
+    const std::string filepath = BuildToyPoolFilepath(component, pool.target_size);
+    std::ofstream fout(filepath);
+    if (!fout) return;
+
+    fout << std::setprecision(17);
+    fout << "# p2MEG toy pool v1\n";
+    fout << "# component " << pool.name << "\n";
+    fout << "# target_size " << pool.target_size << "\n";
+    fout << "# signature_hash "
+         << HashToHex(HashStringFNV1a64(BuildToyPoolSignature(component, pool.target_size)))
+         << "\n";
+    for (const auto& ev : pool.events) {
+        fout << ev.Ee << " "
+             << ev.Eg << " "
+             << ev.t << " "
+             << ev.phi_detector_e << " "
+             << ev.phi_detector_g << "\n";
+    }
 }
 
 static FitResult MakeFailedFitResult(std::size_t npar)
@@ -262,6 +466,256 @@ static bool GenerateEventsForComponent(const PdfComponent& component,
     return true;
 }
 
+static int ThetaNearestIndexForToySignal(double theta, int N_theta)
+{
+    if (!(N_theta >= 1)) return -1;
+    if (!std::isfinite(theta)) return -1;
+    const double eps = 1e-12;
+    if (theta < -eps || theta > pi + eps) return -1;
+    if (theta < 0.0) theta = 0.0;
+    if (theta > pi) theta = pi;
+
+    const double step = pi / static_cast<double>(N_theta);
+    if (!(step > 0.0) || !std::isfinite(step)) return -1;
+
+    long long i_ll = std::llround(theta / step);
+    if (i_ll < 0LL) i_ll = 0LL;
+    if (i_ll > static_cast<long long>(N_theta)) i_ll = static_cast<long long>(N_theta);
+    return static_cast<int>(i_ll);
+}
+
+static bool BuildSignalPhiPiProposal(ToyProposal& proposal)
+{
+    proposal.cells.clear();
+    proposal.weights.clear();
+    proposal.valid = false;
+
+    std::vector<AllowedPhiCell> all_cells;
+    double total_area = 0.0;
+    if (!BuildAllowedPhiCells(all_cells, total_area)) return false;
+
+    for (const auto& cell : all_cells) {
+        const double theta_eg = std::fabs(cell.phi_e - cell.phi_g);
+        const int ith = ThetaNearestIndexForToySignal(theta_eg, detres.N_theta);
+        if (ith != detres.N_theta) continue;
+        if (!(cell.area > 0.0) || !std::isfinite(cell.area)) continue;
+        proposal.cells.push_back(cell);
+        proposal.weights.push_back(cell.area);
+    }
+
+    proposal.valid = !proposal.cells.empty() && !proposal.weights.empty();
+    return proposal.valid;
+}
+
+static bool SampleWindowShape1D(std::mt19937_64& rng,
+                                double x_min,
+                                double x_max,
+                                double pmax,
+                                double (*shape)(double, double),
+                                double x_true,
+                                double& x_out)
+{
+    x_out = x_true;
+    if (shape == nullptr) return false;
+    if (!(x_max > x_min) || !std::isfinite(x_min) || !std::isfinite(x_max)) return false;
+    if (!(pmax > 0.0) || !std::isfinite(pmax)) return false;
+
+    std::uniform_real_distribution<double> ux(x_min, x_max);
+    std::uniform_real_distribution<double> up(0.0, pmax);
+    for (int it = 0; it < 100000; ++it) {
+        const double x = ux(rng);
+        const double u = up(rng);
+        const double p = shape(x, x_true);
+        if (!(p > 0.0) || !std::isfinite(p)) continue;
+        if (u < p) {
+            x_out = x;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool SampleTruncatedGaussianToy(std::mt19937_64& rng,
+                                       double mean,
+                                       double sigma,
+                                       double x_min,
+                                       double x_max,
+                                       double& x_out)
+{
+    x_out = mean;
+    if (!(sigma > 0.0) || !std::isfinite(sigma)) return false;
+    if (!(x_max > x_min) || !std::isfinite(x_min) || !std::isfinite(x_max)) return false;
+
+    std::normal_distribution<double> gaus(mean, sigma);
+    for (int it = 0; it < 100000; ++it) {
+        const double x = gaus(rng);
+        if (!std::isfinite(x)) continue;
+        if (x < x_min || x > x_max) continue;
+        x_out = x;
+        return true;
+    }
+    return false;
+}
+
+static bool GenerateSignalEventsDirect(long long n_events,
+                                       std::mt19937_64& rng,
+                                       std::vector<Event>& out_events)
+{
+    out_events.clear();
+    if (n_events <= 0) return true;
+
+    ToyProposal proposal;
+    if (!BuildSignalPhiPiProposal(proposal)) return false;
+
+    const double Ee_true = 0.5 * kMassesPDG.m_mu;
+    const double Eg_true = 0.5 * kMassesPDG.m_mu;
+    const double pmax_Ee =
+        energy_response_max_on_range_e(Ee_true, analysis_window.Ee_min, analysis_window.Ee_max);
+    const double pmax_Eg =
+        energy_response_max_on_range_g(Eg_true, analysis_window.Eg_min, analysis_window.Eg_max);
+    if (!(pmax_Ee > 0.0) || !(pmax_Eg > 0.0)) return false;
+
+    std::discrete_distribution<std::size_t> pick_cell(
+        proposal.weights.begin(), proposal.weights.end());
+
+    out_events.reserve(static_cast<std::size_t>(n_events));
+    for (long long i = 0; i < n_events; ++i) {
+        Event ev{};
+        if (!SampleWindowShape1D(rng, analysis_window.Ee_min, analysis_window.Ee_max,
+                                 pmax_Ee, energy_response_shape_e, Ee_true, ev.Ee)) {
+            return false;
+        }
+        if (!SampleWindowShape1D(rng, analysis_window.Eg_min, analysis_window.Eg_max,
+                                 pmax_Eg, energy_response_shape_g, Eg_true, ev.Eg)) {
+            return false;
+        }
+        if (!SampleTruncatedGaussianToy(rng, detres.t_mean, detres.sigma_t,
+                                        analysis_window.t_min, analysis_window.t_max,
+                                        ev.t)) {
+            return false;
+        }
+
+        const std::size_t idx = pick_cell(rng);
+        if (idx >= proposal.cells.size()) return false;
+        ev.phi_detector_e = proposal.cells[idx].phi_e;
+        ev.phi_detector_g = proposal.cells[idx].phi_g;
+        out_events.push_back(ev);
+    }
+
+    return true;
+}
+
+static unsigned long long ToyComponentPoolSeed(const PdfComponent& component,
+                                               int target_size)
+{
+    // pool 自体は toy ごとの seed に依らず固定にして、
+    // その上で各 toy では pool からの抽出だけを乱数化する。
+    // これにより BR 点ごとに seed が変わっても pool を再構築しない。
+    unsigned long long salt =
+        static_cast<unsigned long long>(std::hash<std::string>{}(
+            component.name ? component.name : ""));
+    salt ^= static_cast<unsigned long long>(target_size + 0x51f15e5);
+    salt ^= static_cast<unsigned long long>(
+        reinterpret_cast<std::uintptr_t>(component.ctx));
+    return MixSeed(0x504f4f4c5f534545ULL, salt);
+}
+
+static ToyComponentPool* FindToyComponentPool(const PdfComponent& component,
+                                              int target_size)
+{
+    for (auto& pool : gToyComponentPools) {
+        if (pool.name != (component.name ? component.name : "")) continue;
+        if (pool.ctx != component.ctx) continue;
+        if (pool.target_size != target_size) continue;
+        if (static_cast<int>(pool.events.size()) < target_size) continue;
+        return &pool;
+    }
+    return nullptr;
+}
+
+static bool BuildToyComponentPool(const PdfComponent& component,
+                                  const ToyProposal& proposal,
+                                  const ToyGeneratorConfig& cfg,
+                                  int target_size,
+                                  ToyComponentPool& pool_out)
+{
+    if (!(target_size > 0)) return false;
+    if (!proposal.valid) return false;
+
+    ToyGeneratorConfig pool_cfg = cfg;
+    pool_cfg.seed = ToyComponentPoolSeed(component, target_size);
+
+    std::mt19937_64 rng(pool_cfg.seed);
+    double pmax_cache = 0.0;
+    std::vector<Event> events;
+    if (!GenerateEventsForComponent(component, static_cast<long long>(target_size),
+                                    rng, proposal, pool_cfg, pmax_cache, events)) {
+        return false;
+    }
+    if (static_cast<int>(events.size()) != target_size) return false;
+
+    pool_out.name = component.name ? component.name : "";
+    pool_out.ctx = component.ctx;
+    pool_out.target_size = target_size;
+    pool_out.events.swap(events);
+    return true;
+}
+
+static bool GetOrBuildToyComponentPool(const PdfComponent& component,
+                                       const ToyProposal& proposal,
+                                       const ToyGeneratorConfig& cfg,
+                                       ToyComponentPool*& pool_out)
+{
+    pool_out = nullptr;
+    if (!(cfg.event_pool_size_per_component > 0)) return false;
+
+    ToyComponentPool* found =
+        FindToyComponentPool(component, cfg.event_pool_size_per_component);
+    if (found) {
+        pool_out = found;
+        return true;
+    }
+
+    ToyComponentPool loaded;
+    if (LoadToyComponentPoolFromDisk(component,
+                                     cfg.event_pool_size_per_component,
+                                     loaded)) {
+        gToyComponentPools.push_back(std::move(loaded));
+        pool_out = &gToyComponentPools.back();
+        return true;
+    }
+
+    ToyComponentPool built;
+    if (!BuildToyComponentPool(component, proposal, cfg,
+                               cfg.event_pool_size_per_component, built)) {
+        return false;
+    }
+
+    SaveToyComponentPoolToDisk(component, built);
+
+    gToyComponentPools.push_back(std::move(built));
+    pool_out = &gToyComponentPools.back();
+    return true;
+}
+
+static bool SampleEventsFromToyComponentPool(const ToyComponentPool& pool,
+                                             long long n_events,
+                                             std::mt19937_64& rng,
+                                             std::vector<Event>& out_events)
+{
+    out_events.clear();
+    if (n_events <= 0) return true;
+    if (pool.events.empty()) return false;
+
+    out_events.reserve(static_cast<std::size_t>(n_events));
+    std::uniform_int_distribution<std::size_t> pick(
+        0, pool.events.size() - 1U);
+    for (long long i = 0; i < n_events; ++i) {
+        out_events.push_back(pool.events[pick(rng)]);
+    }
+    return true;
+}
+
 static bool BuildCachedNLLData(const std::vector<Event>& events,
                                const std::vector<PdfComponent>& components,
                                CachedNLLData& cache)
@@ -372,6 +826,7 @@ static FitResult FitNLLWithFixedMaskCached(const CachedNLLData& cache,
 
     ROOT::Math::Functor functor(fcn, static_cast<unsigned int>(free_indices.size()));
     min->SetFunction(functor);
+    const bool use_lower_bounds = UseYieldLowerBounds();
 
     for (std::size_t j = 0; j < free_indices.size(); ++j) {
         const std::size_t i = free_indices[j];
@@ -380,7 +835,7 @@ static FitResult FitNLLWithFixedMaskCached(const CachedNLLData& cache,
 
         // 既存 FitNLL と同じく、先頭2成分（N_sig, N_rmd）は下限 0 を付ける。
         // ただし fixed parameter はここには入らない。
-        if (i == 0 || i == 1) {
+        if (use_lower_bounds && (i == 0 || i == 1)) {
             min->SetLowerLimitedVariable(static_cast<unsigned int>(j),
                                          components[i].name, start, step, 0.0);
         } else {
@@ -566,7 +1021,9 @@ bool GenerateToyDatasetFromModel(const std::vector<PdfComponent>& components,
     if (mean_yields.size() != components.size()) return false;
 
     ToyProposal proposal;
-    if (!BuildToyProposal(proposal)) return false;
+    const bool use_pool = (cfg.event_pool_size_per_component > 0);
+    if (use_pool && !BuildToyProposal(proposal)) return false;
+    if (!use_pool && !BuildToyProposal(proposal)) return false;
 
     std::mt19937_64 rng(MixSeed(cfg.seed, toy_index + 1ULL));
 
@@ -592,11 +1049,26 @@ bool GenerateToyDatasetFromModel(const std::vector<PdfComponent>& components,
         generated[k] = static_cast<double>(n_gen);
 
         std::vector<Event> comp_events;
-        if (!GenerateEventsForComponent(components[k], n_gen, rng, proposal, cfg,
-                                        (*io_pmax_cache)[k], comp_events)) {
-            return false;
+        bool ok = false;
+        const std::string comp_name = components[k].name ? components[k].name : "";
+        if (comp_name == "sig") {
+            ok = GenerateSignalEventsDirect(n_gen, rng, comp_events);
+        } else if (use_pool) {
+            ToyComponentPool* pool = nullptr;
+            if (GetOrBuildToyComponentPool(components[k], proposal, cfg, pool) &&
+                pool != nullptr) {
+                ok = SampleEventsFromToyComponentPool(*pool, n_gen, rng, comp_events);
+            }
         }
-        all_events.insert(all_events.end(), comp_events.begin(), comp_events.end());
+        if (!ok) {
+            ok = GenerateEventsForComponent(components[k], n_gen, rng, proposal, cfg,
+                                            (*io_pmax_cache)[k], comp_events);
+        }
+        if (!ok) return false;
+
+        if (!comp_events.empty()) {
+            all_events.insert(all_events.end(), comp_events.begin(), comp_events.end());
+        }
     }
 
     std::shuffle(all_events.begin(), all_events.end(), rng);

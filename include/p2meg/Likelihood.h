@@ -14,7 +14,7 @@
 //    並びは components と一致させる。
 //
 // NLL（拡張尤度）:
-//   NLL = (Σ_k N_k) - Σ_i log( Σ_k N_k * p_k(x_i) ) + ConstraintNLL(yields)
+//   NLL = (Σ_k N_k) - Σ_i log( Σ_k N_k * p_k(x_i) ) + log(N!) + ConstraintNLL(yields)
 //
 // 注意:
 //  - N_sig が負になることを許す（境界を設けない）。

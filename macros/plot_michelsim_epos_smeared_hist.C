@@ -129,7 +129,7 @@ static void DrawMichelSimMetaPage(const char* infile,
     lat.DrawLatex(0.05, 0.55, "Smear model:");
     lat.DrawLatex(0.08, 0.51, Form("seed = %u", seed));
     lat.DrawLatex(0.08, 0.47, "Ee response = Gaussian");
-    lat.DrawLatex(0.08, 0.43, "sigma(Ee) = 0.1 x Etrue");
+    lat.DrawLatex(0.08, 0.43, "sigma(Ee) = 0.079 x Etrue");
 
     lat.DrawLatex(0.05, 0.37, "Histogram:");
     lat.DrawLatex(0.08, 0.33, Form("range = %.3f .. %.3f MeV", e_min, e_max));
@@ -192,4 +192,12 @@ void plot_michelsim_epos_smeared_hist(const char* path,
     c0.Print(outpdf.Data());
     c1.Print(outpdf.Data());
     c1.Print(Form("%s]", outpdf.Data()));
+
+    std::cout << "[plot_michelsim_epos_smeared_hist] input    : " << path << "\n";
+    std::cout << "[plot_michelsim_epos_smeared_hist] output   : " << outpdf.Data() << "\n";
+    std::cout << "[plot_michelsim_epos_smeared_hist] seed     : " << seed << "\n";
+    std::cout << "[plot_michelsim_epos_smeared_hist] n_read   : " << n_read << "\n";
+    std::cout << "[plot_michelsim_epos_smeared_hist] n_ge20   : " << n_ge20 << "\n";
+    std::cout << "[plot_michelsim_epos_smeared_hist] mean/rms : "
+              << mean << " / " << rms << "\n";
 }

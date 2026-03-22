@@ -1,5 +1,6 @@
 #include "p2meg/NLLFit.h"
 
+#include <cstdlib>
 #include <cmath>
 #include <memory>
 
@@ -16,6 +17,14 @@
 // ただし NLL が不適領域（logの引数<=0など）に入ると大ペナルティを返すので、
 // 最小化は自然に定義域内へ戻ることを期待する。
 // ============================================================
+
+static bool UseYieldLowerBounds()
+{
+    const char* s = std::getenv("P2MEG_DISABLE_YIELD_BOUNDS");
+    if (!s) return true;
+    return !(s[0] == '1' || s[0] == 'y' || s[0] == 'Y' ||
+             s[0] == 't' || s[0] == 'T');
+}
 
 FitResult FitNLL(const std::vector<Event>& events,
                  const std::vector<PdfComponent>& components,
@@ -52,21 +61,18 @@ FitResult FitNLL(const std::vector<Event>& events,
     ROOT::Math::Functor functor(fcn, static_cast<unsigned int>(npar));
     min->SetFunction(functor);
 
-    // N_sig > 0, N_rmd > 0 の制約（必要なら有効化する）
-    #define P2MEG_ENABLE_YIELD_BOUNDS
+    const bool use_lower_bounds = UseYieldLowerBounds();
 
-    // パラメータ設定（境界なし）
     for (std::size_t i = 0; i < npar; ++i) {
         const double start = cfg.start_yields[i];
         const double step  = (std::abs(start) > 0.0) ? 0.1 * std::abs(start) : 1.0;
-#ifdef P2MEG_ENABLE_YIELD_BOUNDS
+
         // yields = {N_sig, N_rmd, ...} を仮定（先頭2つ）
-        if (i == 0 || i == 1) {
+        if (use_lower_bounds && (i == 0 || i == 1)) {
             min->SetLowerLimitedVariable(static_cast<unsigned int>(i),
                                          components[i].name, start, step, 0.0);
             continue;
         }
-#endif
         min->SetVariable(static_cast<unsigned int>(i), components[i].name, start, step);
     }
 

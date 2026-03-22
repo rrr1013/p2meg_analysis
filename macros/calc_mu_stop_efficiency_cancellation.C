@@ -47,9 +47,9 @@ R__ADD_INCLUDE_PATH(./include)
 // =========================
 static constexpr double kN_HE_data = 6542;                // N_HE^data
 static constexpr double kN_mu_stop_MC_michel = 5e5 * 3;  // N_mu^stop,MC(Michel)
-static constexpr double kN_HE_Michel_MC = 13652;         // N_HE^Michel,MC
+static constexpr double kN_HE_Michel_MC = 13678;         // N_HE^Michel,MC
 static constexpr double kN_mu_stop_MC_sig = 5e7 * 3;     // N_mu^stop,MC(sig)
-static constexpr double kN_sig_MC = 356592;               // N_sig^MC
+static constexpr double kN_sig_MC = 357173;               // N_sig^MC
 static constexpr double kEta_gamma = 1;               // eta_gamma
 static constexpr double kSigma_eta_gamma = 0.0;          // sigma(eta_gamma)
 

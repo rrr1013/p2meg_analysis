@@ -50,7 +50,7 @@ struct DetectorResolutionConst {
 };
 
 inline constexpr DetectorResolutionConst detres{
-    2,  // sigma_t  [ns]
+    1.90,  // sigma_t  [ns]
     9,    // N_theta  （0..pi を 9 分割 → 20 度刻み）
     0, // t_mean [ns]
     -0.6,    // P_mu
@@ -247,13 +247,13 @@ static inline bool Detector_ThetaRangeFromAllowedPhi(const DetectorResolutionCon
 // ------------------------------------------------------------
 inline double energy_response_shape_e(double E_res, double E_true) {
 
-    // 例: E_true を中心とする幅 0.1*E_true のガウシアン（未正規化）
+    // 例: E_true を中心とする幅 0.079*E_true のガウシアン（未正規化）
     //  - 単位: E_res, E_true ともに MeV
     //  - 不正入力や非物理は 0 を返す
     if (!(E_true > 0.0)) return 0.0;
     if (!std::isfinite(E_res) || !std::isfinite(E_true)) return 0.0;
 
-    const double sigma = 0.1 * E_true;
+    const double sigma = 0.079 * E_true;
     if (!(sigma > 0.0) || !std::isfinite(sigma)) return 0.0;
 
     const double z = (E_res - E_true) / sigma;
@@ -263,13 +263,13 @@ inline double energy_response_shape_e(double E_res, double E_true) {
 
 inline double energy_response_shape_g(double E_res, double E_true) {
 
-    // 例: E_true を中心とする幅 0.1*E_true のガウシアン（未正規化）
+    // 例: E_true を中心とする幅 0.079*E_true のガウシアン（未正規化）
     //  - 単位: E_res, E_true ともに MeV
     //  - 不正入力や非物理は 0 を返す
     if (!(E_true > 0.0)) return 0.0;
     if (!std::isfinite(E_res) || !std::isfinite(E_true)) return 0.0;
 
-    const double sigma = 0.1 * E_true;
+    const double sigma = 0.079 * E_true;
     if (!(sigma > 0.0) || !std::isfinite(sigma)) return 0.0;
 
     const double z = (E_res - E_true) / sigma;

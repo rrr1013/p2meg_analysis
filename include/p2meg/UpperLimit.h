@@ -37,6 +37,7 @@ struct ToyGeneratorConfig {
     int pmax_scan_trials;     // 棄却法 pmax 推定の試行数
     double pmax_safety;       // pmax 安全係数
     double pmax_update;       // 生成中に pmax 不足時の更新係数
+    int event_pool_size_per_component; // 成分ごとに先に作る 5D event pool のサイズ
 };
 
 struct NormalizationUncertaintyConfig {

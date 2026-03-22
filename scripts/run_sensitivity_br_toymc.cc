@@ -64,6 +64,8 @@ struct LimitSummary {
     bool ok;
 };
 
+static constexpr int kLocalExactHalfWindow = 2;
+
 static bool ParseDoubleStrict(const char* s, double& out)
 {
     if (!s) return false;
@@ -355,14 +357,11 @@ static bool BuildCalibrationDistributions(
     return true;
 }
 
-static LimitSummary EvaluateFastLimitWithCalibration(
-    const std::vector<Event>& events,
-    const std::vector<PdfComponent>& components,
+static LimitSummary EvaluateLimitFromCalibrationQScan(
+    const ProfileLikelihoodQScanResult& qscan,
     const std::vector<CalibrationPoint>& calib_points,
-    const std::vector<double>& n_sig_scan,
-    const FitConfig& free_cfg,
-    const FitConfig& prof_cfg,
-    double cl)
+    double cl,
+    bool enforce_monotonic)
 {
     LimitSummary out;
     out.BR_90 = 0.0;
@@ -374,8 +373,6 @@ static LimitSummary EvaluateFastLimitWithCalibration(
     out.accepted_scan.clear();
     out.ok = false;
 
-    const ProfileLikelihoodQScanResult qscan =
-        EvaluateProfileLikelihoodQScan(events, components, free_cfg, prof_cfg, n_sig_scan);
     out.fit_free = qscan.fit_free;
     if (qscan.fit_free.status != 0 || qscan.points.size() != calib_points.size()) {
         return out;
@@ -393,8 +390,10 @@ static LimitSummary EvaluateFastLimitWithCalibration(
         const double q_obs = qscan.points[i].q_value;
         const double p_value = PValueFromSortedQ(calib_points[i].q_sorted, q_obs);
         int accepted = (p_value >= acceptance_threshold) ? 1 : 0;
-        if (seen_reject) accepted = 0;
-        if (!accepted) seen_reject = true;
+        if (enforce_monotonic) {
+            if (seen_reject) accepted = 0;
+            if (!accepted) seen_reject = true;
+        }
 
         out.q_obs_scan.push_back(q_obs);
         out.p_value_scan.push_back(p_value);
@@ -404,6 +403,152 @@ static LimitSummary EvaluateFastLimitWithCalibration(
             out.BR_90 = calib_points[i].BR_test;
             out.N_sig_90_nominal = calib_points[i].N_sig_test_nominal;
         }
+    }
+
+    out.ok = true;
+    return out;
+}
+
+static LimitSummary EvaluateFastLimitWithCalibration(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const std::vector<CalibrationPoint>& calib_points,
+    const std::vector<double>& n_sig_scan,
+    const FitConfig& free_cfg,
+    const FitConfig& prof_cfg,
+    double cl)
+{
+    const ProfileLikelihoodQScanResult qscan =
+        EvaluateProfileLikelihoodQScan(events, components, free_cfg, prof_cfg, n_sig_scan);
+    return EvaluateLimitFromCalibrationQScan(qscan, calib_points, cl, true);
+}
+
+static bool BuildMeanYieldsByPointFromQScan(
+    const ProfileLikelihoodQScanResult& qscan,
+    const std::vector<double>& n_sig_scan,
+    const std::vector<double>& fallback_yields,
+    std::vector<std::vector<double>>& out_mean_yields)
+{
+    out_mean_yields.clear();
+    if (qscan.points.size() != n_sig_scan.size()) return false;
+
+    out_mean_yields.reserve(n_sig_scan.size());
+    for (std::size_t i = 0; i < n_sig_scan.size(); ++i) {
+        std::vector<double> mean_yields = fallback_yields;
+        const FitResult& fit_prof = qscan.points[i].fit_prof;
+        if (fit_prof.status == 0 && fit_prof.yields_hat.size() == fallback_yields.size()) {
+            mean_yields = fit_prof.yields_hat;
+        }
+        if (mean_yields.size() != fallback_yields.size()) return false;
+        if (!mean_yields.empty()) mean_yields[0] = n_sig_scan[i];
+        out_mean_yields.push_back(mean_yields);
+    }
+    return true;
+}
+
+static int LastAcceptedIndex(const std::vector<int>& accepted_scan)
+{
+    int idx = -1;
+    for (std::size_t i = 0; i < accepted_scan.size(); ++i) {
+        if (accepted_scan[i]) idx = static_cast<int>(i);
+    }
+    return idx;
+}
+
+static LimitSummary EvaluateLocallyExactLimit(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const std::vector<double>& br_scan,
+    const std::vector<double>& n_sig_scan,
+    const std::vector<CalibrationPoint>& calib_points_global,
+    const FitConfig& free_cfg,
+    const FitConfig& prof_cfg,
+    const ToyGeneratorConfig& toy_cfg,
+    const NormalizationUncertaintyConfig& norm_cfg,
+    int n_local_exact_toys,
+    int local_exact_half_window,
+    double cl)
+{
+    LimitSummary out;
+    out.BR_90 = 0.0;
+    out.N_sig_90_nominal = 0.0;
+    out.ok = false;
+
+    const ProfileLikelihoodQScanResult qscan =
+        EvaluateProfileLikelihoodQScan(events, components, free_cfg, prof_cfg, n_sig_scan);
+    if (qscan.fit_free.status != 0 || qscan.points.size() != br_scan.size()) {
+        return out;
+    }
+
+    const LimitSummary fast_raw =
+        EvaluateLimitFromCalibrationQScan(qscan, calib_points_global, cl, false);
+    if (!fast_raw.ok) return out;
+
+    out = fast_raw;
+
+    const int last_acc = LastAcceptedIndex(fast_raw.accepted_scan);
+    if (last_acc < 0 || n_local_exact_toys <= 0 || local_exact_half_window < 0) {
+        out.ok = true;
+        return out;
+    }
+
+    const int i_min = std::max(0, last_acc - local_exact_half_window);
+    const int i_max = std::min(static_cast<int>(br_scan.size()) - 1,
+                               last_acc + local_exact_half_window + 1);
+
+    std::vector<std::vector<double>> mean_yields_by_point;
+    std::vector<double> fallback_yields = qscan.fit_free.yields_hat;
+    if (fallback_yields.size() != components.size()) {
+        fallback_yields.assign(components.size(), 0.0);
+    }
+    if (!BuildMeanYieldsByPointFromQScan(qscan, n_sig_scan, fallback_yields,
+                                         mean_yields_by_point)) {
+        return out;
+    }
+
+    std::vector<double> br_subset;
+    std::vector<double> nsig_subset;
+    std::vector<std::vector<double>> mean_subset;
+    br_subset.reserve(static_cast<std::size_t>(i_max - i_min + 1));
+    nsig_subset.reserve(static_cast<std::size_t>(i_max - i_min + 1));
+    mean_subset.reserve(static_cast<std::size_t>(i_max - i_min + 1));
+    for (int i = i_min; i <= i_max; ++i) {
+        br_subset.push_back(br_scan[static_cast<std::size_t>(i)]);
+        nsig_subset.push_back(n_sig_scan[static_cast<std::size_t>(i)]);
+        mean_subset.push_back(mean_yields_by_point[static_cast<std::size_t>(i)]);
+    }
+
+    std::vector<double> pmax_cache_local(components.size(), 0.0);
+    std::vector<CalibrationPoint> calib_subset;
+    if (!BuildCalibrationDistributions(components, br_subset, nsig_subset,
+                                       mean_subset, free_cfg, prof_cfg,
+                                       toy_cfg, norm_cfg, n_local_exact_toys,
+                                       pmax_cache_local, calib_subset)) {
+        return out;
+    }
+
+    const ProfileLikelihoodQScanResult qscan_subset =
+        EvaluateProfileLikelihoodQScan(events, components, free_cfg, prof_cfg, nsig_subset);
+    const LimitSummary local_exact =
+        EvaluateLimitFromCalibrationQScan(qscan_subset, calib_subset, cl, false);
+    if (!local_exact.ok) {
+        out.ok = true;
+        return out;
+    }
+
+    for (int i = i_min; i <= i_max; ++i) {
+        const std::size_t j = static_cast<std::size_t>(i - i_min);
+        out.q_obs_scan[static_cast<std::size_t>(i)] = local_exact.q_obs_scan[j];
+        out.p_value_scan[static_cast<std::size_t>(i)] = local_exact.p_value_scan[j];
+        out.accepted_scan[static_cast<std::size_t>(i)] = local_exact.accepted_scan[j];
+    }
+
+    out.BR_90 = 0.0;
+    out.N_sig_90_nominal = 0.0;
+    for (std::size_t i = 0; i < br_scan.size(); ++i) {
+        if (!out.accepted_scan[i]) continue;
+        out.BR_90 = br_scan[i];
+        out.N_sig_90_nominal = n_sig_scan[i];
     }
 
     out.ok = true;
@@ -556,6 +701,7 @@ int main(int argc, char** argv)
     toy_cfg.pmax_scan_trials = 20000;
     toy_cfg.pmax_safety = 5.0;
     toy_cfg.pmax_update = 1.2;
+    toy_cfg.event_pool_size_per_component = 20000;
 
     NormalizationUncertaintyConfig norm_cfg;
     norm_cfg.N_mu_eff_nom = N_mu_eff_nom;
@@ -578,6 +724,11 @@ int main(int argc, char** argv)
 
     const LimitSummary obs_fast = EvaluateFastLimitWithCalibration(
         data_events, components, calib_points, n_sig_scan, free_cfg, prof_cfg, 0.90);
+    const LimitSummary obs_local_exact = EvaluateLocallyExactLimit(
+        data_events, components, br_scan, n_sig_scan,
+        calib_points, free_cfg, prof_cfg,
+        toy_cfg, norm_cfg,
+        n_calib_toys, kLocalExactHalfWindow, 0.90);
 
     std::vector<double> sens_br_values;
     std::vector<double> sens_nsig_values;
@@ -596,8 +747,11 @@ int main(int argc, char** argv)
         }
         if (toy_events.empty()) continue;
 
-        const LimitSummary lim = EvaluateFastLimitWithCalibration(
-            toy_events, components, calib_points, n_sig_scan, free_cfg, prof_cfg, 0.90);
+        const LimitSummary lim = EvaluateLocallyExactLimit(
+            toy_events, components, br_scan, n_sig_scan,
+            calib_points, free_cfg, prof_cfg,
+            toy_cfg, norm_cfg,
+            n_calib_toys, kLocalExactHalfWindow, 0.90);
         if (!lim.ok) continue;
 
         sens_br_values.push_back(lim.BR_90);
@@ -638,8 +792,11 @@ int main(int argc, char** argv)
             if (toy_events.empty()) continue;
 
             const auto t_fast_begin = std::chrono::steady_clock::now();
-            const LimitSummary lim_fast = EvaluateFastLimitWithCalibration(
-                toy_events, components, calib_points, n_sig_scan, free_cfg, prof_cfg, 0.90);
+            const LimitSummary lim_fast = EvaluateLocallyExactLimit(
+                toy_events, components, br_scan, n_sig_scan,
+                calib_points, free_cfg, prof_cfg,
+                toy_cfg, norm_cfg,
+                n_calib_toys, kLocalExactHalfWindow, 0.90);
             const auto t_fast_end = std::chrono::steady_clock::now();
             validation_fast_seconds +=
                 std::chrono::duration<double>(t_fast_end - t_fast_begin).count();
@@ -695,6 +852,8 @@ int main(int argc, char** argv)
     std::cout << "seed                       = " << seed << "\n";
     std::cout << "n_validation_toys          = " << n_validation_toys << "\n";
     std::cout << "n_validation_inner         = " << n_validation_inner << "\n";
+    std::cout << "local_exact_half_window    = " << kLocalExactHalfWindow << "\n";
+    std::cout << "local_exact_inner_toys     = " << n_calib_toys << "\n";
     std::cout << "===============================================\n";
 
     std::cout << "==================== Fits =====================\n";
@@ -732,14 +891,17 @@ int main(int argc, char** argv)
     std::cout << "observed_fast_ok           = " << (obs_fast.ok ? 1 : 0) << "\n";
     std::cout << "observed_fast_BR90         = " << obs_fast.BR_90 << "\n";
     std::cout << "observed_fast_Nsig90_nom   = " << obs_fast.N_sig_90_nominal << "\n";
+    std::cout << "observed_local_exact_ok    = " << (obs_local_exact.ok ? 1 : 0) << "\n";
+    std::cout << "observed_local_exact_BR90  = " << obs_local_exact.BR_90 << "\n";
+    std::cout << "observed_local_exact_Nsig90_nom = " << obs_local_exact.N_sig_90_nominal << "\n";
     std::cout << "# BR  q_obs  p_value  accepted\n";
     for (std::size_t i = 0; i < br_scan.size(); ++i) {
         const double q_obs =
-            (i < obs_fast.q_obs_scan.size()) ? obs_fast.q_obs_scan[i] : 0.0;
+            (i < obs_local_exact.q_obs_scan.size()) ? obs_local_exact.q_obs_scan[i] : 0.0;
         const double p_value =
-            (i < obs_fast.p_value_scan.size()) ? obs_fast.p_value_scan[i] : 0.0;
+            (i < obs_local_exact.p_value_scan.size()) ? obs_local_exact.p_value_scan[i] : 0.0;
         const int accepted =
-            (i < obs_fast.accepted_scan.size()) ? obs_fast.accepted_scan[i] : 0;
+            (i < obs_local_exact.accepted_scan.size()) ? obs_local_exact.accepted_scan[i] : 0;
         std::cout << br_scan[i] << " "
                   << q_obs << " "
                   << p_value << " "
@@ -776,9 +938,11 @@ int main(int argc, char** argv)
     std::cout << "validation_exact_seconds   = " << validation_exact_seconds << "\n";
     std::cout << "===============================================\n";
 
-    std::cout << "note: sensitivity uses a fixed calibrated FC belt built at the\n";
-    std::cout << "      nominal N_sig=0 profile-fit background point, and validation\n";
-    std::cout << "      compares it against the slower nested toy construction.\n";
+    std::cout << "note: sensitivity now uses a local exact refinement around the FC boundary.\n";
+    std::cout << "      First a global calibration belt is built once, then each outer toy\n";
+    std::cout << "      re-calibrates only the boundary-neighbour BR points with toy-specific\n";
+    std::cout << "      nested FC toys. validation compares this local-exact method against\n";
+    std::cout << "      the slower full nested toy construction.\n";
 
     return 0;
 }

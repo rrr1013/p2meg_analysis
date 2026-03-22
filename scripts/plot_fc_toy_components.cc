@@ -378,6 +378,7 @@ int main(int argc, char** argv)
     toy_cfg.pmax_scan_trials = 5000;
     toy_cfg.pmax_safety = 5.0;
     toy_cfg.pmax_update = 1.2;
+    toy_cfg.event_pool_size_per_component = 0;
 
     const double theta_axis_max = Math_AxisMaxInclusive(analysis_window.theta_max);
     const double phi_e_axis_max = Detector_PhiAxisMaxInclusive(detres.phi_e_max);

@@ -1,4 +1,4 @@
-This is e-pTeX, Version 3.141592653-p3.9.0-210218-2.6 (utf8.euc) (TeX Live 2021) (preloaded format=platex 2022.4.3)  17 MAR 2026 09:13
+This is e-pTeX, Version 3.141592653-p3.9.0-210218-2.6 (utf8.euc) (TeX Live 2021) (preloaded format=platex 2022.4.3)  22 MAR 2026 01:27
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -312,28 +312,28 @@ LaTeX Font Info:    Font shape `JT1/mc/m/n' will be
 LaTeX Font Info:    Font shape `JT1/mc/m/n' will be
 (Font)              scaled to size 4.805pt on input line 30.
 LaTeX Font Info:    Font shape `JT1/mc/m/n' will be
-(Font)              scaled to size 13.83836pt on input line 79.
+(Font)              scaled to size 13.83836pt on input line 80.
 LaTeX Font Info:    Font shape `JY1/mc/m/n' will be
-(Font)              scaled to size 13.83836pt on input line 79.
+(Font)              scaled to size 13.83836pt on input line 80.
 LaTeX Font Info:    Font shape `JT1/gt/m/n' will be
-(Font)              scaled to size 13.83836pt on input line 79.
+(Font)              scaled to size 13.83836pt on input line 80.
 LaTeX Font Info:    Font shape `JY1/gt/m/n' will be
-(Font)              scaled to size 13.83836pt on input line 79.
+(Font)              scaled to size 13.83836pt on input line 80.
 LaTeX Font Info:    Font shape `JY1/mc/m/n' will be
-(Font)              scaled to size 6.72699pt on input line 81.
-LaTeX Font Info:    Font shape `JT1/gt/m/n' will be
-(Font)              scaled to size 9.60999pt on input line 82.
-LaTeX Font Info:    Font shape `JY1/gt/m/n' will be
-(Font)              scaled to size 9.60999pt on input line 82.
-LaTeX Font Info:    Font shape `JT1/mc/m/n' will be
 (Font)              scaled to size 6.72699pt on input line 82.
+LaTeX Font Info:    Font shape `JT1/gt/m/n' will be
+(Font)              scaled to size 9.60999pt on input line 83.
+LaTeX Font Info:    Font shape `JY1/gt/m/n' will be
+(Font)              scaled to size 9.60999pt on input line 83.
+LaTeX Font Info:    Font shape `JT1/mc/m/n' will be
+(Font)              scaled to size 6.72699pt on input line 83.
  [1
 
 ]
 LaTeX Font Info:    Font shape `JT1/gt/m/n' will be
-(Font)              scaled to size 11.53198pt on input line 104.
+(Font)              scaled to size 11.53198pt on input line 105.
 LaTeX Font Info:    Font shape `JY1/gt/m/n' will be
-(Font)              scaled to size 11.53198pt on input line 104.
+(Font)              scaled to size 11.53198pt on input line 105.
  [2]
 [3]
 File: fit_acc_time_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_blind5
@@ -356,14 +356,14 @@ File: predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500n
 s_blind50ns_sigma30ns.pdf Graphic file (type pdf)
 <predict_acc_from_tsb_by_eg_step4f_run1to20_eg_doubleonly_allpatterns_500ns_bli
 nd50ns_sigma30ns.pdf>
-File: signal_rmd_pdf_hist_current_detres2ns.pdf Graphic file (type pdf)
-<signal_rmd_pdf_hist_current_detres2ns.pdf>
-File: signal_rmd_pdf_hist_current_detres2ns.pdf Graphic file (type pdf)
-<signal_rmd_pdf_hist_current_detres2ns.pdf>
-File: signal_rmd_pdf_hist_current_detres2ns.pdf Graphic file (type pdf)
-<signal_rmd_pdf_hist_current_detres2ns.pdf>
-File: signal_rmd_pdf_hist_current_detres2ns.pdf Graphic file (type pdf)
-<signal_rmd_pdf_hist_current_detres2ns.pdf>
+File: signal_rmd_pdf_hist_current.pdf Graphic file (type pdf)
+<signal_rmd_pdf_hist_current.pdf>
+File: signal_rmd_pdf_hist_current.pdf Graphic file (type pdf)
+<signal_rmd_pdf_hist_current.pdf>
+File: signal_rmd_pdf_hist_current.pdf Graphic file (type pdf)
+<signal_rmd_pdf_hist_current.pdf>
+File: signal_rmd_pdf_hist_current.pdf Graphic file (type pdf)
+<signal_rmd_pdf_hist_current.pdf>
  [4] [5]
 File: acc_grid_hist_step4f_doubleonly_fitbased_blind50ns_sigma30ns.pdf Graphic 
 file (type pdf)
@@ -375,7 +375,7 @@ File: acc_grid_hist_step4f_doubleonly_fitbased_blind50ns_sigma30ns.pdf Graphic
 file (type pdf)
 <acc_grid_hist_step4f_doubleonly_fitbased_blind50ns_sigma30ns.pdf>
 
-Overfull \hbox (41.31949pt too wide) in paragraph at lines 404--409
+Overfull \hbox (41.31949pt too wide) in paragraph at lines 406--411
 []\OT1/cmr/m/n/10 AW \JY1/mc/m/n/10 内事象数は \OT1/cmr/m/n/10 18 \JY1/mc/m/n/1
 0 事象で 、 初期値で $\OML/cmm/m/it/10 p[] \OMS/cmsy/m/n/10 ^^T \OT1/cmr/m/n/10
  0$ \JY1/mc/m/n/10 となる事象は \OT1/cmr/m/n/10 0 \JY1/mc/m/n/10 であ った 。 
@@ -385,31 +385,29 @@ n/10 ,
 
 [6]
 LaTeX Font Info:    Font shape `JT1/gt/m/it' in size <10> not available
-(Font)              Font shape `JT1/gt/m/n' tried instead on input line 461.
+(Font)              Font shape `JT1/gt/m/n' tried instead on input line 463.
 LaTeX Font Info:    Font shape `JT1/gt/m/n' will be
-(Font)              scaled to size 9.60999pt on input line 461.
+(Font)              scaled to size 9.60999pt on input line 463.
 LaTeX Font Info:    Font shape `JY1/gt/m/it' in size <10> not available
-(Font)              Font shape `JY1/gt/m/n' tried instead on input line 461.
+(Font)              Font shape `JY1/gt/m/n' tried instead on input line 463.
 LaTeX Font Info:    Font shape `JY1/gt/m/n' will be
-(Font)              scaled to size 9.60999pt on input line 461.
- [7] [8]
-File: fc_br_scan_wide1000_nmu1708_50pts.pdf Graphic file (type pdf)
-<fc_br_scan_wide1000_nmu1708_50pts.pdf>
-File: fc_br_scan_monotonic1000_nmu1708.pdf Graphic file (type pdf)
-<fc_br_scan_monotonic1000_nmu1708.pdf>
- [9] [10]
+(Font)              scaled to size 9.60999pt on input line 463.
+ [7] [8] [9]
+File: fc_br_scan_summary_nmu1708.pdf Graphic file (type pdf)
+<fc_br_scan_summary_nmu1708.pdf>
+ [10]
 File: sensitivity_br_hist_blind50ns.pdf Graphic file (type pdf)
 <sensitivity_br_hist_blind50ns.pdf>
  [11] [12] [13] [14] [15] [16] [17] [18] [19]
 (./report_acc_constraint_nll_step4f_blind50ns.aux) ) 
 Here is how much of TeX's memory you used:
- 2985 strings out of 479466
- 42769 string characters out of 5870549
- 354291 words of memory out of 5000000
- 20637 multiletter control sequences out of 15000+600000
+ 2980 strings out of 479466
+ 42408 string characters out of 5870549
+ 353301 words of memory out of 5000000
+ 20634 multiletter control sequences out of 15000+600000
  423803 words of font info for 124 fonts, out of 8000000 for 9000
  934 hyphenation exceptions out of 8191
- 68i,12n,74p,721b,370s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 68i,12n,74p,861b,370s stack positions out of 5000i,500n,10000p,200000b,80000s
 
-Output written on report_acc_constraint_nll_step4f_blind50ns.dvi (19 pages, 561
-28 bytes).
+Output written on report_acc_constraint_nll_step4f_blind50ns.dvi (19 pages, 608
+16 bytes).

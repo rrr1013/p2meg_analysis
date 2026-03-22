@@ -1,23 +1,10 @@
-n_mc 1000000
-seed 20260312
-truth_Ee_min 2.83227179
-truth_Ee_max 52.83023569
-truth_Eg_min 2.83227179
-truth_Eg_max 52.82776431
-time_acceptance 1
-total_phi_weight 1.644934067
-n_allowed_pairs 4
-kappa_sig 0.00237728
-sigma_kappa_sig 3.985750837e-06
-N_mu_eff 1708.778834
-sigma_N_mu_eff 25.89154932
-kappa_RMD_AW 2.902909319e-06
-sigma_kappa_RMD_AW 6.618997433e-09
-BR_eff_RMD_SM 0.001221105347
-sigma_BR_eff_RMD_SM 3.455957707e-06
-N_RMD_SM_AW 2.086598971
-sigma_N_RMD_SM_AW 0.03216310868
-N_RMD_hat_fit 1.65734
-sigma_N_RMD_hat_fit 1.81372
-BR_eff_RMD_fit 0.0009698973133
-sigma_BR_eff_RMD_fit 0.001061514693
+[evaluate_rmd_aw_sm] n_mc = 800000
+[evaluate_rmd_aw_sm] truth window: Ee=[6.437494714,52.83023569], Eg=[6.437494714,52.82776431]
+[evaluate_rmd_aw_sm] time acceptance in AW = 1
+[evaluate_rmd_aw_sm] allowed phi pairs = 4, total_phi_weight = 1.644934067
+[evaluate_rmd_aw_sm] kappa_RMD_AW = 2.912386179e-06 +/- 6.749253291e-09
+[evaluate_rmd_aw_sm] BR_eff_RMD_SM = 0.001223098966 +/- 3.497489005e-06
+[evaluate_rmd_aw_sm] N_RMD_SM_AW = 2.089431611 +/- 0.03220834054
+[evaluate_rmd_aw_sm] N_RMD_hat_fit = 1.66221 +/- 1.81592
+[evaluate_rmd_aw_sm] BR_eff_RMD_fit = 0.0009730145371 +/- 0.001063094548
+[evaluate_rmd_aw_sm] wrote doc/finalanalysis/rmd_aw_sm_summary.txt

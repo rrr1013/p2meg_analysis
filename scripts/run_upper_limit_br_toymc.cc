@@ -274,6 +274,7 @@ int main(int argc, char** argv)
     toy_cfg.pmax_scan_trials = 20000;
     toy_cfg.pmax_safety = 5.0;
     toy_cfg.pmax_update = 1.2;
+    toy_cfg.event_pool_size_per_component = 20000;
 
     UpperLimitBRScanConfig scan_cfg;
     scan_cfg.BR_scan = scan_points;

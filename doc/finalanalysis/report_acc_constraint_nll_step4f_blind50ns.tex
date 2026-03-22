@@ -10,9 +10,9 @@
 
 \title{p2MEG 最終解析レポート\\
 ACC constraint 付き尤度解析と FC 法による分岐比上限\\
-complete report: blind core = 50 ns, \(\sigma_{\mathrm{fit,min}}=30\) ns, detres \(\sigma_t=2\) ns}
+complete report: blind core = 50 ns, \(\sigma_{\mathrm{fit,min}}=30\) ns, detres \(\sigma_t=1.90\) ns}
 \author{p2MEG 解析レポート}
-\date{2026年3月12日}
+\date{2026年3月20日}
 
 \begin{document}
 \maketitle
@@ -29,12 +29,12 @@ Feldman--Cousins (FC) 法に基づく toy MC で
 \[
 \text{blind core}=|t|<50\ \mathrm{ns},\qquad
 \sigma_{\mathrm{fit,min}}=30\ \mathrm{ns},\qquad
-\texttt{detres.sigma\_t}=2\ \mathrm{ns}
+\texttt{detres.sigma\_t}=1.90\ \mathrm{ns}
 \]
 である。
 また、停止ミューオン数は
 \[
-N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
+N_{\mu}^{\mathrm{eff}} = 1708.30952332 \pm 25.876330787
 \]
 を用いた。分岐比の上限値はこの正規化の値に依存するため、
 将来ここを再評価した場合は \(\mathrm{BR}_{90}\) も更新される。
@@ -42,15 +42,15 @@ N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
 現行コード・現行 PDF キャッシュで得られた主結果は
 \begin{align}
 N_{\mathrm{ACC,pred}} &= 10.2302 \pm 8.76009,\\
-\mathrm{NLL}_{\min} &= 271.81,\\
-N_{\mathrm{sig}} &= 1.06\times 10^{-8},\\
-N_{\mathrm{RMD}} &= 1.657 \pm 1.814,\\
-N_{\mathrm{ACC}} &= 15.325 \pm 4.954
+\mathrm{NLL}_{\min} &= 316.986,\\
+N_{\mathrm{sig}} &= 1.34\times 10^{-8},\\
+N_{\mathrm{RMD}} &= 1.662 \pm 1.816,\\
+N_{\mathrm{ACC}} &= 15.322 \pm 4.953
 \end{align}
-であり、FC 法による分岐比上限は、広い BR scan と 1000 toy の境界走査に基づいて
+であり、FC 法による分岐比上限は、広い BR scan と境界近傍の focused high-stat scan に基づいて
 \begin{align}
-N_{\mathrm{sig}}^{90,\mathrm{nom}} &= 1.45246,\\
-\mathrm{BR}_{90} &= 8.5\times 10^{-4}
+N_{\mathrm{sig}}^{90,\mathrm{nom}} &= 1.77664,\\
+\mathrm{BR}_{90} &= 1.04\times 10^{-3}
 \end{align}
 となった。
 
@@ -61,17 +61,18 @@ background-only pseudo-experiment から得られる 90\% C.L. 上限分布の�
 を sensitivity と定義して評価した。
 現行簡略化コードでは、固定した nominal background 点で FC belt を一度較正し、
 その belt を外側 toy に再利用する高速化を用いた。
-感度分布の最終可視化では、右端打ち切りと離散化を抑えるため
+今回このレポートに反映した sensitivity は、完了した rerun として
 \[
-0 \le \mathrm{BR}_{\mathrm{test}} \le 2.0\times10^{-3},
+\;0 \le \mathrm{BR}_{\mathrm{test}} \le 1.2\times10^{-3},
 \qquad
-\Delta\mathrm{BR}=1\times10^{-5}
+\Delta\mathrm{BR}=5\times10^{-5}
 \]
-の finer BR grid を使い、
-500 本の belt calibration toy と 50000 本の background-only toy で再評価した。
+の BR grid を使い、
+400 本の belt calibration toy と、互換な local-exact run を結合した
+104000 本の background-only toy で再評価した。
 \begin{align}
-\mathrm{BR}_{90}^{\mathrm{sens}} &= 9.3\times 10^{-4},\\
-N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.58916
+\mathrm{BR}_{90}^{\mathrm{sens}} &= 1.05\times 10^{-3},\\
+N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.79372
 \end{align}
 を得た。
 \end{abstract}
@@ -126,7 +127,7 @@ t \notin [-50,50]\ \mathrm{ns}
 \toprule
 量 & 値 \\
 \midrule
-\(\sigma_t\) & 2 ns \\
+\(\sigma_t\) & 1.90 ns \\
 \(t_{\mathrm{mean}}\) & 0 ns \\
 \(P_\mu\) & -0.6 \\
 \(N_\theta\) & 9 \\
@@ -269,7 +270,7 @@ p_t(t)=
 \frac{\mathcal{N}(t;t_{\mathrm{mean}},\sigma_t)}
 {\int_{t_{\min}}^{t_{\max}}\mathcal{N}(u;t_{\mathrm{mean}},\sigma_t)\,du}
 \end{equation}
-であり、今回は \(\sigma_t=2\) ns, \(t_{\mathrm{mean}}=0\) ns を用いた。
+であり、今回は \(\sigma_t=1.90\) ns, \(t_{\mathrm{mean}}=0\) ns を用いた。
 
 \subsection{RMD PDF}
 RMD PDF は \texttt{src/MakeRMDGridPdf.cc} で
@@ -291,22 +292,22 @@ RMD PDF は \texttt{src/MakeRMDGridPdf.cc} で
 \begin{equation}
 p_{\mathrm{RMD}}(x)=p_4(E_e,E_\gamma,\phi_e,\phi_\gamma)\times p_t(t)
 \end{equation}
-とし、\(p_t(t)\) には Signal と同じく \(\sigma_t=2\) ns の
+とし、\(p_t(t)\) には Signal と同じく \(\sigma_t=1.90\) ns の
 トランケート正規を使う。
 
 \begin{figure}[p]
   \centering
-  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=1]{signal_rmd_pdf_hist_current_detres2ns.pdf}
+  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=1]{signal_rmd_pdf_hist_current.pdf}
   \vspace{2mm}
-  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=2]{signal_rmd_pdf_hist_current_detres2ns.pdf}
-  \caption{detres \(\sigma_t=2\) ns で作り直した Signal/RMD PDF の meta page と 1D 可視化。}
+  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=2]{signal_rmd_pdf_hist_current.pdf}
+  \caption{detres \(\sigma_t=1.90\) ns, \(\sigma_E/E=0.079\) で作り直した Signal/RMD PDF の meta page と 1D 可視化。}
 \end{figure}
 
 \begin{figure}[p]
   \centering
-  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=3]{signal_rmd_pdf_hist_current_detres2ns.pdf}
+  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=3]{signal_rmd_pdf_hist_current.pdf}
   \vspace{2mm}
-  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=4]{signal_rmd_pdf_hist_current_detres2ns.pdf}
+  \includegraphics[width=0.95\linewidth,height=0.18\textheight,keepaspectratio,page=4]{signal_rmd_pdf_hist_current.pdf}
   \caption{Signal と RMD の 2D 可視化。}
 \end{figure}
 
@@ -358,6 +359,7 @@ AW 内で有限値を持つ ACC 時間 PDF を作っている。
 =
 \left(\sum_k N_k\right)
 -\sum_i \log\left(\sum_k N_k p_k(x_i)\right)
++\log(N!)
 +\mathrm{ConstraintNLL}(N_k)
 \end{equation}
 である。
@@ -408,26 +410,26 @@ AW 内事象数は 18 事象で、初期値で \(p_i \le 0\) となる事象は 
 付きで実行した結果は
 \begin{align}
 \mathrm{status} &= 0,\\
-\mathrm{NLL}_{\min} &= 271.81,\\
-N_{\mathrm{sig}} &= 1.06\times 10^{-8},\\
-N_{\mathrm{RMD}} &= 1.657 \pm 1.814,\\
-N_{\mathrm{ACC}} &= 15.325 \pm 4.954
+\mathrm{NLL}_{\min} &= 316.986,\\
+N_{\mathrm{sig}} &= 1.34\times 10^{-8},\\
+N_{\mathrm{RMD}} &= 1.662 \pm 1.816,\\
+N_{\mathrm{ACC}} &= 15.322 \pm 4.953
 \end{align}
 である。
 
 \begin{table}[htbp]
 \centering
-\caption{blind50 + \(\sigma_{\mathrm{fit,min}}=30\) ns + detres \(\sigma_t=2\) ns の通常 fit 結果}
+\caption{blind50 + \(\sigma_{\mathrm{fit,min}}=30\) ns + detres \(\sigma_t=1.90\) ns の通常 fit 結果}
 \begin{tabular}{lc}
 \toprule
 量 & 値 \\
 \midrule
 AW 内事象数 & 18 \\
 fit status & 0 \\
-\(\mathrm{NLL}_{\min}\) & 271.81 \\
-\(N_{\mathrm{sig}}\) & \(1.06\times 10^{-8}\) \\
-\(N_{\mathrm{RMD}}\) & \(1.657 \pm 1.814\) \\
-\(N_{\mathrm{ACC}}\) & \(15.325 \pm 4.954\) \\
+\(\mathrm{NLL}_{\min}\) & 316.986 \\
+\(N_{\mathrm{sig}}\) & \(1.34\times 10^{-8}\) \\
+\(N_{\mathrm{RMD}}\) & \(1.662 \pm 1.816\) \\
+\(N_{\mathrm{ACC}}\) & \(15.322 \pm 4.953\) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -443,7 +445,7 @@ fit status & 0 \\
 
 今回の FC 計算では、停止ミューオン数として
 \[
-N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
+N_{\mu}^{\mathrm{eff}} = 1708.30952332 \pm 25.876330787
 \]
 を用いた。
 この値を将来再評価した場合、
@@ -512,7 +514,7 @@ N_{\mathrm{sig}}^{\mathrm{toy}} = \mathcal{B}_{\mathrm{test}}\,N_{\mu}^{\mathrm{
 \]
 とし、
 \[
-N_{\mu}^{\mathrm{eff,toy}}\sim \text{positive Gaussian}(1708.77883387,25.8915493204)
+N_{\mu}^{\mathrm{eff,toy}}\sim \text{positive Gaussian}(1708.30952332,25.876330787)
 \]
 で揺らしている。
 
@@ -529,49 +531,48 @@ toy 生成側にのみ入れた簡略版である。
 \qquad
 \Delta \mathrm{BR}=2.44897959\times 10^{-5}
 \]
-の 50 点を各点 1000 toy で走査した。
+の 50 点を各点 10000 toy で走査した。
 
-その結果、\(p\)-value は全体として BR とともに低下し、
-広い scan だけを見ても accept から reject への遷移は
+その結果、広い scan でも BR とともに \(q_{\mathrm{obs}}\) は増加し、
+境界近傍では toy 統計起源の局所的な accept/reject 反転がまだ残るものの、
+sampled 点の中では
 \[
-\mathrm{BR}\simeq (8.33\text{--}8.57)\times 10^{-4}
+\mathrm{BR}=1.028571429\times10^{-3}
 \]
-付近にあることが見えた。
-特に
+が最後の accepted 点であり、
 \[
-\mathrm{BR}\ge 8.57\times 10^{-4}
+\mathrm{BR}=1.053061224\times10^{-3}
 \]
-では一貫して \(p<0.1\) となり、高 BR 側での再 accept は消えた。
+以上は reject であった。
 
-そこで第 2 段階として、単調な落ち方が見えている高 BR 側
+そこで第 2 段階として、境界近傍
 \[
-8.0\times 10^{-4}\le \mathrm{BR}_{\mathrm{test}} \le 1.15\times 10^{-3},
+\;8.8\times 10^{-4}\le \mathrm{BR}_{\mathrm{test}} \le 1.07\times 10^{-3},
 \qquad
-\Delta \mathrm{BR}=5\times 10^{-5}
+\Delta \mathrm{BR}=1\times 10^{-5}
 \]
-の 8 点を各点 1000 toy で再実行し、最終結果として採用した。
+の 20 点を各点 100000 toy で高統計に再評価した。
 
-広い scan は計算時間短縮のため 5 区間に分けて並列実行し、
-出力を BR 順に結合した。各チャンクは例えば
+広い scan は
 \begin{verbatim}
 env P2MEG_ACC_CONSTRAINT_MEAN=10.2302 \
     P2MEG_ACC_CONSTRAINT_SIGMA=8.76009 \
     ./build/run_upper_limit_br_toymc \
     data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt \
-    1708.77883387 25.8915493204 0 0.0002204081632652 \
-    0.0000244897959184 1000 961001
+    1708.30952332 25.876330787 0 0.0012 \
+    0.0000244897959184 10000 961001
 \end{verbatim}
-のように実行した。
+で実行した。
 
-境界近傍の再評価は
+境界近傍の高統計再評価は
 \begin{verbatim}
 env P2MEG_ACC_CONSTRAINT_MEAN=10.2302 \
     P2MEG_ACC_CONSTRAINT_SIGMA=8.76009 \
     ./build/run_upper_limit_br_toymc \
     data/finaldata/step4f_run1to20_eg_doubleonly_allpatterns_500ns.txt \
-    1708.77883387 25.8915493204 0.0008 0.00115 0.00005 1000 818181
+    1708.30952332 25.876330787 0.00088 0.00107 0.00001 100000 <seed>
 \end{verbatim}
-である。
+の形で複数 seed に分割して実行した。
 
 \subsection{FC の数値結果}
 広い scan の主な結果は以下である。
@@ -581,56 +582,69 @@ env P2MEG_ACC_CONSTRAINT_MEAN=10.2302 \
 \toprule
 \(\mathrm{BR}_{\mathrm{test}}\) & \(N_{\mathrm{sig,test}}^{\mathrm{nom}}\) & \(p\)-value & accepted \\
 \midrule
-0.00066122 & 1.12989 & 0.112 & yes \\
-0.00068571 & 1.17173 & 0.099 & no \\
-0.00071020 & 1.21358 & 0.115 & yes \\
-0.00083265 & 1.42282 & 0.133 & yes \\
-0.00085714 & 1.46467 & 0.093 & no \\
-0.00088163 & 1.50652 & 0.077 & no \\
+0.00093061 & 1.58977 & 0.1029 & yes \\
+0.00095510 & 1.63161 & 0.0999 & no \\
+0.00097959 & 1.67345 & 0.1028 & yes \\
+0.00100408 & 1.71528 & 0.0985 & no \\
+0.00102857 & 1.75712 & 0.1011 & yes \\
+0.00105306 & 1.79895 & 0.0994 & no \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-50 点 1000 toy の広い scan では、境界近傍に局所的な揺らぎはまだ残るが、
-\(8.57\times 10^{-4}\) 以上では一貫して reject となっており、
-高 BR 側で \(p\)-value が下がる大域的傾向は十分に確認できた。
+50 点 10000 toy の広い scan でも、境界近傍では \(p\simeq 0.1\) の上下で
+局所的な揺らぎが残るが、
+\(1.02857\times10^{-3}\) が sampled 点の最後の accepted 点であり、
+\(1.05306\times10^{-3}\) 以上では reject であった。
 
-次に、単調性が見えている側だけを 1000 toy で詰めた結果は
+そこで境界近傍をさらに
+\[
+8.8\times10^{-4}\le \mathrm{BR}_{\mathrm{test}} \le 1.07\times10^{-3},
+\qquad
+\Delta \mathrm{BR}=1\times10^{-5}
+\]
+の 20 点に広げ、
+各点 100000 toy の focused high-stat scan を追加で行った。
+代表点は
 \begin{center}
 \begin{tabular}{cccc}
 \toprule
 \(\mathrm{BR}_{\mathrm{test}}\) & \(N_{\mathrm{sig,test}}^{\mathrm{nom}}\) & \(p\)-value & accepted \\
 \midrule
-0.00080 & 1.36702 & 0.126 & yes \\
-0.00085 & 1.45246 & 0.110 & yes \\
-0.00090 & 1.53790 & 0.072 & no \\
-0.00095 & 1.62334 & 0.074 & no \\
-0.00100 & 1.70878 & 0.081 & no \\
-0.00105 & 1.79422 & 0.075 & no \\
-0.00110 & 1.87966 & 0.072 & no \\
-0.00115 & 1.96510 & 0.058 & no \\
+0.00100 & 1.70831 & 0.10059 & yes \\
+0.00101 & 1.72539 & 0.10005 & yes \\
+0.00102 & 1.74248 & 0.10050 & yes \\
+0.00103 & 1.75956 & 0.09967 & no \\
+0.00104 & 1.77664 & 0.10102 & yes \\
+0.00105 & 1.79372 & 0.09865 & no \\
 \bottomrule
 \end{tabular}
 \end{center}
 であった。
 
+\(p\simeq 0.1\) での toy 計数誤差は
+\[
+\sigma_p \simeq \sqrt{\frac{p(1-p)}{N_{\mathrm{toy}}}}
+\approx 9.5\times10^{-4}
+\]
+であり、境界近傍で見える
+\(0.00103\) reject と \(0.00104\) accept の反転は、
+有限 toy 統計と整合する。
+今回の focused scan で sampling した点のうち、
+\(0.00104\) が最大 accepted 点であり、
+\(0.00105\) 以上は reject であった。
+
 したがって、最終的に採用する結果としては
 \begin{align}
-\mathrm{BR}_{90} &= 8.5\times 10^{-4},\\
-N_{\mathrm{sig}}^{90,\mathrm{nom}} &= \mathrm{BR}_{90}\,N_{\mu}^{\mathrm{eff,nom}} = 1.45246
+\mathrm{BR}_{90} &= 1.04\times 10^{-3},\\
+N_{\mathrm{sig}}^{90,\mathrm{nom}} &= \mathrm{BR}_{90}\,N_{\mu}^{\mathrm{eff,nom}} = 1.77664
 \end{align}
 となった。
 
 \begin{figure}[p]
   \centering
-  \includegraphics[width=0.95\linewidth]{fc_br_scan_wide1000_nmu1708_50pts.pdf}
-  \caption{広い BR 範囲での FC scan。\(0\le \mathrm{BR}\le 1.2\times10^{-3}\) を 50 点、各点 1000 toy で走査した。上段は \(q_{\mathrm{obs}}(\mathrm{BR})\)、下段は toy から求めた \(p\)-value。広い scan だけを見ても遷移が \(8.33\text{--}8.57\times10^{-4}\) 付近にあることが確認できる。}
-\end{figure}
-
-\begin{figure}[p]
-  \centering
-  \includegraphics[width=0.95\linewidth]{fc_br_scan_monotonic1000_nmu1708.pdf}
-  \caption{単調性が見えている高 BR 側 \((8.0\text{--}11.5)\times10^{-4}\) を 1000 toy で再評価した scan。緑破線は 90\% C.L. のしきい値 \(p=0.1\)、赤破線は採用した \(\mathrm{BR}_{90}=8.5\times10^{-4}\) を示す。}
+  \includegraphics[width=0.95\linewidth]{fc_br_scan_summary_nmu1708.pdf}
+  \caption{FC scan の全体像を 1 枚にまとめた図。灰色丸は広い範囲 \(0\le \mathrm{BR}\le 1.2\times10^{-3}\) の 50 点 scan（各点 10000 toy）、赤四角は境界近傍 \(8.8\times10^{-4}\le \mathrm{BR}\le 1.07\times10^{-3}\) の focused high-stat scan（各点 100000 toy）である。上段は \(q_{\mathrm{obs}}(\mathrm{BR})\)、下段は toy から求めた \(p\)-value で、エラーバーは 68.3\% Clopper--Pearson 区間を表す。高統計点は見やすさのため低統計点とわずかに横方向にずらして描いている。下段の inset は境界近傍の拡大図であり、緑破線は 90\% C.L. のしきい値 \(p=0.1\)、青破線は採用した \(\mathrm{BR}_{90}=1.04\times10^{-3}\) を示す。}
 \end{figure}
 
 \section{感度の評価}
@@ -658,8 +672,8 @@ N_{\mathrm{sig}}=0
 \]
 を固定した profile fit を行い、nominal background 点
 \begin{align}
-N_{\mathrm{RMD}}^{(0)} &= 1.65766,\\
-N_{\mathrm{ACC}}^{(0)} &= 15.3246
+N_{\mathrm{RMD}}^{(0)} &= 1.66256,\\
+N_{\mathrm{ACC}}^{(0)} &= 15.3212
 \end{align}
 を得た。
 
@@ -673,54 +687,61 @@ q(\mathrm{BR}_{\mathrm{test}})
 \]
 であり、normalisation uncertainty
 \(
-N_\mu^{\mathrm{eff}}=1708.77883387\pm25.8915493204
+N_\mu^{\mathrm{eff}}=1708.30952332\pm25.876330787
 \)
 は toy 生成時だけに入れた。
 
-最終的な感度分布の可視化では、background-only pseudo-experiment を 50000 本生成し、
+この更新で最終的に用いた sensitivity sample では、
+同一設定の local-exact run を 10 本
+（既存の 10000 toy run、14000 toy run、および追加の 8 本の independent 10000 toy shard）
+結合し、background-only pseudo-experiment を合計 104000 本用いた。
+各 shard は 400 本の calibration toy で belt を較正しており、
 各 toy に対して
 \[
-0 \le \mathrm{BR}_{\mathrm{test}} \le 2.0\times10^{-3},
+\;0 \le \mathrm{BR}_{\mathrm{test}} \le 1.2\times10^{-3},
 \qquad
-\Delta\mathrm{BR}=1\times10^{-5}
+\Delta\mathrm{BR}=5\times10^{-5}
 \]
-の 201 点で \(q_{\mathrm{obs}}\) を評価した。
+の 25 点で \(q_{\mathrm{obs}}\) を評価した。
 高速化のため、各 dataset ごとに free fit を毎回やり直さず、
 同一 dataset 内では 1 回の free fit と 1 回の PDF cache を共有するようにした。
 また、有限個の calibration toy による高 BR 側の局所 re-accept を抑えるため、
 accept/reject は BR に対して単調 envelope
 （一度 reject したらそれより高 BR は reject）
 を課している。
-この high-stat run の実測時間は
+単独の 14000 toy run の実測時間は
 \[
-t_{\mathrm{calib}} = 3909\ \mathrm{s},\qquad
-t_{\mathrm{sens}} = 259\ \mathrm{s}
+t_{\mathrm{calib}} = 1.48\ \mathrm{s},\qquad
+t_{\mathrm{sens}} = 3657\ \mathrm{s}
 \]
-であり、合計で約 1.16 時間であった。
+であり、合計で約 61 分であった。
+今回はこの互換設定を independent seed で並列実行し、
+最終的な感度分布のみを後段で統合した。
 
 \subsection{高速化の妥当性確認}
 厳密な nested toy で毎回 FC belt を作り直す実装は非常に重いため、
 上記の belt 再利用近似を採用した。
-その信頼性確認として、4 本の background-only toy については
+本番の merged 104000 toy sample でも追加の validation はしていない。
+その代わり、local-exact 実装そのものについては別 run で 4 本の background-only toy について
 既存の遅い実装
 \texttt{EvaluateUpperLimitBRScan}
 も実際に回し、各点 100 toy の nested FC と比較した。
 
 その結果、
 \begin{align}
-\mathrm{median}(\mathrm{BR}_{90}^{\mathrm{fast}}) &= 1.025\times10^{-3},\\
-\mathrm{median}(\mathrm{BR}_{90}^{\mathrm{exact}}) &= 1.10\times10^{-3}
+\mathrm{median}(\mathrm{BR}_{90}^{\mathrm{fast}}) &= 1.20\times10^{-3},\\
+\mathrm{median}(\mathrm{BR}_{90}^{\mathrm{exact}}) &= 1.20\times10^{-3}
 \end{align}
 であり、1 toy ごとの絶対差の平均は
 \[
-\langle |\Delta \mathrm{BR}_{90}| \rangle = 1.625\times10^{-4}
+\langle |\Delta \mathrm{BR}_{90}| \rangle = 3.75\times10^{-5}
 \]
 であった。
 したがって、今回の fast sensitivity は
 \begin{quote}
-grid 幅 \(5\times10^{-5}\) よりは大きいが、order \(10^{-4}\) の系統的ずれを持ち得る
+grid 幅 \(5\times10^{-5}\) と同程度のずれに収まっている
 \end{quote}
-近似として読むのが適切である。
+近似として読める。
 卒研段階の expected upper limit の目安としては十分使えるが、
 最終的に厳密化するなら outer toy ごとの nested belt 構築を増やして再検証すべきである。
 
@@ -728,25 +749,27 @@ grid 幅 \(5\times10^{-5}\) よりは大きいが、order \(10^{-4}\) の系統�
 今回の設定で得られた感度分布の要約は
 \begin{align}
 \mathrm{BR}_{90}^{\mathrm{sens}} &= \mathrm{median}(\mathrm{BR}_{90})
-= 9.3\times10^{-4},\\
-N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.58916,\\
-\mathrm{BR}_{90}(16\%) &= 4.4\times10^{-4},\\
-\mathrm{BR}_{90}(84\%) &= 1.14\times10^{-3}
+= 1.05\times10^{-3},\\
+N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.79372,\\
+\mathrm{BR}_{90}(16\%) &= 6.0\times10^{-4},\\
+\mathrm{BR}_{90}(84\%) &= 1.2\times10^{-3}
 \end{align}
 であった。
+ここで \(84\%\) 点が現在の scan 上端 \(1.2\times10^{-3}\) に一致しているため、
+図9右端の山は高 BR 側の連続的な tail というより、
+上限値が scan 境界に張り付いた toy の集積として解釈すべきである。
 
 \begin{figure}[p]
   \centering
   \includegraphics[width=0.95\linewidth]{sensitivity_br_hist_blind50ns.pdf}
-  \caption{finer BR grid \((0\le\mathrm{BR}\le2.0\times10^{-3},\ \Delta\mathrm{BR}=1\times10^{-5})\) と background-only toy 50000 本から得た感度分布。見やすさのため、表示上のヒストグラムは \(\Delta\mathrm{BR}_{\mathrm{bin}}=1\times10^{-4}\) の粗いビンで描いている。赤い矢印は実データから得た採用上限 \(\mathrm{BR}_{90}=8.5\times10^{-4}\) を示す。粗いビンで見た目は改善するが、高統計にしても多峰的な構造自体は残る。したがって、この構造は主として outer toy 統計不足ではなく、現行 FC belt の離散走査と単調 envelope の影響を反映している。}
+  \caption{BR grid \((0\le\mathrm{BR}\le1.2\times10^{-3},\ \Delta\mathrm{BR}=5\times10^{-5})\) 上で評価した、10 本の互換 local-exact run を結合した 104000 本の background-only sensitivity sample の分布。表示用ヒストグラムの bin 幅は見やすさのため \(1\times10^{-4}\) とし、中央値や quantile は元の \(5\times10^{-5}\) grid 上の toy 値から計算している。緑帯は central 68\% interval、黒実線は median expected upper limit \(\mathrm{BR}_{90}^{\mathrm{sens}}=1.05\times10^{-3}\)、赤破線は dedicated FC scan から採用した observed upper limit \(\mathrm{BR}_{90}=1.04\times10^{-3}\) を示す。右端の集積は、toy の一部が現在の scan 上端 \(1.2\times10^{-3}\) に達していることに対応する。}
 \end{figure}
 
 したがって、現行 p2MEG 簡略解析では
 \begin{quote}
-observed upper limit は \(8.5\times10^{-4}\)、expected sensitivity は \(9.3\times10^{-4}\)
+observed upper limit は \(1.04\times10^{-3}\)、expected sensitivity は \(1.05\times10^{-3}\)
 \end{quote}
-となり、今回の観測結果は期待感度よりやや良い側にある。
-これは background fluctuation として自然な範囲に見える。
+となり、今回の観測結果は期待感度とほぼ同程度である。
 
 \section{FC 法の読み方}
 FC 法では「best fit から \(\Delta \mathrm{NLL}=1.35\) だから 90\%」のような
@@ -794,6 +817,59 @@ Eur.\ Phys.\ J.\ C 85, 813 (2025), doi:10.1140/epjc/s10052-025-14906-3
 \end{itemize}
 という方針を取っていること自体は、MEG の考え方と整合的である。
 
+\subsection{\(N_{\mathrm{sig}}\ge 0\) 制約を外した場合の検証}
+一方で、FC 法では test statistic の best fit 側を必ずしも物理領域
+\(N_{\mathrm{sig}}\ge 0\)
+に制限しなくてもよい、という考え方もある。
+そこで同じ実データ、同じ ACC Gaussian constraint、
+同じ simplified PDF を使ったまま、
+free fit と fixed-signal profile fit の両方で
+\(N_{\mathrm{sig}}\ge 0\)
+下限を外す検証を別途行った。
+
+その結果、非負制約つきでは複数の正の開始値
+\((6,6,6),\ (0.1,2,15.9),\ (3,3,12)\) など
+から常に
+\[
+N_{\mathrm{sig}}\simeq 0,\qquad
+N_{\mathrm{RMD}}\simeq 1.66,\qquad
+N_{\mathrm{ACC}}\simeq 15.32
+\]
+へ安定に収束したのに対し、
+下限を外すと
+\[
+N_{\mathrm{sig}}\sim -10 \text{ から } -13
+\]
+程度の大きな負の値に落ち、しかも開始値によって到達点が数事象ぶん動いた。
+さらに関数評価回数を 10 倍に増やしても収束 status は改善せず、
+同じ equal start からでも別の負解
+\(N_{\mathrm{sig}}\simeq -6.2\)
+へ移るだけであった。
+
+この unbounded fit をそのまま FC の
+profile-likelihood ratio
+\[
+q(\mathcal{B})=-2\ln\lambda(\mathcal{B})
+\]
+に使おうとすると、実データの free fit 側が安定しないため
+有限の \(q_{\mathrm{obs}}\) を構成できなかった。
+したがって、現行の constant/grid PDF に基づく簡略化解析では、
+非負制約を外した fit は
+\begin{quote}
+物理的な signal best fit を与える cross-check
+\end{quote}
+としても、
+\begin{quote}
+FC belt を安定に定義するための nominal choice
+\end{quote}
+としても十分に頑健ではないと判断した。
+このため、本レポートでは
+\(N_{\mathrm{sig}}\ge 0\)
+制約つきの結果を主結果として残し、
+非負制約を外した場合の結果は
+「現行 simplified model では負の signal yield に流れて不安定になる」
+ことを確認する補足検証として扱う。
+
 \subsection{MEG と比べて簡略化されている点}
 ただし、今回の実装は MEG 論文と比べるとかなり単純化されている。
 主な違いは次の通りである。
@@ -807,21 +883,23 @@ Eur.\ Phys.\ J.\ C 85, 813 (2025), doi:10.1140/epjc/s10052-025-14906-3
 
 以前の狭い境界 scan では、toy 数が少なかったため
 境界近傍の \(p\)-value が局所的に非単調に見えていた。
-しかし今回、BR 範囲を広げた 50 点 1000 toy scan で大域的な遷移位置を確認し、
-さらに単調性が見える高 BR 側を 1000 toy で再実行したところ、
+しかし今回、BR 範囲を広げた 50 点 10000 toy scan と、
+境界近傍を \(1\times10^{-5}\) 刻み・各点 100000 toy で切った
+focused high-stat scan を再実行したところ、
 \[
-\mathrm{BR}=8.5\times10^{-4}
+\mathrm{BR}=1.04\times10^{-3}
 \]
-までは accept で、
+が sampled 点の最大 accepted であり、
 \[
-\mathrm{BR}\ge 8.57\times10^{-4}
+\mathrm{BR}=1.05\times10^{-3}
 \]
-は広い scan でもすべて reject となった。
+はすでに reject となった。
 したがって、少なくとも今回採用した上限
 \[
-\mathrm{BR}_{90}=8.5\times10^{-4}
+\mathrm{BR}_{90}=1.04\times10^{-3}
 \]
-の判断自体は、toy 統計の粗さだけに依存した偶然の反転ではないと解釈できる。
+は、\(10^{-3}\) 近傍に位置しており、
+期待感度とほぼ同程度であると解釈できる。
 
 \subsection{現時点でどこまで妥当か}
 以上を踏まえると、今回の FC 上限は
@@ -840,7 +918,7 @@ Eur.\ Phys.\ J.\ C 85, 813 (2025), doi:10.1140/epjc/s10052-025-14906-3
   \item PDF shape 系統や sideband 系統を nuisance として同時に扱う
 \end{itemize}
 
-したがって今回の \(\mathrm{BR}_{90}=8.5\times10^{-4}\) は、
+したがって今回の \(\mathrm{BR}_{90}=1.04\times10^{-3}\) は、
 \emph{現行コードで実際に得られた値} としては正しいが、
 \emph{まだ確定最終値ではない} と読むのが適切である。
 停止ミューオン数 \(N_{\mu}^{\mathrm{eff}}\) が更新された場合も、
@@ -851,54 +929,54 @@ Eur.\ Phys.\ J.\ C 85, 813 (2025), doi:10.1140/epjc/s10052-025-14906-3
 \[
 \text{blind core}=50\ \mathrm{ns},\quad
 \sigma_{\mathrm{fit,min}}=30\ \mathrm{ns},\quad
-\texttt{detres.sigma\_t}=2\ \mathrm{ns}
+\texttt{detres.sigma\_t}=1.90\ \mathrm{ns}
 \]
 のもとで、
 \begin{align}
 N_{\mathrm{ACC,pred}} &= 10.2302 \pm 8.76009,\\
-\mathrm{NLL}_{\min} &= 271.81,\\
-N_{\mathrm{sig}} &= 1.06\times 10^{-8},\\
-N_{\mathrm{RMD}} &= 1.657 \pm 1.814,\\
-N_{\mathrm{ACC}} &= 15.325 \pm 4.954
+\mathrm{NLL}_{\min} &= 316.986,\\
+N_{\mathrm{sig}} &= 1.34\times 10^{-8},\\
+N_{\mathrm{RMD}} &= 1.662 \pm 1.816,\\
+N_{\mathrm{ACC}} &= 15.322 \pm 4.953
 \end{align}
 を得た。
 
 停止ミューオン数として
 \[
-N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
+N_{\mu}^{\mathrm{eff}} = 1708.30952332 \pm 25.876330787
 \]
 と仮定した FC toy MC では、
 \begin{align}
-N_{\mathrm{sig}}^{90,\mathrm{nom}} &= 1.45246,\\
-\mathrm{BR}_{90} &= 8.5\times 10^{-4}
+N_{\mathrm{sig}}^{90,\mathrm{nom}} &= 1.77664,\\
+\mathrm{BR}_{90} &= 1.04\times 10^{-3}
 \end{align}
 となった。
 
 同じ条件で評価した expected upper limit（sensitivity）は
 \begin{align}
-N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.58916,\\
-\mathrm{BR}_{90}^{\mathrm{sens}} &= 9.3\times 10^{-4}
+N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.79372,\\
+\mathrm{BR}_{90}^{\mathrm{sens}} &= 1.05\times 10^{-3}
 \end{align}
-であり、observed limit の方がやや良い側にある。
+であり、observed limit はこれとほぼ同程度である。
 
 ただしこの BR 上限は、現時点では
 \begin{itemize}
   \item 停止ミューオン数の再評価が入った場合は BR 上限も更新される
-  \item belt 境界は 50 点 1000 toy の広い scan と 1000 toy 再評価で概ね安定化したが、coverage の最終検証はまだである
+  \item belt 境界は 50 点 10000 toy の広い scan と focused high-stat scan で \(10^{-3}\) 近傍まで詰めたが、coverage の最終検証はまだである
   \item nuisance の扱いが MEG 本番解析より簡略化されている
-  \item sensitivity は fast belt 再利用近似で求めており、nested exact と比べて order \(10^{-4}\) のずれを持ち得る
+  \item sensitivity は fast belt 再利用近似で求めており、nested exact と比べて grid 幅と同程度のずれを持ち得る
 \end{itemize}
 という条件付きの値である。
 
 \section{RMD の実効分岐比について}
 現在の尤度 fit は
 \[
-N_{\mathrm{RMD}} = 1.657 \pm 1.814
+N_{\mathrm{RMD}} = 1.662 \pm 1.816
 \]
 を与えている。
 ここで停止ミューオン数の最終値
 \[
-N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
+N_{\mu}^{\mathrm{eff}} = 1708.30952332 \pm 25.876330787
 \]
 を用いると、signal 正規化に対する RMD の
 \emph{実効分岐比}
@@ -950,7 +1028,7 @@ N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
 
 この \(\kappa_{\mathrm{RMD}}^{\mathrm{AW}}\) を、停止ミューオン数正規化で用いた
 \[
-\kappa_{\mathrm{sig}} = 0.00237728 \pm 3.99\times10^{-6}
+\kappa_{\mathrm{sig}} = 0.00238115 \pm 3.99\times10^{-6}
 \]
 で割ると、signal 正規化に整合した標準模型の実効分岐比
 \[
@@ -965,10 +1043,10 @@ N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
 \begin{align}
 \kappa_{\mathrm{RMD}}^{\mathrm{AW}}
 &=
-(2.9029 \pm 0.0066)\times 10^{-6},\\
+(2.9124 \pm 0.0067)\times 10^{-6},\\
 \mathcal{B}_{\mathrm{RMD,SM}}^{\mathrm{eff}}
 &=
-(1.22111 \pm 0.00035)\times 10^{-3}
+(1.22310 \pm 0.00035)\times 10^{-3}
 \end{align}
 を得た。
 
@@ -976,16 +1054,16 @@ N_{\mu}^{\mathrm{eff}} = 1708.77883387 \pm 25.8915493204
 \begin{equation}
 N_{\mathrm{RMD,SM}}^{\mathrm{AW}}
 =
-2.0866 \pm 0.0322
+2.0894 \pm 0.0322
 \end{equation}
 である。
 
 一方、尤度 fit の結果は
 \begin{align}
-N_{\mathrm{RMD}}^{\mathrm{fit}} &= 1.657 \pm 1.814,\\
+N_{\mathrm{RMD}}^{\mathrm{fit}} &= 1.662 \pm 1.816,\\
 \mathcal{B}_{\mathrm{RMD}}^{\mathrm{eff,fit}}
 &=
-(0.9699 \pm 1.0615)\times 10^{-3}
+(0.9730 \pm 1.0631)\times 10^{-3}
 \end{align}
 であった。
 
@@ -994,12 +1072,12 @@ N_{\mathrm{RMD}}^{\mathrm{fit}} &= 1.657 \pm 1.814,\\
 \Delta N_{\mathrm{RMD}}
 =
 N_{\mathrm{RMD}}^{\mathrm{fit}} - N_{\mathrm{RMD,SM}}^{\mathrm{AW}}
-= -0.429
+= -0.427
 \]
 であり、誤差込みでは
 \[
 \frac{\Delta N_{\mathrm{RMD}}}
-{\sqrt{1.814^2 + 0.032^2}}
+{\sqrt{1.816^2 + 0.032^2}}
 \simeq -0.24
 \]
 と非常に小さい。
@@ -1008,20 +1086,20 @@ N_{\mathrm{RMD}}^{\mathrm{fit}} - N_{\mathrm{RMD,SM}}^{\mathrm{AW}}
 この結果から言えることは次の通りである。
 \begin{itemize}
   \item 現在の AW と current detector model のもとでは、標準模型は AW 内に約 2.09 個の RMD を予測する。
-  \item 尤度 fit が返した \(N_{\mathrm{RMD}}=1.657\pm1.814\) は、この標準模型予測と完全に整合している。
+  \item 尤度 fit が返した \(N_{\mathrm{RMD}}=1.662\pm1.816\) は、この標準模型予測と完全に整合している。
   \item 現在のデータでは RMD は \emph{見えていない} のではなく、
         \emph{統計誤差が大きく、標準模型期待値 2 個程度を十分に許している} と解釈するのが正しい。
   \item 実効分岐比に直すと
         \[
         \mathcal{B}_{\mathrm{RMD}}^{\mathrm{eff,fit}}
         =
-        (0.97 \pm 1.06)\times10^{-3}
+        (0.973 \pm 1.063)\times10^{-3}
         \]
         であり、標準模型予測
         \[
         \mathcal{B}_{\mathrm{RMD,SM}}^{\mathrm{eff}}
         =
-        1.221\times10^{-3}
+        1.223\times10^{-3}
         \]
         と矛盾しない。
   \item ただしこれは signal 正規化に基づく AW 内実効分岐比であり、
@@ -1041,13 +1119,11 @@ N_{\mathrm{RMD}}^{\mathrm{fit}} - N_{\mathrm{RMD,SM}}^{\mathrm{AW}}
   \item \texttt{predict\_acc\_from\_tsb\_by\_eg\_...blind50ns\_sigma30ns.pdf}
   \item \texttt{acc\_grid\_hist\_step4f\_doubleonly\_fitbased\_blind50ns\_sigma30ns.pdf}
   \item \texttt{run\_nll\_fit\_step4f\_run1to20\_eg\_doubleonly\_allpatterns\_500ns\_accconstrained\_current.txt}
-  \item \texttt{fc\_br\_scan\_wide100\_nmu1708.txt}
-  \item \texttt{fc\_br\_scan\_wide100\_nmu1708.pdf}
-  \item \texttt{fc\_br\_scan\_monotonic1000\_nmu1708.txt}
-  \item \texttt{fc\_br\_scan\_monotonic1000\_nmu1708.pdf}
-  \item \texttt{sensitivity\_br\_scan\_blind50ns.txt}
-  \item \texttt{sensitivity\_br\_scan\_blind50ns\_highstat5000.txt}
-  \item \texttt{sensitivity\_br\_scan\_blind50ns\_highstat50000.txt}
+  \item \texttt{fc\_br\_scan\_wide1000\_nmu1708\_50pts.txt}
+  \item \texttt{fc\_br\_scan\_wide1000\_nmu1708\_50pts.pdf}
+  \item \texttt{fc\_br\_scan\_refined\_nmu1708.txt}
+  \item \texttt{fc\_br\_scan\_refined\_nmu1708.pdf}
+  \item \texttt{sensitivity\_br\_scan\_blind50ns\_merged104000.txt}
   \item \texttt{sensitivity\_br\_hist\_blind50ns.pdf}
   \item \texttt{rmd\_aw\_sm\_summary.txt}
 \end{itemize}

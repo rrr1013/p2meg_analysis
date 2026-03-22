@@ -23,6 +23,11 @@ bool ACCGridPdf_Load(const char* filepath, const char* key);
 // 現在ロード済みかどうか（デバッグ・安全用）
 bool ACCGridPdf_IsLoaded();
 
+// 現在ロード中の root ファイルと key を返す
+// 未ロード時は nullptr を返す
+const char* ACCGridPdf_LoadedFilepath();
+const char* ACCGridPdf_LoadedKey();
+
 // PDF 評価（ロード済みが前提）
 // 解析窓外は 0 を返す
 // 時間因子は Eg 条件付き key_tshape_egbin* から作る p_t(t|Eg) を掛ける
