@@ -164,7 +164,7 @@ static void DrawMetaPage(const char* infile,
     lat.DrawLatex(0.05, 0.20, "Selection:");
     lat.DrawLatex(0.08, 0.15, Form("Ee in [%.1f, %.1f] MeV", analysis_window.Ee_min, analysis_window.Ee_max));
     lat.DrawLatex(0.08, 0.10, Form("Eg in [%.1f, %.1f] MeV", analysis_window.Eg_min, analysis_window.Eg_max));
-    lat.DrawLatex(0.50, 0.15, Form("theta_eg in [%.3f, %.3f] rad", analysis_window.theta_min, analysis_window.theta_max));
+    lat.DrawLatex(0.50, 0.15, Form("#theta_{e^{+}#gamma} in [%.3f, %.3f] rad", analysis_window.theta_min, analysis_window.theta_max));
     lat.DrawLatex(0.50, 0.10, Form("TSB: t in [%.0f, %.0f] ns and outside [%.0f, %.0f] ns",
                                    kTAllMin, kTAllMax, analysis_window.t_min, analysis_window.t_max));
 }
@@ -270,9 +270,9 @@ void predict_acc_from_tsb_by_eg(
                  n_lines, n_parsed, n_selected,
                  n_acc_pred_total, n_acc_pred_err_total, n_aw_total - n_acc_pred_total);
 
-    TH1D hObs("hObs", "Observed vs predicted counts in AW;Eg bin;Counts", nb, 0.0, static_cast<double>(nb));
-    TH1D hPred("hPred", "Observed vs predicted counts in AW;Eg bin;Counts", nb, 0.0, static_cast<double>(nb));
-    TH1D hExc("hExc", "AW excess after ACC prediction;Eg bin;Counts", nb, 0.0, static_cast<double>(nb));
+    TH1D hObs("hObs", "Observed vs predicted counts in AW;E_{#gamma} bin;Counts", nb, 0.0, static_cast<double>(nb));
+    TH1D hPred("hPred", "Observed vs predicted counts in AW;E_{#gamma} bin;Counts", nb, 0.0, static_cast<double>(nb));
+    TH1D hExc("hExc", "AW excess after ACC prediction;E_{#gamma} bin;Counts", nb, 0.0, static_cast<double>(nb));
 
     hObs.SetLineColor(kBlack);
     hObs.SetMarkerColor(kBlack);

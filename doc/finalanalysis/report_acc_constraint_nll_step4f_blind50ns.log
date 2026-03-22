@@ -1,4 +1,4 @@
-This is e-pTeX, Version 3.141592653-p3.9.0-210218-2.6 (utf8.euc) (TeX Live 2021) (preloaded format=platex 2022.4.3)  22 MAR 2026 01:27
+This is e-pTeX, Version 3.141592653-p3.9.0-210218-2.6 (utf8.euc) (TeX Live 2021) (preloaded format=platex 2022.4.3)  22 MAR 2026 13:39
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -403,11 +403,11 @@ File: sensitivity_br_hist_blind50ns.pdf Graphic file (type pdf)
 Here is how much of TeX's memory you used:
  2980 strings out of 479466
  42408 string characters out of 5870549
- 353301 words of memory out of 5000000
+ 354294 words of memory out of 5000000
  20634 multiletter control sequences out of 15000+600000
  423803 words of font info for 124 fonts, out of 8000000 for 9000
  934 hyphenation exceptions out of 8191
- 68i,12n,74p,861b,370s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 68i,12n,74p,790b,370s stack positions out of 5000i,500n,10000p,200000b,80000s
 
 Output written on report_acc_constraint_nll_step4f_blind50ns.dvi (19 pages, 608
 16 bytes).

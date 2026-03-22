@@ -113,9 +113,9 @@ static void ConvertCountsToDensity_thesis(TH1D& h)
 static void StyleHist_thesis(TH1D& h)
 {
     h.SetLineColor(kBlack);
-    h.SetLineWidth(2);
+    h.SetLineWidth(1);
     h.SetMarkerStyle(20);
-    h.SetMarkerSize(0.55);
+    h.SetMarkerSize(0.45);
     h.GetXaxis()->SetTitleSize(0.070);
     h.GetYaxis()->SetTitleSize(0.070);
     h.GetXaxis()->SetLabelSize(0.055);
@@ -152,7 +152,7 @@ static void DrawFitPanel_thesis(TH1D& h,
                kTAllMin_thesis, kTAllMax_thesis, 3);
     f_draw.SetParameters(fitres.A, fitres.sigma, fitres.C);
     f_draw.SetLineColor(kRed + 1);
-    f_draw.SetLineWidth(3);
+    f_draw.SetLineWidth(1);
 
     gPad->SetGrid(1, 1);
     gPad->SetLeftMargin(0.16);
@@ -211,7 +211,7 @@ static void DrawFitPanel_thesis(TH1D& h,
 
     TLine data_line;
     data_line.SetLineColor(kBlack);
-    data_line.SetLineWidth(2);
+    data_line.SetLineWidth(1);
     data_line.DrawLineNDC(x1, y, x2, y);
     TLatex text;
     text.SetNDC(true);
@@ -223,7 +223,7 @@ static void DrawFitPanel_thesis(TH1D& h,
     y = 0.77;
     TLine fit_line;
     fit_line.SetLineColor(kRed + 1);
-    fit_line.SetLineWidth(3);
+    fit_line.SetLineWidth(1);
     fit_line.DrawLineNDC(x1, y, x2, y);
     text.DrawLatex(0.84, y + 0.01, "fit");
 
@@ -252,7 +252,7 @@ void plot_fit_acc_time_by_eg_thesis(
     long long n_fit_eg_bin[kNEgBins_thesis];
     for (int i = 0; i < kNEgBins_thesis; ++i) {
         hT[i] = new TH1D(Form("hT_thesis_%d", i),
-                         ";t [ns];density [counts/ns]",
+                         ";t_{e^{+}#gamma} [ns];density [counts/ns]",
                          kNBinsT_thesis, kTAllMin_thesis, kTAllMax_thesis);
         hT[i]->Sumw2();
         n_fit_eg_bin[i] = 0;

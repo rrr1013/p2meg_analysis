@@ -63,13 +63,13 @@ background-only pseudo-experiment から得られる 90\% C.L. 上限分布の�
 その belt を外側 toy に再利用する高速化を用いた。
 今回このレポートに反映した sensitivity は、完了した rerun として
 \[
-\;0 \le \mathrm{BR}_{\mathrm{test}} \le 1.2\times10^{-3},
+\;0 \le \mathrm{BR}_{\mathrm{test}} \le 2.5\times10^{-3},
 \qquad
 \Delta\mathrm{BR}=5\times10^{-5}
 \]
 の BR grid を使い、
 400 本の belt calibration toy と、互換な local-exact run を結合した
-104000 本の background-only toy で再評価した。
+100000 本の background-only toy で再評価した。
 \begin{align}
 \mathrm{BR}_{90}^{\mathrm{sens}} &= 1.05\times 10^{-3},\\
 N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.79372
@@ -691,37 +691,45 @@ N_\mu^{\mathrm{eff}}=1708.30952332\pm25.876330787
 \)
 は toy 生成時だけに入れた。
 
-この更新で最終的に用いた sensitivity sample では、
-同一設定の local-exact run を 10 本
-（既存の 10000 toy run、14000 toy run、および追加の 8 本の independent 10000 toy shard）
-結合し、background-only pseudo-experiment を合計 104000 本用いた。
-各 shard は 400 本の calibration toy で belt を較正しており、
-各 toy に対して
+scan 上限への張り付きが見えたため、
+感度評価用の BR grid は
 \[
-\;0 \le \mathrm{BR}_{\mathrm{test}} \le 1.2\times10^{-3},
+\;0 \le \mathrm{BR}_{\mathrm{test}} \le 2.5\times10^{-3},
 \qquad
 \Delta\mathrm{BR}=5\times10^{-5}
 \]
-の 25 点で \(q_{\mathrm{obs}}\) を評価した。
+へ拡張した。
+この更新後の最終 sensitivity sample では、
+同一設定の local-exact run を 8 本
+（independent seed の 12500 toy shard）
+結合し、background-only pseudo-experiment を合計 100000 本用いた。
+各 shard は 400 本の calibration toy で belt を較正しており、
+各 toy に対して
+\[
+\;0 \le \mathrm{BR}_{\mathrm{test}} \le 2.5\times10^{-3},
+\qquad
+\Delta\mathrm{BR}=5\times10^{-5}
+\]
+の 51 点で \(q_{\mathrm{obs}}\) を評価した。
 高速化のため、各 dataset ごとに free fit を毎回やり直さず、
 同一 dataset 内では 1 回の free fit と 1 回の PDF cache を共有するようにした。
 また、有限個の calibration toy による高 BR 側の局所 re-accept を抑えるため、
 accept/reject は BR に対して単調 envelope
 （一度 reject したらそれより高 BR は reject）
 を課している。
-単独の 14000 toy run の実測時間は
+この broad rerun の実測では、単独の 12500 toy shard あたり
 \[
-t_{\mathrm{calib}} = 1.48\ \mathrm{s},\qquad
-t_{\mathrm{sens}} = 3657\ \mathrm{s}
+t_{\mathrm{calib}} = 5.66\ \mathrm{s},\qquad
+t_{\mathrm{sens}} = 7241\ \mathrm{s}
 \]
-であり、合計で約 61 分であった。
-今回はこの互換設定を independent seed で並列実行し、
+であり、1 本あたり約 121 分を要した。
+今回はこれを 8 並列で実行し、
 最終的な感度分布のみを後段で統合した。
 
 \subsection{高速化の妥当性確認}
 厳密な nested toy で毎回 FC belt を作り直す実装は非常に重いため、
 上記の belt 再利用近似を採用した。
-本番の merged 104000 toy sample でも追加の validation はしていない。
+本番の broad 100000 toy sample でも追加の validation はしていない。
 その代わり、local-exact 実装そのものについては別 run で 4 本の background-only toy について
 既存の遅い実装
 \texttt{EvaluateUpperLimitBRScan}
@@ -752,17 +760,18 @@ grid 幅 \(5\times10^{-5}\) と同程度のずれに収まっている
 = 1.05\times10^{-3},\\
 N_{\mathrm{sig},50}^{90,\mathrm{nom}} &= 1.79372,\\
 \mathrm{BR}_{90}(16\%) &= 6.0\times10^{-4},\\
-\mathrm{BR}_{90}(84\%) &= 1.2\times10^{-3}
+\mathrm{BR}_{90}(84\%) &= 1.35\times10^{-3},\\
+\mathrm{BR}_{90}(95\%) &= 1.45\times10^{-3}
 \end{align}
 であった。
-ここで \(84\%\) 点が現在の scan 上端 \(1.2\times10^{-3}\) に一致しているため、
-図9右端の山は高 BR 側の連続的な tail というより、
-上限値が scan 境界に張り付いた toy の集積として解釈すべきである。
+新しい broad scan では、図9右端の高 BR 側成分は
+もはや current scan 上端への人工的な pile-up ではなく、
+background-only toy に対する上限分布の tail として解釈できる。
 
 \begin{figure}[p]
   \centering
   \includegraphics[width=0.95\linewidth]{sensitivity_br_hist_blind50ns.pdf}
-  \caption{BR grid \((0\le\mathrm{BR}\le1.2\times10^{-3},\ \Delta\mathrm{BR}=5\times10^{-5})\) 上で評価した、10 本の互換 local-exact run を結合した 104000 本の background-only sensitivity sample の分布。表示用ヒストグラムの bin 幅は見やすさのため \(1\times10^{-4}\) とし、中央値や quantile は元の \(5\times10^{-5}\) grid 上の toy 値から計算している。緑帯は central 68\% interval、黒実線は median expected upper limit \(\mathrm{BR}_{90}^{\mathrm{sens}}=1.05\times10^{-3}\)、赤破線は dedicated FC scan から採用した observed upper limit \(\mathrm{BR}_{90}=1.04\times10^{-3}\) を示す。右端の集積は、toy の一部が現在の scan 上端 \(1.2\times10^{-3}\) に達していることに対応する。}
+  \caption{BR grid \((0\le\mathrm{BR}\le2.5\times10^{-3},\ \Delta\mathrm{BR}=5\times10^{-5})\) 上で評価した、8 本の互換 local-exact run を結合した 100000 本の background-only sensitivity sample の分布。表示用ヒストグラムの bin 幅は見やすさのため \(1\times10^{-4}\) とし、中央値や quantile は元の \(5\times10^{-5}\) grid 上の toy 値から計算している。緑帯は central 68\% interval、黒実線は median expected upper limit \(\mathrm{BR}_{90}^{\mathrm{sens}}=1.05\times10^{-3}\)、赤破線は dedicated FC scan から採用した observed upper limit \(\mathrm{BR}_{90}=1.04\times10^{-3}\) を示す。}
 \end{figure}
 
 したがって、現行 p2MEG 簡略解析では
@@ -1123,7 +1132,7 @@ N_{\mathrm{RMD}}^{\mathrm{fit}} - N_{\mathrm{RMD,SM}}^{\mathrm{AW}}
   \item \texttt{fc\_br\_scan\_wide1000\_nmu1708\_50pts.pdf}
   \item \texttt{fc\_br\_scan\_refined\_nmu1708.txt}
   \item \texttt{fc\_br\_scan\_refined\_nmu1708.pdf}
-  \item \texttt{sensitivity\_br\_scan\_blind50ns\_merged104000.txt}
+  \item \texttt{sensitivity\_br\_scan\_blind50ns\_broad\_100000.txt}
   \item \texttt{sensitivity\_br\_hist\_blind50ns.pdf}
   \item \texttt{rmd\_aw\_sm\_summary.txt}
 \end{itemize}

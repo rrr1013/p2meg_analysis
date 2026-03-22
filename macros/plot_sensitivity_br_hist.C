@@ -68,7 +68,7 @@ double AutoBinWidth(const std::vector<double>& values)
 }
 
 void plot_sensitivity_br_hist(
-    const char* infile = "doc/finalanalysis/sensitivity_br_scan_blind50ns_merged104000.txt",
+    const char* infile = "doc/finalanalysis/sensitivity_br_scan_blind50ns_broad_100000.txt",
     const char* outfile = "doc/finalanalysis/sensitivity_br_hist_blind50ns.pdf",
     double observed_br90_override = -1.0,
     double bin_width = 0.0)
@@ -187,7 +187,7 @@ void plot_sensitivity_br_hist(
     TBox* band_box = nullptr;
     if (br16 >= 0.0 && br84 >= 0.0 && br84 >= br16) {
         band_box = new TBox(br16, 0.0, br84, h->GetMaximum());
-        band_box->SetFillColorAlpha(band_fill, 0.05);
+        band_box->SetFillColorAlpha(band_fill, 0.16);
         band_box->SetLineColor(kGreen + 2);
         band_box->SetLineStyle(1);
         band_box->SetLineWidth(1);
@@ -212,13 +212,13 @@ void plot_sensitivity_br_hist(
     obs_line->SetLineWidth(3);
     obs_line->Draw();
 
-    TLegend* leg = new TLegend(0.16, 0.77, 0.49, 0.89);
+    TLegend* leg = new TLegend(0.55, 0.76, 0.89, 0.89);
     leg->SetBorderSize(0);
     leg->SetFillStyle(0);
     leg->SetTextSize(0.030);
     leg->AddEntry(h, "Background-only pseudo-experiments", "f");
     if (band_box) leg->AddEntry(band_box, "Central 68% interval", "f");
-    if (med_line) leg->AddEntry(med_line, Form("Median expected = %.5f", br50), "l");
+    if (med_line) leg->AddEntry(med_line, Form("Median = %.5f", br50), "l");
     leg->AddEntry(obs_line, Form("Observed = %.5f", observed_br90), "l");
     leg->Draw();
 

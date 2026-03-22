@@ -31,10 +31,12 @@
 #include "TCanvas.h"
 #include "TH1D.h"
 #include "TH2D.h"
+#include "TError.h"
+#include "TLine.h"
+#include "TMarker.h"
+#include "TString.h"
 #include "TStyle.h"
 #include "TSystem.h"
-#include "TError.h"
-#include "TString.h"
 #include "TLatex.h"
 #include "TRandom3.h"
 
@@ -186,6 +188,132 @@ static void DrawMetaPage(const char* outpdf,
     lat.DrawLatex(0.05, 0.06, "Pages: (1) meta  (2) 1D  (3) 2D");
 }
 
+static std::vector<double> MakeContourLevels(const TH2D* h)
+{
+    std::vector<double> levels;
+    if (!h) return levels;
+    const double hmax = h->GetMaximum();
+    if (!(hmax > 0.0) || !std::isfinite(hmax)) return levels;
+
+    static const double candidate[] = {1.0e-8, 3.0e-8, 1.0e-7, 2.0e-7, 4.0e-7};
+    for (double lv : candidate) {
+        if (lv < 0.98 * hmax) levels.push_back(lv);
+    }
+    if (levels.empty()) levels.push_back(0.5 * hmax);
+    return levels;
+}
+
+struct ContourTextLabel {
+    double x;
+    double y;
+    const char* text;
+};
+
+static TString FormatContourLabel(double lv)
+{
+    if (!(lv > 0.0) || !std::isfinite(lv)) return "0";
+    const double expo_real = std::log10(lv);
+    const int expo = static_cast<int>(std::floor(expo_real + 1.0e-12));
+    const double mant = lv / std::pow(10.0, static_cast<double>(expo));
+    const double mant_rounded = std::round(mant * 10.0) / 10.0;
+    if (std::fabs(mant_rounded - 1.0) < 1.0e-9) {
+        return Form("10^{%d}", expo);
+    }
+    return Form("%.1f#times10^{%d}", mant_rounded, expo);
+}
+
+static void DrawEndpointGuides(bool draw_theta,
+                               bool draw_energy,
+                               double x_endpoint,
+                               double y_endpoint,
+                               double xmin,
+                               double xmax,
+                               double ymin,
+                               double ymax)
+{
+    TLine line;
+    line.SetLineColor(kGray + 2);
+    line.SetLineStyle(2);
+    line.SetLineWidth(1);
+
+    if (draw_theta || draw_energy) {
+        line.DrawLine(x_endpoint, ymin, x_endpoint, std::min(y_endpoint, ymax));
+    }
+    if (draw_energy) {
+        line.DrawLine(xmin, y_endpoint, std::min(x_endpoint, xmax), y_endpoint);
+    }
+
+    TMarker mark(x_endpoint, y_endpoint, 29);
+    mark.SetMarkerSize(1.1);
+    mark.SetMarkerColor(kGray + 2);
+    mark.Draw();
+}
+
+static void StyleContourFrame(TH2D* frame)
+{
+    if (!frame) return;
+    frame->SetTitle("");
+    frame->GetXaxis()->SetTitleSize(0.055);
+    frame->GetYaxis()->SetTitleSize(0.055);
+    frame->GetXaxis()->SetLabelSize(0.044);
+    frame->GetYaxis()->SetLabelSize(0.044);
+    frame->GetXaxis()->SetTitleOffset(1.18);
+    frame->GetYaxis()->SetTitleOffset(1.30);
+}
+
+static void DrawContourPanel(TH2D* h,
+                             bool square_energy_panel = false,
+                             bool mark_endpoint_energy = false,
+                             bool mark_endpoint_theta = false,
+                             const std::vector<ContourTextLabel>& labels = {})
+{
+    if (!h) return;
+
+    gPad->SetGrid();
+    gPad->SetRightMargin(0.07);
+    gPad->SetLeftMargin(0.16);
+    gPad->SetBottomMargin(0.16);
+    gPad->SetTopMargin(0.05);
+    if (square_energy_panel) gPad->SetFixedAspectRatio();
+
+    TH2D* frame = static_cast<TH2D*>(h->Clone(Form("%s_frame", h->GetName())));
+    frame->Reset();
+    StyleContourFrame(frame);
+    frame->Draw();
+
+    TH2D* hsmooth = static_cast<TH2D*>(h->Clone(Form("%s_smooth", h->GetName())));
+    hsmooth->Rebin2D(4, 4);
+    hsmooth->Smooth(1, "k5b");
+    hsmooth->Smooth(1, "k5b");
+
+    const std::vector<double> levels = MakeContourLevels(hsmooth);
+    if (!levels.empty()) {
+        hsmooth->SetContour(static_cast<int>(levels.size()), levels.data());
+    }
+    Int_t black_palette[8] = {kBlack, kBlack, kBlack, kBlack, kBlack, kBlack, kBlack, kBlack};
+    gStyle->SetPalette(8, black_palette);
+    hsmooth->SetLineColor(kBlack);
+    hsmooth->SetLineWidth(1);
+    hsmooth->SetFillStyle(0);
+    hsmooth->Draw("CONT1 SAME");
+
+    const double x_endpoint = mark_endpoint_theta ? pi : 52.8;
+    const double y_endpoint = 52.8;
+    if (mark_endpoint_energy || mark_endpoint_theta) {
+        DrawEndpointGuides(mark_endpoint_theta, mark_endpoint_energy,
+                           x_endpoint, y_endpoint,
+                           frame->GetXaxis()->GetXmin(), frame->GetXaxis()->GetXmax(),
+                           frame->GetYaxis()->GetXmin(), frame->GetYaxis()->GetXmax());
+    }
+
+    TLatex lat;
+    lat.SetTextFont(42);
+    lat.SetTextSize(0.028);
+    for (const auto& lab : labels) {
+        lat.DrawLatex(lab.x, lab.y, lab.text);
+    }
+}
+
 int main(int argc, char** argv)
 {
     long long n_samples = kDefaultSamples;
@@ -244,26 +372,26 @@ int main(int argc, char** argv)
     const double th_plot_max_axis = Math_AxisMaxInclusive(th_plot_max);
 
     // ---- 1D ----
-    TH1D* hEe   = new TH1D("hEe",   "Ee;Ee [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
-    TH1D* hEg   = new TH1D("hEg",   "Eg;Eg [MeV];Entries",                 kNBins_E,  Eg_min, Eg_max);
-    TH1D* hPhiE = new TH1D("hPhiE", "phi_{detector,e};phi_{detector,e} [rad];Entries",
+    TH1D* hEe   = new TH1D("hEe",   "E_{e^{+}};E_{e^{+}} [MeV];Entries",                 kNBins_E,  Ee_min, Ee_max);
+    TH1D* hEg   = new TH1D("hEg",   "E_{#gamma};E_{#gamma} [MeV];Entries",               kNBins_E,  Eg_min, Eg_max);
+    TH1D* hPhiE = new TH1D("hPhiE", "#phi_{e^{+}};#phi_{e^{+}} [rad];Entries",
                            kNBins_phi, phi_e_min, phi_e_max_plot);
-    TH1D* hPhiG = new TH1D("hPhiG", "phi_{detector,#gamma};phi_{detector,#gamma} [rad];Entries",
+    TH1D* hPhiG = new TH1D("hPhiG", "#phi_{#gamma};#phi_{#gamma} [rad];Entries",
                            kNBins_phi, phi_g_min, phi_g_max_plot);
-    TH1D* hThEg = new TH1D("hThEg", "theta_{eg};theta_{eg} [rad];Entries",
+    TH1D* hThEg = new TH1D("hThEg", "#theta_{e^{+}#gamma};#theta_{e^{+}#gamma} [rad];Entries",
                            kNBins_th, th_plot_min, th_plot_max_axis);
 
     // ---- 2D ----
-    TH2D* h_EeEg = new TH2D("h_EeEg", "(Ee, Eg);Ee [MeV];Eg [MeV]",
+    TH2D* h_EeEg = new TH2D("h_EeEg", "(E_{e^{+}}, E_{#gamma});E_{e^{+}} [MeV];E_{#gamma} [MeV]",
                             kNBins2D_E, Ee_min, Ee_max, kNBins2D_E, Eg_min, Eg_max);
 
-    TH2D* h_ThEe = new TH2D("h_ThEe", "(theta_{eg}, Ee);theta_{eg} [rad];Ee [MeV]",
+    TH2D* h_ThEe = new TH2D("h_ThEe", "(#theta_{e^{+}#gamma}, E_{e^{+}});#theta_{e^{+}#gamma} [rad];E_{e^{+}} [MeV]",
                             kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Ee_min, Ee_max);
 
-    TH2D* h_ThEg = new TH2D("h_ThEg", "(theta_{eg}, Eg);theta_{eg} [rad];Eg [MeV]",
+    TH2D* h_ThEg = new TH2D("h_ThEg", "(#theta_{e^{+}#gamma}, E_{#gamma});#theta_{e^{+}#gamma} [rad];E_{#gamma} [MeV]",
                             kNBins2D_th, th_plot_min, th_plot_max_axis, kNBins2D_E, Eg_min, Eg_max);
 
-    TH2D* h_PePg = new TH2D("h_PePg", "(phi_{detector,e}, phi_{detector,#gamma});phi_{detector,e} [rad];phi_{detector,#gamma} [rad]",
+    TH2D* h_PePg = new TH2D("h_PePg", "(#phi_{e^{+}}, #phi_{#gamma});#phi_{e^{+}} [rad];#phi_{#gamma} [rad]",
                             kNBins2D_phi, phi_e_min, phi_e_max_plot, kNBins2D_phi, phi_g_min, phi_g_max_plot);
 
     const double V_Ee  = Ee_max - Ee_min;
@@ -350,18 +478,30 @@ int main(int argc, char** argv)
     c1.cd(5); gPad->SetGrid(); hThEg->SetLineWidth(2); hThEg->Draw("hist");
 
     // ---- ページ3：2D ----
-    auto Draw2D = [](TH2D* h){
-        gPad->SetGrid();
-        gPad->SetRightMargin(0.14);
-        h->Draw("colz");
-    };
-
     TCanvas c2("c2", "2D theory", 1200, 800);
     c2.Divide(2, 2);
-    c2.cd(1); Draw2D(h_EeEg);
-    c2.cd(2); Draw2D(h_ThEe);
-    c2.cd(3); Draw2D(h_ThEg);
-    c2.cd(4); Draw2D(h_PePg);
+    c2.cd(1); DrawContourPanel(
+        h_EeEg, true, true, false,
+        {{44.5, 43.8, "10^{-8}"},
+         {41.0, 40.5, "3.0#times10^{-8}"},
+         {37.5, 36.5, "10^{-7}"},
+         {34.0, 32.0, "2.0#times10^{-7}"},
+         {29.8, 27.5, "4.0#times10^{-7}"}} );
+    c2.cd(2); DrawContourPanel(
+        h_ThEe, false, false, true,
+        {{2.58, 51.5, "10^{-8}"},
+         {2.80, 48.5, "3.0#times10^{-8}"},
+         {2.42, 41.5, "10^{-7}"},
+         {2.25, 33.0, "2.0#times10^{-7}"},
+         {1.80, 27.0, "4.0#times10^{-7}"}} );
+    c2.cd(3); DrawContourPanel(
+        h_ThEg, false, false, true,
+        {{2.45, 50.0, "10^{-8}"},
+         {2.72, 47.8, "3.0#times10^{-8}"},
+         {2.30, 42.0, "10^{-7}"},
+         {2.10, 34.0, "2.0#times10^{-7}"},
+         {1.78, 29.0, "4.0#times10^{-7}"}} );
+    c2.cd(4); DrawContourPanel(h_PePg);
 
     // ---- PDF（3ページ）----
     TString out = outpdf.c_str();
