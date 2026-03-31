@@ -42,6 +42,10 @@ struct Config {
     double nai_a2_coeff = 0.344478; // coefficient for NaI_A2
     double nai_b1_coeff = 0.548069; // coefficient for NaI_B1
     double nai_b2_coeff = 0.342241; // coefficient for NaI_B2
+    double nai_a1_offset = 0.0;     // additional offset for NaI_A1
+    double nai_a2_offset = 0.0;     // additional offset for NaI_A2
+    double nai_b1_offset = 0.0;     // additional offset for NaI_B1
+    double nai_b2_offset = 0.0;     // additional offset for NaI_B2
     double time_bin   = 4e-9;  // [s]
     std::string input_dir = "../data/shapeddata";
     std::string output_dir = "../data/shapeddata";
@@ -321,11 +325,11 @@ int main(int argc, char** argv) {
                 const auto& nai4 = ev.ch.at("NaI_B2");
 
                 double energy1 =
-                    cfg.nai_a1_coeff * nai1.integral + kNaI_A1_Offset +
-                    cfg.nai_a2_coeff * nai2.integral + kNaI_A2_Offset;
+                    cfg.nai_a1_coeff * nai1.integral + kNaI_A1_Offset + cfg.nai_a1_offset +
+                    cfg.nai_a2_coeff * nai2.integral + kNaI_A2_Offset + cfg.nai_a2_offset;
                 double energy2 =
-                    cfg.nai_b1_coeff * nai3.integral + kNaI_B1_Offset +
-                    cfg.nai_b2_coeff * nai4.integral + kNaI_B2_Offset;
+                    cfg.nai_b1_coeff * nai3.integral + kNaI_B1_Offset + cfg.nai_b1_offset +
+                    cfg.nai_b2_coeff * nai4.integral + kNaI_B2_Offset + cfg.nai_b2_offset;
 
                 ofs1 << std::fixed << std::setprecision(6) << energy1 << "\n";
                 ofs2 << std::fixed << std::setprecision(6) << energy2 << "\n";
@@ -351,8 +355,8 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_A2");
 
                 double energy =
-                    cfg.nai_a1_coeff * nai1.integral + kNaI_A1_Offset +
-                    cfg.nai_a2_coeff * nai2.integral + kNaI_A2_Offset;
+                    cfg.nai_a1_coeff * nai1.integral + kNaI_A1_Offset + cfg.nai_a1_offset +
+                    cfg.nai_a2_coeff * nai2.integral + kNaI_A2_Offset + cfg.nai_a2_offset;
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;
@@ -375,8 +379,8 @@ int main(int argc, char** argv) {
                 const auto& nai2 = ev.ch.at("NaI_B2");
 
                 double energy =
-                    cfg.nai_b1_coeff * nai1.integral + kNaI_B1_Offset +
-                    cfg.nai_b2_coeff * nai2.integral + kNaI_B2_Offset;
+                    cfg.nai_b1_coeff * nai1.integral + kNaI_B1_Offset + cfg.nai_b1_offset +
+                    cfg.nai_b2_coeff * nai2.integral + kNaI_B2_Offset + cfg.nai_b2_offset;
 
                 int peak_bin = std::min(nai1.peak_time, nai2.peak_time);
                 double peak_time_real = peak_bin * cfg.time_bin;
