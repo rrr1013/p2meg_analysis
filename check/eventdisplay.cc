@@ -17,7 +17,7 @@
 //                 --nai-b1-coeff 1.0 --nai-b1-offset 0.0 --nai-b2-coeff 1.0 --nai-b2-offset 0.0
 //
 // Notes:
-// - Energy per NaI channel = coeff * integral + offset (same coefficients as step2).
+// - Energy per NaI channel = coeff * integral + offset (same calibration as the old step2 / current build_module_summary).
 // - NaI integrals below --nai-integ-threshold are set to 0.
 // - PS does not use energy conversion; only HIT/NO based on amplitude (baseline - min).
 // - Events are displayed one by one; press Enter for next, or 'q' + Enter to quit.
@@ -63,7 +63,12 @@ struct Config {
     double nai_a2_coeff = 0.344478;
     double nai_b1_coeff = 0.548069;
     double nai_b2_coeff = 0.342241;
+    double nai_a1_offset = 0.0;
+    double nai_a2_offset = 0.0;
+    double nai_b1_offset = 0.0;
+    double nai_b2_offset = 0.0;
 
+    double ps_amp_threshold = 100.0;
     double ps_integ_threshold = 10.0;
     double nai_integ_threshold = 200.0;
 
@@ -329,11 +334,11 @@ static double coeff_for_channel(const Config& cfg, const std::string& ch) {
     return 0.0;
 }
 
-static double offset_for_channel(const std::string& ch) {
-    if (ch == "NaI_A1") return kNaI_A1_Offset;
-    if (ch == "NaI_A2") return kNaI_A2_Offset;
-    if (ch == "NaI_B1") return kNaI_B1_Offset;
-    if (ch == "NaI_B2") return kNaI_B2_Offset;
+static double offset_for_channel(const Config& cfg, const std::string& ch) {
+    if (ch == "NaI_A1") return kNaI_A1_Offset + cfg.nai_a1_offset;
+    if (ch == "NaI_A2") return kNaI_A2_Offset + cfg.nai_a2_offset;
+    if (ch == "NaI_B1") return kNaI_B1_Offset + cfg.nai_b1_offset;
+    if (ch == "NaI_B2") return kNaI_B2_Offset + cfg.nai_b2_offset;
     return 0.0;
 }
 
@@ -443,7 +448,7 @@ int main(int argc, char** argv) {
                     if (integral <= cfg.nai_integ_threshold) {
                         integral = 0.0;
                     }
-                    double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(ch);
+                    double energy = coeff_for_channel(cfg, ch) * integral + offset_for_channel(cfg, ch);
                     integral_map[ch] = integral;
                     energy_map[ch] = energy;
                 }

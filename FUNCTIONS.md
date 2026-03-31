@@ -842,3 +842,504 @@ UpperLimitScanResult EvaluateUpperLimitScan(
 
 - 出力:
   - 戻り値: 通常 fit、各走査点の結果、`N_sig_90`、`BR_90` をまとめた結果構造体（`UpperLimitScanResult`）。
+
+### AccTimeFitResult
+- Header: `include/p2meg/AccTimeFit.h`
+- 目的: ACC 時間形状 fit の結果（パラメータと適合度）をまとめます。
+
+- シグネチャ
+```cpp
+struct AccTimeFitResult {
+  int fit_status;
+  double chi2;
+  int ndf;
+  double chi2_ndf;
+  double A;
+  double sigma;
+  double C;
+};
+```
+
+- 入力:
+  - `fit_status`: ROOT fit の終了コード。
+  - `chi2`: カイ二乗値。
+  - `ndf`: 自由度。
+  - `chi2_ndf`: `chi2/ndf`。
+  - `A`: ガウス成分の振幅。
+  - `sigma`: ガウス幅 [ns]。
+  - `C`: pedestal 項の高さ。
+
+- 出力:
+  - 戻り値: （なし）
+
+### AccTimeFit_DensityCoreValue
+- Header: `include/p2meg/AccTimeFit.h`
+- 目的: ACC 時間形状モデル `A * exp(-t^2 / (2 sigma^2)) + C` の密度値を直接返します。
+
+- シグネチャ
+```cpp
+static inline double AccTimeFit_DensityCoreValue(double t, double A, double sigma, double C);
+```
+
+- 入力:
+  - `t`: 時間差 [ns]。
+  - `A`: ガウス成分の振幅。
+  - `sigma`: ガウス幅 [ns]。
+  - `C`: pedestal 項。
+
+- 出力:
+  - 戻り値: モデル密度値。`sigma<=0` や非有限値など不正入力では `0` を返します。
+
+### AccTimeFit_Run
+- Header: `include/p2meg/AccTimeFit.h`
+- 目的: `TH1D` に対して、共通仕様の ACC 時間形状 fit を実行します。blind/reject 窓を除外した fit を macro と本解析コードで共通化するための入口です。
+
+- シグネチャ
+```cpp
+static inline int AccTimeFit_Run(TH1D& h,
+                                 double t_reject_min,
+                                 double t_reject_max,
+                                 double sigma_min,
+                                 double sigma_max,
+                                 AccTimeFitResult& out);
+```
+
+- 入力:
+  - `h`: fit 対象の時間ヒストグラム。
+  - `t_reject_min`: fit から除外する時間窓の下限 [ns]。
+  - `t_reject_max`: fit から除外する時間窓の上限 [ns]。
+  - `sigma_min`: `sigma` の下限制約 [ns]。
+  - `sigma_max`: `sigma` の上限制約 [ns]。
+  - `out`: fit 結果の書き込み先。
+
+- 出力:
+  - 戻り値: 成功なら `0`、空ヒストや不正 fit パラメータなどでは非 0 を返します。
+
+### AccTimeFit_FillDensityHistogramFromResult
+- Header: `include/p2meg/AccTimeFit.h`
+- 目的: `AccTimeFitResult` のパラメータから、ビン平均密度のヒストグラムを作ります。
+
+- シグネチャ
+```cpp
+static inline int AccTimeFit_FillDensityHistogramFromResult(TH1D& h_out,
+                                                            const AccTimeFitResult& fit);
+```
+
+- 入力:
+  - `h_out`: 出力先ヒストグラム。各ビンに密度値が書き込まれます。
+  - `fit`: 使う fit 結果。
+
+- 出力:
+  - 戻り値: 成功なら `0`、`fit` が不正なら非 0 を返します。
+
+### ToyGeneratorConfig
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: toy dataset 生成の乱数・棄却法設定をまとめます。
+
+- シグネチャ
+```cpp
+struct ToyGeneratorConfig {
+    unsigned long long seed;
+    int pmax_scan_trials;
+    double pmax_safety;
+    double pmax_update;
+    int event_pool_size_per_component;
+};
+```
+
+- 入力:
+  - `seed`: 乱数 seed。
+  - `pmax_scan_trials`: 棄却法で `pmax` を見積もる試行数。
+  - `pmax_safety`: 見積もった `pmax` に掛ける安全係数。
+  - `pmax_update`: 生成中に `pmax` を更新するときの倍率。
+  - `event_pool_size_per_component`: 成分ごとに事前生成する event pool の大きさ。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitPointConfig
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 `N_sig` 1 点の upper limit 評価設定をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitPointConfig {
+    double N_sig_test;
+    int n_toys;
+    double cl;
+    FitConfig free_fit_cfg;
+    FitConfig prof_fit_cfg;
+    ToyGeneratorConfig toy_cfg;
+};
+```
+
+- 入力:
+  - `N_sig_test`: 固定する signal yield 仮説値。
+  - `n_toys`: 生成する toy 本数。
+  - `cl`: 信頼水準（例: `0.90`）。
+  - `free_fit_cfg`: 実データ free fit 用設定。
+  - `prof_fit_cfg`: 固定 `N_sig` profile fit 用設定。
+  - `toy_cfg`: toy 生成設定。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitPointResult
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 `N_sig` 1 点での受容判定結果をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitPointResult {
+    double N_sig_test;
+    double q_obs;
+    double p_value;
+    double acceptance_threshold;
+    bool accepted;
+    int n_toys_requested;
+    int n_toys_valid;
+    FitResult fit_free_obs;
+    FitResult fit_prof_obs;
+};
+```
+
+- 入力:
+  - `N_sig_test`: 評価した仮説値。
+  - `q_obs`: 実データの検定統計量。
+  - `p_value`: toy 分布に対する右側 p-value。
+  - `acceptance_threshold`: 受容しきい値（通常 `1-CL`）。
+  - `accepted`: 受容判定。
+  - `n_toys_requested`: 要求 toy 数。
+  - `n_toys_valid`: 実際に有効だった toy 数。
+  - `fit_free_obs`: 実データ free fit 結果。
+  - `fit_prof_obs`: 実データ profile fit 結果。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitScanConfig
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 複数 `N_sig` 点の走査設定をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitScanConfig {
+    std::vector<double> N_sig_scan;
+    int n_toys_per_point;
+    double cl;
+    double N_mu_eff;
+    FitConfig free_fit_cfg;
+    FitConfig prof_fit_cfg;
+    ToyGeneratorConfig toy_cfg;
+};
+```
+
+- 入力:
+  - `N_sig_scan`: 走査する signal yield 値の配列。
+  - `n_toys_per_point`: 各点の toy 本数。
+  - `cl`: 信頼水準。
+  - `N_mu_eff`: `BR = N_sig / N_mu_eff` 変換に使う有効停止ミューオン数。
+  - `free_fit_cfg`: 実データ free fit 用設定。
+  - `prof_fit_cfg`: 固定 `N_sig` profile fit 用設定。
+  - `toy_cfg`: toy 生成設定。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitScanResult
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: `N_sig` 走査全体の結果をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitScanResult {
+    FitResult fit_free_obs;
+    std::vector<UpperLimitPointResult> points;
+    double N_sig_90;
+    double BR_90;
+    double N_mu_eff;
+};
+```
+
+- 入力:
+  - `fit_free_obs`: 実データ通常 fit の結果。
+  - `points`: 各走査点の結果。
+  - `N_sig_90`: 90% C.L. の signal upper limit。
+  - `BR_90`: 90% C.L. の branching ratio upper limit。
+  - `N_mu_eff`: 変換に使った有効停止ミューオン数。
+
+- 出力:
+  - 戻り値: （なし）
+
+### NormalizationUncertaintyConfig
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: `N_mu_eff` の公称値と不確かさをまとめ、BR 上限での normalisation uncertainty を指定します。
+
+- シグネチャ
+```cpp
+struct NormalizationUncertaintyConfig {
+    double N_mu_eff_nom;
+    double N_mu_eff_sigma;
+};
+```
+
+- 入力:
+  - `N_mu_eff_nom`: 有効停止ミューオン数の公称値。
+  - `N_mu_eff_sigma`: 有効停止ミューオン数の絶対誤差。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitBRPointConfig
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 BR 1 点の upper limit 評価設定をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitBRPointConfig {
+    double BR_test;
+    int n_toys;
+    double cl;
+    FitConfig free_fit_cfg;
+    FitConfig prof_fit_cfg;
+    ToyGeneratorConfig toy_cfg;
+    NormalizationUncertaintyConfig norm_cfg;
+};
+```
+
+- 入力:
+  - `BR_test`: 固定する分岐比仮説値。
+  - `n_toys`: toy 本数。
+  - `cl`: 信頼水準。
+  - `free_fit_cfg`: 実データ free fit 用設定。
+  - `prof_fit_cfg`: 固定 BR profile fit 用設定。
+  - `toy_cfg`: toy 生成設定。
+  - `norm_cfg`: `N_mu_eff` の公称値と不確かさ。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitBRPointResult
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 BR 1 点での受容判定結果をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitBRPointResult {
+    double BR_test;
+    double N_sig_test_nominal;
+    double q_obs;
+    double p_value;
+    double acceptance_threshold;
+    bool accepted;
+    int n_toys_requested;
+    int n_toys_valid;
+    FitResult fit_free_obs;
+    FitResult fit_prof_obs;
+};
+```
+
+- 入力:
+  - `BR_test`: 評価した分岐比仮説値。
+  - `N_sig_test_nominal`: 公称 `N_mu_eff` に対応する signal yield。
+  - `q_obs`: 実データの検定統計量。
+  - `p_value`: toy 分布に対する右側 p-value。
+  - `acceptance_threshold`: 受容しきい値。
+  - `accepted`: 受容判定。
+  - `n_toys_requested`: 要求 toy 数。
+  - `n_toys_valid`: 実際に有効だった toy 数。
+  - `fit_free_obs`: 実データ free fit 結果。
+  - `fit_prof_obs`: 実データ profile fit 結果。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitBRScanConfig
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: BR 走査による upper limit 設定をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitBRScanConfig {
+    std::vector<double> BR_scan;
+    int n_toys_per_point;
+    double cl;
+    FitConfig free_fit_cfg;
+    FitConfig prof_fit_cfg;
+    ToyGeneratorConfig toy_cfg;
+    NormalizationUncertaintyConfig norm_cfg;
+};
+```
+
+- 入力:
+  - `BR_scan`: 走査する分岐比の配列。
+  - `n_toys_per_point`: 各点の toy 本数。
+  - `cl`: 信頼水準。
+  - `free_fit_cfg`: 実データ free fit 用設定。
+  - `prof_fit_cfg`: 固定 BR profile fit 用設定。
+  - `toy_cfg`: toy 生成設定。
+  - `norm_cfg`: `N_mu_eff` の公称値と不確かさ。
+
+- 出力:
+  - 戻り値: （なし）
+
+### UpperLimitBRScanResult
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: BR 走査全体の結果をまとめます。
+
+- シグネチャ
+```cpp
+struct UpperLimitBRScanResult {
+    FitResult fit_free_obs;
+    std::vector<UpperLimitBRPointResult> points;
+    double BR_90;
+    double N_sig_90_nominal;
+    NormalizationUncertaintyConfig norm_cfg;
+};
+```
+
+- 入力:
+  - `fit_free_obs`: 実データ通常 fit の結果。
+  - `points`: 各 BR 点の結果。
+  - `BR_90`: 90% C.L. の branching ratio upper limit。
+  - `N_sig_90_nominal`: 公称 `N_mu_eff` に対する signal upper limit。
+  - `norm_cfg`: 使った normalisation uncertainty 設定。
+
+- 出力:
+  - 戻り値: （なし）
+
+### ProfileLikelihoodQPoint
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 1 つの固定 `N_sig` 点で評価した profile-likelihood 統計量をまとめます。
+
+- シグネチャ
+```cpp
+struct ProfileLikelihoodQPoint {
+    double N_sig_test;
+    double q_value;
+    FitResult fit_prof;
+};
+```
+
+- 入力:
+  - `N_sig_test`: 固定した signal yield 仮説値。
+  - `q_value`: `q = -2 ln lambda` の値。
+  - `fit_prof`: その点の profile fit 結果。
+
+- 出力:
+  - 戻り値: （なし）
+
+### ProfileLikelihoodQScanResult
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 同一 dataset に対して複数の固定 `N_sig` 点を評価した結果をまとめます。
+
+- シグネチャ
+```cpp
+struct ProfileLikelihoodQScanResult {
+    FitResult fit_free;
+    std::vector<ProfileLikelihoodQPoint> points;
+};
+```
+
+- 入力:
+  - `fit_free`: 同一 dataset に対する free fit 結果。
+  - `points`: 各固定仮説値に対する評価結果。
+
+- 出力:
+  - 戻り値: （なし）
+
+### EvaluateProfileLikelihoodQ
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 `N_sig` 仮説値に対して `q(s) = -2 ln lambda(s)` を計算します。free fit と profile fit の両方を返します。
+
+- シグネチャ
+```cpp
+double EvaluateProfileLikelihoodQ(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const FitConfig& free_fit_cfg,
+    const FitConfig& prof_fit_cfg,
+    double N_sig_fixed,
+    FitResult& fit_free_out,
+    FitResult& fit_prof_out
+);
+```
+
+- 入力:
+  - `events`: 評価対象 dataset。
+  - `components`: PDF 成分配列。
+  - `free_fit_cfg`: 通常 fit の設定。
+  - `prof_fit_cfg`: 固定 `N_sig` profile fit の設定。
+  - `N_sig_fixed`: 固定する signal yield 仮説値。
+  - `fit_free_out`: free fit 結果の出力先。
+  - `fit_prof_out`: profile fit 結果の出力先。
+
+- 出力:
+  - 戻り値: `q(s)` の値。数値誤差で負になった場合は `0` に丸められます。
+
+### EvaluateProfileLikelihoodQScan
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 同一 dataset に対して複数の固定 `N_sig` 仮説値をまとめて評価します。free fit は 1 回だけ行い、各点で再利用します。
+
+- シグネチャ
+```cpp
+ProfileLikelihoodQScanResult EvaluateProfileLikelihoodQScan(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const FitConfig& free_fit_cfg,
+    const FitConfig& prof_fit_cfg,
+    const std::vector<double>& N_sig_scan
+);
+```
+
+- 入力:
+  - `events`: 評価対象 dataset。
+  - `components`: PDF 成分配列。
+  - `free_fit_cfg`: 通常 fit の設定。
+  - `prof_fit_cfg`: 固定 `N_sig` profile fit の設定。
+  - `N_sig_scan`: まとめて評価する signal yield 仮説値の配列。
+
+- 出力:
+  - 戻り値: free fit と各走査点の `q` をまとめた結果（`ProfileLikelihoodQScanResult`）。
+
+### EvaluateUpperLimitBRPoint
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: 固定 BR 1 点に対して、normalisation uncertainty を含む toy MC 受容判定を返します。
+
+- シグネチャ
+```cpp
+UpperLimitBRPointResult EvaluateUpperLimitBRPoint(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const UpperLimitBRPointConfig& cfg
+);
+```
+
+- 入力:
+  - `events`: 実データのイベント列。
+  - `components`: 尤度評価と toy 生成に使う PDF 成分配列。
+  - `cfg`: BR 仮説値、toy 本数、信頼水準、fit 設定、normalisation uncertainty をまとめた設定。
+
+- 出力:
+  - 戻り値: 固定 BR 1 点での `q_obs`、toy 由来 `p_value`、受容判定、fit 結果をまとめた構造体（`UpperLimitBRPointResult`）。
+
+### EvaluateUpperLimitBRScan
+- Header: `include/p2meg/UpperLimit.h`
+- 目的: BR 仮説値を複数点走査し、受容された最大の BR を `BR_90` として返します。
+
+- シグネチャ
+```cpp
+UpperLimitBRScanResult EvaluateUpperLimitBRScan(
+    const std::vector<Event>& events,
+    const std::vector<PdfComponent>& components,
+    const UpperLimitBRScanConfig& cfg
+);
+```
+
+- 入力:
+  - `events`: 実データのイベント列。
+  - `components`: 尤度評価と toy 生成に使う PDF 成分配列。
+  - `cfg`: BR 走査点、toy 本数、信頼水準、fit 設定、normalisation uncertainty をまとめた設定。
+
+- 出力:
+  - 戻り値: 通常 fit、各 BR 点の結果、`BR_90`、公称 `N_sig_90` をまとめた構造体（`UpperLimitBRScanResult`）。

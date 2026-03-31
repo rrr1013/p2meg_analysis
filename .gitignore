@@ -22,7 +22,13 @@ cmake-build-*/
 *.pdf
 *.png
 *.dat
-data
+*.aux
+*.dvi
+*.log
+data/*
+!data/.gitkeep
+!data/README.md
+eventdisplay
 
 # ROOT ACLiC
 *_C.*

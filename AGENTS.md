@@ -237,6 +237,8 @@ inline constexpr AnalysisWindow4D analysis_window{
 #define P2MEG_DETECTOR_RESOLUTION_H
 
 #include <cmath>
+#include <limits>
+#include <vector>
 #include "TRandom3.h"
 
 #include "p2meg/Constants.h"
@@ -250,6 +252,10 @@ inline constexpr AnalysisWindow4D analysis_window{
 //    すなわち、0 から pi までを N_theta 分割した (N_theta+1) 点のみを許す
 //  - 崩壊後の e, γ の散乱は無視し、離散化後の角度スメアはかけない
 //
+// 角度 phi の扱い:
+//  - phi_detector_e/g は DetectorResolutionConst の phi_*_min/max, N_phi_* で離散化する
+//  - 許可領域（マスク）は Detector_IsAllowedPhiPairIndex / Value で定義する
+//
 // エネルギー分解能:
 //  - energy_response_shape_e/g(E_res, E_true) は
 //      「真値 E_true に対する再構成 E_res の分布 shape（未正規化）」を返す
@@ -260,13 +266,25 @@ struct DetectorResolutionConst {
     int    N_theta;   // 角度分割数（theta_i = i*pi/N_theta, i=0..N_theta）
     double t_mean;    // [ns]  Δt の平均値
     double P_mu;      // muon polarization (signed, [-1,1])
+    double phi_e_min; // [rad] phi_detector_e の最小値
+    double phi_e_max; // [rad] phi_detector_e の最大値
+    int    N_phi_e;   // phi_detector_e の分割数（i=0..N_phi_e）
+    double phi_g_min; // [rad] phi_detector_g の最小値
+    double phi_g_max; // [rad] phi_detector_g の最大値
+    int    N_phi_g;   // phi_detector_g の分割数（i=0..N_phi_g）
 };
 
 inline constexpr DetectorResolutionConst detres{
-    0.1561,  // sigma_t  [ns]
-    18,      // N_theta  （例：0..pi を 18 分割 → 19 点）
-    -0.1479, // t_mean [ns]
-    -0.8     // P_mu
+    1.90,  // sigma_t  [ns]
+    9,     // N_theta  （0..pi を 9 分割 → 20 度刻み）
+    0.0,   // t_mean [ns]
+    -0.6,  // P_mu
+    pi * (-90.0/180.0), // phi_e_min [rad]
+    pi * ( 90.0/180.0), // phi_e_max [rad]
+    3,                  // N_phi_e
+    pi * (-90.0/180.0), // phi_g_min [rad]
+    pi * ( 90.0/180.0), // phi_g_max [rad]
+    3                   // N_phi_g
 };
 
 #endif // P2MEG_DETECTOR_RESOLUTION_H
@@ -278,6 +296,8 @@ inline constexpr DetectorResolutionConst detres{
 * `energy_response_pdf_window_e/g`: 解析窓内で正規化した PDF（SignalPdf で使用）
 * `smear_energy_trandom3_e/g`: shape に従う乱数サンプル（MakeRMDGridPdf で使用）
 * `energy_response_offset_low/high_e/g`: shape の 0.1 倍点を使った幅推定（真値窓の拡張に使用）
+* `Detector_IsAllowedPhiPairIndex/Value`: 許可する `(phi_detector_e, phi_detector_g)` の組を定義する
+* `Detector_ThetaRangeFromAllowedPhi`: 許可された `phi` 組から取りうる `theta_eg` 範囲を返す
 
 ### 関数群について
 
@@ -334,12 +354,17 @@ std::map<std::string, std::vector<std::vector<double>>> wave;
 1) 本解析（μ→eγ）用の 5D データ
 - 変数: `Ee, Eg, t, phi_detector_e, phi_detector_g`
 - 対応構造体: `include/p2meg/Event.h` の `Event`
-- 入力元: `step4` 出力（`E_e, E_g, t, phi_e, phi_g`）
+- 入力元: `datashaping/final_pair_observables.cpp` の出力 `step4f_runM_eg.txt`、
+  またはそれを run 結合した `data/finaldata/step4f_*.txt`
 
 2) ミシェル解析用の 1D データ
 - 変数: `Ee` のみ
 - 対応構造体: `include/p2meg/MichelEData.h` の `MichelEEvent`
-- 入力元: `step2 --michel` 出力の `Michel_module1_runM.txt`, `Michel_module2_runM.txt`（1行1列）
+- 入力元: `Ee` を 1 行 1 列で並べたテキスト
+- 注意: 現在の `main` ブランチには旧 `step2 --michel` は存在しない。
+  必要なら別途 converter / macro で `Michel_module*.txt` 相当の 1 列データを作る。
 
 注意:
 - 解析コードに渡すときは、`Ee, Eg: MeV`, `t: ns`, `phi: rad` に単位をそろえる。
+- 現行の `final_pair_observables.cpp` が書く `step4f_runM_eg.txt` の `t` は秒なので、
+  `Event` や尤度評価に渡す前に ns へ変換する。

@@ -44,7 +44,7 @@ static const double kOffset_PS_A = -1.25;   // -5 ns
 static const double kOffset_PS_B = 0.0;
 
 // NaI積分値 -> エネルギー線形変換の既定値
-// 既存 step2.cc の初期値を採用
+// 旧 step2 の初期値を採用
 static const double kNaI_A1_Coeff = 0.352608;
 static const double kNaI_A2_Coeff = 0.344478;
 static const double kNaI_B1_Coeff = 0.548069;
